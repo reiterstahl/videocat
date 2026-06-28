@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-videocat}
+      POSTGRES_USER: ${POSTGRES_USER:-videocat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a strong random value}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-videocat}\" -d \"$${POSTGRES_DB:-videocat}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.0}}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-videocat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a strong random value}@postgres:5432/${POSTGRES_DB:-videocat}}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 4000
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8081}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a strong random value}
+      AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env to a strong random value}
+      PROTECTED_FOLDER_PIN: ${PROTECTED_FOLDER_PIN:?Set PROTECTED_FOLDER_PIN in .env}
+      PROTECTED_FOLDER_PATTERNS: ${PROTECTED_FOLDER_PATTERNS:-Private,Protected}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      THUMBNAILS_DIR: /data/video-catalog/thumbnails
+      PUBLIC_THUMBNAILS_BASE_URL: /thumbnails
+    volumes:
+      - thumbnails_data:/data/video-catalog/thumbnails
+    ports:
+      - "${SERVER_BIND_ADDR:-127.0.0.1}:${SERVER_PUBLISHED_PORT:-4001}:4000"
+
+  web:
+    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.0}}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PUBLISHED_PORT:-8081}:80"
+
+volumes:
+  postgres_data:
+  thumbnails_data:

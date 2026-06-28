@@ -1,0 +1,89 @@
+{
+  "name": "@videocat/agent-windows",
+  "version": "0.1.0",
+  "description": "VideoCAT Windows agent and tray companion.",
+  "author": "VideoCAT contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist/tray.js",
+  "bin": {
+    "videocat-agent": "dist/index.js"
+  },
+  "scripts": {
+    "ensure-shared": "npm run build -w @videocat/shared",
+    "ensure-runtime": "npm run build -w @videocat/shared && npm run build",
+    "ensure-tray-runtime": "npm run build -w @videocat/shared && npm run build && npm run build:tray",
+    "predev": "npm run ensure-shared",
+    "dev": "tsx src/index.ts",
+    "prescan": "npm run ensure-runtime",
+    "scan": "node dist/index.js scan",
+    "prewizard": "npm run ensure-runtime",
+    "wizard": "node dist/index.js wizard",
+    "precompanion": "npm run ensure-runtime",
+    "companion": "node dist/index.js companion",
+    "preprocess-deletes": "npm run ensure-runtime",
+    "process-deletes": "node dist/index.js process-deletes",
+    "pretray": "npm run ensure-tray-runtime",
+    "tray": "electron dist/tray.js",
+    "prepackage:tray": "npm run ensure-tray-runtime",
+    "package:tray": "electron-builder --win portable",
+    "preinit-disk": "npm run ensure-runtime",
+    "init-disk": "node dist/index.js init-disk",
+    "preadd-root": "npm run ensure-runtime",
+    "add-root": "node dist/index.js add-root",
+    "prediscover": "npm run ensure-runtime",
+    "discover": "node dist/index.js discover",
+    "build": "tsc -p tsconfig.json",
+    "build:tray": "tsc -p tsconfig.tray.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tray": "tsc -p tsconfig.tray.json --noEmit"
+  },
+  "dependencies": {
+    "@videocat/shared": "0.1.0",
+    "zod": "^3.23.8"
+  },
+  "build": {
+    "appId": "app.videocat.companion",
+    "productName": "VideoCAT Companion",
+    "artifactName": "VideoCAT-Companion-${version}.${ext}",
+    "compression": "maximum",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/index.js",
+      "dist/tray.js",
+      "dist/tray-preload.cjs",
+      "package.json",
+      {
+        "from": "../../packages/shared/dist",
+        "to": "node_modules/@videocat/shared/dist"
+      },
+      {
+        "from": "../../packages/shared/package.json",
+        "to": "node_modules/@videocat/shared/package.json"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "../../logo.png",
+        "to": "logo.png"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": ["portable"]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "electron": "42.5.0",
+    "electron-builder": "^26.15.3",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Disk {
+  id             String      @id @default(uuid()) @db.Uuid
+  name           String
+  volumeLabel    String?
+  volumeId       String?
+  driveLetter    String?
+  totalBytes     BigInt?
+  fileSystem     String?
+  firstScannedAt DateTime    @default(now())
+  lastScannedAt  DateTime    @default(now())
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  scans          Scan[]
+  files          VideoFile[]
+  agentErrors    AgentError[]
+
+  @@index([name])
+  @@index([volumeId])
+}
+
+model Scan {
+  id         String    @id @default(uuid()) @db.Uuid
+  diskId     String    @db.Uuid
+  rootPath   String
+  status     String    @default("running")
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  fileCount  Int       @default(0)
+  errorCount Int       @default(0)
+  disk       Disk      @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  agentErrors AgentError[]
+
+  @@index([diskId])
+  @@index([status])
+}
+
+model VideoFile {
+  id              String      @id @default(uuid()) @db.Uuid
+  diskId          String      @db.Uuid
+  filename        String
+  extension       String
+  absolutePath    String
+  relativePath    String
+  sizeBytes       BigInt
+  folderSizeBytes BigInt?
+  fileCreatedAt   DateTime?
+  modifiedAt      DateTime?
+  scanStatus      String      @default("pending")
+  errorMessage    String?
+  durationSeconds Float?
+  width           Int?
+  height          Int?
+  fps             Float?
+  videoCodec      String?
+  audioCodec      String?
+  audioChannels   Int?
+  bitrate         BigInt?
+  containerFormat String?
+  streamCount     Int?
+  ffprobeJson     Json?
+  curationStatus  String      @default("none")
+  reviewedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  disk            Disk        @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  thumbnails      Thumbnail[]
+  categories      VideoFileCategory[]
+  downloadQueue   DownloadQueue?
+
+  @@unique([diskId, relativePath])
+  @@index([diskId])
+  @@index([sizeBytes])
+  @@index([folderSizeBytes])
+  @@index([extension])
+  @@index([durationSeconds])
+  @@index([width])
+  @@index([height])
+  @@index([videoCodec])
+  @@index([modifiedAt])
+  @@index([curationStatus])
+  @@index([reviewedAt])
+}
+
+model DownloadQueue {
+  id              String    @id @default(uuid()) @db.Uuid
+  videoFileId     String    @unique @db.Uuid
+  status          String    @default("queued")
+  source          String    @default("manual")
+  requestedAt     DateTime  @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  destinationPath String?
+  downloadedTag   String?
+  errorMessage    String?
+  progressBytes   BigInt    @default(0)
+  progressUpdatedAt DateTime?
+  updatedAt       DateTime  @updatedAt
+  videoFile       VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([requestedAt])
+  @@index([completedAt])
+  @@index([source])
+}
+
+model AgentError {
+  id           String   @id @default(uuid()) @db.Uuid
+  diskId       String   @db.Uuid
+  scanId       String?  @db.Uuid
+  category     String
+  phase        String
+  code         String?
+  message      String
+  absolutePath String?
+  relativePath String?
+  createdAt    DateTime @default(now())
+  disk         Disk     @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  scan         Scan?    @relation(fields: [scanId], references: [id], onDelete: SetNull)
+
+  @@index([diskId])
+  @@index([scanId])
+  @@index([category])
+  @@index([phase])
+  @@index([createdAt])
+}
+
+model CurationCategory {
+  key       String   @id
+  label     String
+  color     String
+  builtIn   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  files     VideoFileCategory[]
+
+  @@index([builtIn])
+  @@index([label])
+}
+
+model VideoFileCategory {
+  videoFileId String           @db.Uuid
+  categoryKey String
+  createdAt   DateTime         @default(now())
+  videoFile   VideoFile        @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+  category    CurationCategory @relation(fields: [categoryKey], references: [key], onDelete: Cascade)
+
+  @@id([videoFileId, categoryKey])
+  @@index([categoryKey])
+  @@index([videoFileId])
+}
+
+model AppMetric {
+  key         String   @id
+  valueBigInt BigInt   @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Thumbnail {
+  id               String    @id @default(uuid()) @db.Uuid
+  videoFileId      String    @db.Uuid
+  kind             String
+  timestampSeconds Float?
+  relativePath     String
+  createdAt        DateTime  @default(now())
+  videoFile        VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+
+  @@unique([videoFileId, kind])
+  @@index([videoFileId])
+}
