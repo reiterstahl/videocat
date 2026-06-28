@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "electron"]
+  },
+  "include": ["src/tray.ts", "src/tray-preload.cts"]
+}

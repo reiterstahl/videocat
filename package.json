@@ -1,0 +1,23 @@
+{
+  "name": "videocat",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Offline video catalog for external hard drives.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @videocat/shared && npm run build -w @videocat/server && npm run build -w @videocat/web && npm run build -w @videocat/agent-windows",
+    "dev:server": "npm run dev -w @videocat/server",
+    "dev:web": "npm run dev -w @videocat/web",
+    "typecheck": "npm run build -w @videocat/shared && npm run typecheck -w @videocat/server && npm run typecheck -w @videocat/web && npm run typecheck -w @videocat/agent-windows",
+    "prisma:generate": "npm run prisma:generate -w @videocat/server",
+    "prisma:migrate": "npm run prisma:migrate -w @videocat/server"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

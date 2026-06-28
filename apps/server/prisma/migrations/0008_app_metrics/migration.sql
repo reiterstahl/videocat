@@ -1,0 +1,6 @@
+CREATE TABLE "AppMetric" (
+  "key" TEXT NOT NULL,
+  "valueBigInt" BIGINT NOT NULL DEFAULT 0,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "AppMetric_pkey" PRIMARY KEY ("key")
+);
