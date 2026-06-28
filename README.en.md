@@ -228,7 +228,7 @@ Requirements:
 Install:
 
 ```powershell
-cd C:\Users\reite\Documents\videocat
+cd %USERPROFILE%\videocat
 npm install
 ```
 
