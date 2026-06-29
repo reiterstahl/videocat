@@ -1681,16 +1681,6 @@ export function App() {
         <WaterRippleBackdrop />
         <section className="login-panel">
           <div className="login-panel-actions">
-            <select
-              className="language-select"
-              value={language}
-              onChange={(event) => setLanguage(normalizeLanguage(event.target.value))}
-              title="Idioma"
-              aria-label="Idioma"
-            >
-              <option value="es">{languageLabel("es")}</option>
-              <option value="en">{languageLabel("en")}</option>
-            </select>
             <button className="theme-button login-theme-button" onClick={toggleTheme} title="Cambiar tema">
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
@@ -1721,6 +1711,18 @@ export function App() {
               Entrar
             </button>
           </form>
+          <div className="login-footer-controls">
+            <select
+              className="language-select login-language-select"
+              value={language}
+              onChange={(event) => setLanguage(normalizeLanguage(event.target.value))}
+              title="Idioma"
+              aria-label="Idioma"
+            >
+              <option value="es">{languageLabel("es")}</option>
+              <option value="en">{languageLabel("en")}</option>
+            </select>
+          </div>
         </section>
       </main>
     );
