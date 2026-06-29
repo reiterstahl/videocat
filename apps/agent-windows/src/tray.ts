@@ -477,7 +477,7 @@ function configHtml(): string {
     </div>
     <form id="form" class="grid">
       <div class="hint full"><span class="required">*</span> Campos obligatorios para escanear y reportar al servidor.</div>
-      <label class="full">SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.27:8081" /></label>
+      <label class="full">SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
       <label class="full">WEB_URL<input name="WEB_URL" placeholder="https://cat.example.com" /></label>
       <label class="full">AGENT_TOKEN <span class="required">*</span><input name="AGENT_TOKEN" required type="password" /></label>
       <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
