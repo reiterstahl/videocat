@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Lock,
   LogOut,
+  Menu,
   Moon,
   Pause,
   Play,
@@ -501,6 +502,7 @@ export function App() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
   const [language, setLanguage] = useState<Language>(storedLanguage);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState("admin");
@@ -1429,9 +1431,27 @@ export function App() {
   function showFullCatalog() {
     clearFilters();
     setViewMode("catalog");
+    setMobileMenuOpen(false);
     setSelected(null);
     setReviewCurrent(null);
     setReviewMessage("");
+  }
+
+  const navigationItems: Array<{ mode: ViewMode; label: string; icon: ReactNode }> = [
+    { mode: "catalog", label: "Catalogo", icon: <FileVideo size={17} /> },
+    { mode: "review", label: "Review", icon: <Check size={17} /> },
+    { mode: "downloads", label: "A descargar", icon: <Download size={17} /> },
+    { mode: "duplicates", label: "Duplicados", icon: <AlertTriangle size={17} /> },
+    { mode: "usage", label: "Esquema de uso", icon: <LayoutGrid size={17} /> },
+    { mode: "audit", label: "Auditoria", icon: <AlertTriangle size={17} /> },
+    { mode: "admin", label: "Administracion", icon: <Trash2 size={17} /> },
+    { mode: "profile", label: "Perfil", icon: <User size={17} /> }
+  ];
+  const activeNavigationItem = navigationItems.find((item) => item.mode === viewMode) ?? navigationItems[0];
+
+  function switchView(mode: ViewMode): void {
+    setViewMode(mode);
+    setMobileMenuOpen(false);
   }
 
   async function toggleFileCategory(file: VideoFile, categoryKey: string, enabled: boolean) {
@@ -1743,39 +1763,57 @@ export function App() {
           </div>
         </button>
         <section className="view-switcher" aria-label="Secciones principales">
-          <button className={viewMode === "catalog" ? "is-active" : ""} onClick={() => setViewMode("catalog")} type="button">
-            <FileVideo size={17} />
-            Catalogo
-          </button>
-          <button className={viewMode === "review" ? "is-active" : ""} onClick={() => setViewMode("review")} type="button">
-            <Check size={17} />
-            Review
-          </button>
-          <button className={viewMode === "downloads" ? "is-active" : ""} onClick={() => setViewMode("downloads")} type="button">
-            <Download size={17} />
-            A descargar
-          </button>
-          <button className={viewMode === "duplicates" ? "is-active" : ""} onClick={() => setViewMode("duplicates")} type="button">
-            <AlertTriangle size={17} />
-            Duplicados
-          </button>
-          <button className={viewMode === "usage" ? "is-active" : ""} onClick={() => setViewMode("usage")} type="button">
-            <LayoutGrid size={17} />
-            Esquema de uso
-          </button>
-          <button className={viewMode === "audit" ? "is-active" : ""} onClick={() => setViewMode("audit")} type="button">
-            <AlertTriangle size={17} />
-            Auditoria
-          </button>
-          <button className={viewMode === "admin" ? "is-active" : ""} onClick={() => setViewMode("admin")} type="button">
-            <Trash2 size={17} />
-            Administracion
-          </button>
-          <button className={viewMode === "profile" ? "is-active" : ""} onClick={() => setViewMode("profile")} type="button">
-            <User size={17} />
-            Perfil
-          </button>
+          {navigationItems.map((item) => (
+            <button
+              key={item.mode}
+              className={viewMode === item.mode ? "is-active" : ""}
+              onClick={() => switchView(item.mode)}
+              type="button"
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
         </section>
+        <div className="mobile-topnav">
+          <button className="mobile-current-view" type="button" onClick={() => setMobileMenuOpen((open) => !open)}>
+            {activeNavigationItem.icon}
+            <span>{activeNavigationItem.label}</span>
+          </button>
+          <button
+            className={`mobile-menu-toggle ${mobileMenuOpen ? "is-open" : ""}`}
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-expanded={mobileMenuOpen}
+            aria-label="Abrir menu"
+            title="Menu"
+          >
+            {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
+          </button>
+          {mobileMenuOpen ? (
+            <div className="mobile-menu-panel">
+              {navigationItems.map((item) => (
+                <button
+                  key={item.mode}
+                  className={viewMode === item.mode ? "is-active" : ""}
+                  onClick={() => switchView(item.mode)}
+                  type="button"
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+              <button onClick={toggleTheme} type="button">
+                {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+                <span>Cambiar tema</span>
+              </button>
+              <button onClick={logout} type="button">
+                <LogOut size={17} />
+                <span>Salir</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="topbar-actions">
           <button className="theme-button" onClick={toggleTheme} title="Cambiar tema">
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}

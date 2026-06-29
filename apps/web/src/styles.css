@@ -519,6 +519,10 @@ select:focus {
   color: var(--matrix-primary-ink);
 }
 
+.mobile-topnav {
+  display: none;
+}
+
 .review-view {
   min-height: 520px;
 }
@@ -3097,11 +3101,11 @@ tbody tr.curation-row {
   }
 
   .topbar {
-    align-items: stretch;
+    align-items: center;
     grid-template-columns: minmax(0, 1fr) auto;
     margin: -8px -8px 16px;
     padding: 8px;
-    gap: 8px;
+    gap: 10px;
   }
 
   .brand-button {
@@ -3109,55 +3113,119 @@ tbody tr.curation-row {
     grid-row: 1;
   }
 
+  .topbar .brand-lockup {
+    gap: 9px;
+  }
+
+  .topbar .brand-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .topbar .brand-word {
+    gap: 5px;
+    font-size: 1.18rem;
+  }
+
+  .topbar .agent-status-dot {
+    width: 8px;
+    height: 8px;
+  }
+
   .topbar-actions {
+    display: none;
+  }
+
+  .mobile-topnav {
     grid-column: 2;
     grid-row: 1;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
     justify-content: flex-end;
     margin-left: 0;
+    gap: 6px;
+    min-width: 0;
   }
 
   .view-switcher {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    gap: 6px;
-    overflow: hidden;
+    display: none;
   }
 
-  .view-switcher button {
-    width: 42px;
+  .mobile-current-view,
+  .mobile-menu-toggle,
+  .mobile-menu-panel button {
     min-height: 40px;
-    flex: 0 0 42px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    gap: 0;
-    overflow: hidden;
-    padding: 0;
-    font-size: 0;
+    border: 1px solid #c7d0d5;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #27333a;
+    font-weight: 900;
   }
 
-  .view-switcher button.is-active {
-    width: auto;
-    max-width: 168px;
-    flex: 1 1 auto;
+  .mobile-current-view {
+    max-width: 126px;
     gap: 7px;
-    justify-content: center;
-    padding: 0 11px;
-    font-size: 0.92rem;
+    border-color: var(--matrix-primary);
+    background: var(--matrix-primary-soft);
+    color: var(--matrix-primary-ink);
+    padding: 0 10px;
   }
 
-  .view-switcher button svg {
-    flex: 0 0 auto;
+  .mobile-current-view span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-menu-toggle {
+    width: 42px;
+    padding: 0;
+  }
+
+  .mobile-menu-toggle.is-open {
+    border-color: var(--matrix-primary);
+    color: var(--matrix-primary-ink);
+  }
+
+  .mobile-menu-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 60;
+    width: min(270px, calc(100vw - 32px));
+    display: grid;
+    gap: 6px;
+    border: 1px solid #c7d0d5;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 42px rgba(13, 22, 28, 0.22);
+    padding: 8px;
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: blur(18px) saturate(135%);
+  }
+
+  .mobile-menu-panel button {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 9px;
+    padding: 0 11px;
+  }
+
+  .mobile-menu-panel button.is-active {
+    border-color: var(--matrix-primary);
+    background: var(--matrix-primary-soft);
+    color: var(--matrix-primary-ink);
   }
 
   .logout-button {
     width: 42px;
     padding: 0;
     font-size: 0;
-  }
-
-  .logout-button svg {
-    flex: 0 0 auto;
   }
 
   .stats-grid,
@@ -3416,6 +3484,28 @@ tbody tr.curation-row {
 :root[data-theme="dark"] .icon-text-button {
   background: #26353d;
   color: #eef5f7;
+}
+
+:root[data-theme="dark"] .mobile-current-view,
+:root[data-theme="dark"] .mobile-menu-toggle,
+:root[data-theme="dark"] .mobile-menu-panel button {
+  background: #151c21;
+  border-color: #2b3941;
+  color: #e6edf0;
+}
+
+:root[data-theme="dark"] .mobile-menu-panel {
+  background: rgba(15, 20, 24, 0.96);
+  border-color: rgba(61, 80, 90, 0.82);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="dark"] .mobile-current-view,
+:root[data-theme="dark"] .mobile-menu-toggle.is-open,
+:root[data-theme="dark"] .mobile-menu-panel button.is-active {
+  background: #3a1609;
+  border-color: var(--matrix-primary-bright);
+  color: #ffe8de;
 }
 
 :root[data-theme="dark"] .view-switcher button,
