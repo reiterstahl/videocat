@@ -228,7 +228,7 @@ Requisitos:
 Instalación:
 
 ```powershell
-cd %USERPROFILE%\videocat
+cd $env:USERPROFILE\videocat
 npm install
 ```
 
@@ -396,8 +396,16 @@ http://localhost:5173
 
 La forma más rápida de probar VideoCAT con imágenes preconstruidas es:
 
+Linux/macOS/WSL:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/install.sh | sh
+```
+
+Windows PowerShell con Docker Desktop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/reiterstahl/videocat/main/install.ps1 | iex"
 ```
 
 El instalador crea una carpeta `videocat`, descarga `docker-compose.hub.yml`, genera secretos en `.env`, descarga las imágenes y levanta el stack.
@@ -424,12 +432,23 @@ reiterstahl/videocat-web:latest
 
 Instalación manual:
 
+Linux/macOS/WSL:
+
 ```bash
 mkdir videocat
 cd videocat
 curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml
 curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example
 mv .env.example .env
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force -Path videocat
+Set-Location videocat
+Invoke-WebRequest https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml -OutFile docker-compose.hub.yml
+Invoke-WebRequest https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example -OutFile .env
 ```
 
 Edita `.env`, cambia los secretos y para pruebas locales sin HTTPS usa:
