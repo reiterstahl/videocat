@@ -520,11 +520,3 @@ Web:
 VideoCAT se distribuye bajo licencia `AGPL-3.0-or-later`. Esta licencia permite usar, estudiar, modificar, distribuir y publicar versiones derivadas del proyecto, manteniendo las obligaciones de copyleft y atribución indicadas por la licencia.
 
 La distribución oficial incluye enlaces opcionales de apoyo para el autor original. Forks y versiones modificadas pueden quitar o reemplazar esos enlaces, siempre que cumplan la licencia del proyecto y conserven los avisos obligatorios de copyright y atribución.
-
-Antes de publicar una versión open source:
-
-- Revisar que no exista ningún `.env` real en Git.
-- Sustituir dominios privados por ejemplos.
-- Agregar capturas de pantalla.
-- Publicar un release con el `.exe` del companion.
-- Opcionalmente automatizar Docker Hub y releases con GitHub Actions.
