@@ -57,11 +57,11 @@ La app lee `.env` desde:
 Variables útiles:
 
 ```env
-SERVER_URL=http://192.168.1.27:8081
-WEB_URL=https://cat.example.com
+SERVER_URL=http://192.168.1.x:8081
+WEB_URL=https://videocat.example.com
 AGENT_TOKEN=change-me-agent-token
 COMPANION_PORT=29429
-COMPANION_ALLOWED_ORIGINS=https://cat.example.com,http://192.168.1.27:8081,http://localhost:5173,http://127.0.0.1:5173
+COMPANION_ALLOWED_ORIGINS=https://videocat.example.com,http://192.168.1.x:8081,http://localhost:5173,http://127.0.0.1:5173
 COMPANION_DISK_POLL_MS=5000
 COMPANION_SCAN_POLL_MS=900000
 COMPANION_DELETE_POLL_MS=60000
