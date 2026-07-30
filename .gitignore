@@ -17,3 +17,4 @@ companion/*.exe
 companion/*.msi
 companion/*.zip
 companion/*.blockmap
+migration/

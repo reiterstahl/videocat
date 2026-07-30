@@ -59,7 +59,7 @@ El sistema tiene dos partes:
 - Indicadores de review: pendientes, marcados hoy, racha semanal y GB liberados.
 - Modal de espacio a recuperar que recomienda qué disco conectar para liberar más espacio.
 - Sección `A descargar` para poner videos en cola y copiarlos desde discos conectados hacia una carpeta local.
-- Selección aleatoria por tamaño objetivo en GB para llenar la cola de descarga con videos disponibles.
+- Selección aleatoria por tamaño objetivo en GB, limitada a discos conectados y opcionalmente a carpetas concretas.
 - Progreso individual de copia por archivo, procesamiento de uno en uno, pausa, vaciado y procesamiento manual de cola.
 - Etiquetas secundarias de descarga por año/mes para evitar repetir selecciones aleatorias ya descargadas.
 - Borrado físico diferido de archivos marcados cuando el disco vuelve a conectarse.

@@ -50,6 +50,16 @@ async function setAppMetricValue(key: string, value: bigint): Promise<void> {
   `);
 }
 
+async function setAppSettingValue(key: string, value: string): Promise<void> {
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "AppSetting" ("key", "value", "createdAt", "updatedAt")
+    VALUES (${key}, ${value}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT ("key") DO UPDATE
+    SET "value" = EXCLUDED."value",
+        "updatedAt" = CURRENT_TIMESTAMP
+  `);
+}
+
 function videoFileData(diskId: string, file: ReturnType<typeof filesBatchSchema.parse>["files"][number]) {
   return {
     diskId,
@@ -105,8 +115,10 @@ const downloadStatusSchema = z.object({
 });
 const companionHeartbeatSchema = z.object({
   version: z.number().int().nonnegative().optional(),
-  mountedDiskCount: z.number().int().nonnegative().optional()
+  mountedDiskCount: z.number().int().nonnegative().optional(),
+  mountedDiskIds: z.array(z.string().uuid()).max(100).optional()
 });
+const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
 
 function monthlyDownloadTag(date = new Date()): { key: string; label: string } {
   const months = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -126,10 +138,12 @@ async function ensureDownloadMonthCategory(key: string, label: string): Promise<
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/agent/companion/heartbeat", { preHandler: requireAgentAuth }, async (request) => {
     const body = companionHeartbeatSchema.parse(request.body ?? {});
+    const mountedDiskIds = [...new Set(body.mountedDiskIds ?? [])];
     await Promise.all([
       setAppMetricValue("companion_last_seen_at", BigInt(Date.now())),
       setAppMetricValue("companion_version", BigInt(body.version ?? 0)),
-      setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? 0))
+      setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? mountedDiskIds.length)),
+      setAppSettingValue(companionMountedDiskIdsKey, JSON.stringify(mountedDiskIds))
     ]);
     return { ok: true };
   });

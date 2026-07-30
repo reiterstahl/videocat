@@ -59,7 +59,7 @@ The system has two parts:
 - Review indicators: pending count, marked today, weekly streak and freed GB.
 - Recoverable-space modal that recommends which drive to connect to free the most space.
 - `A descargar` download queue to copy selected videos from connected drives into a local folder.
-- Random selection by target GB amount to fill the download queue with available videos.
+- Random selection by target GB amount, limited to connected drives and optionally to specific folders.
 - Per-file copy progress, one-at-a-time processing, pause, clear queue and manual process controls.
 - Year/month download tags to avoid randomly selecting already downloaded videos again.
 - Deferred physical deletion of marked files when the drive is connected again.

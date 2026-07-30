@@ -58,6 +58,8 @@ const en: Record<string, string> = {
   "Discos conectados": "Connected drives",
   "Mostrar conectados": "Show connected",
   "Detectando...": "Detecting...",
+  "Expandir discos conectados": "Expand connected drives",
+  "Colapsar discos conectados": "Collapse connected drives",
   "Todos": "All",
   "Ninguno": "None",
   "Discos": "Drives",
@@ -116,6 +118,8 @@ const en: Record<string, string> = {
   "Ultimos sometidos al review": "Latest reviewed",
   "Aun no hay videos sometidos al review.": "No reviewed videos yet.",
   "Cola local para copiar videos desde discos conectados usando el companion.": "Local queue for copying videos from connected drives using the companion.",
+  "Abre el Companion de Windows para detectar discos y procesar esta cola.": "Open the Windows Companion to detect drives and process this queue.",
+  "Sin discos conectados": "No connected drives",
   "Procesar cola": "Process queue",
   "Reanudar": "Resume",
   "Pausar": "Pause",
@@ -130,6 +134,9 @@ const en: Record<string, string> = {
   "Elige un aproximado en GB y VideoCAT pondrá videos aleatorios de los discos conectados en cola.": "Choose an approximate GB amount and VideoCAT will queue random videos from connected drives.",
   "GB aproximados": "Approximate GB",
   "Elegir al azar": "Pick randomly",
+  "Carpetas para la selección": "Folders for selection",
+  "Sin selección se usarán todas las carpetas disponibles.": "With no selection, all available folders will be used.",
+  "Usar todas": "Use all",
   "Solo se pueden retirar pendientes o fallidos.": "Only pending or failed items can be removed.",
   "Retirar de cola": "Remove from queue",
   "Seleccionar cola retirable": "Select removable queue",
@@ -217,6 +224,19 @@ const en: Record<string, string> = {
   ,"Token local no valido": "Invalid local token"
   ,"No se pudieron consultar discos conectados": "Could not query connected drives"
   ,"Companion no iniciado": "Companion not running"
+  ,"Companion sin sincronizar": "Companion not synchronized"
+  ,"Actualización requerida": "Update required"
+  ,"Agente sincronizado": "Agent synchronized"
+  ,"Agente sincronizado; actualización requerida": "Agent synchronized; update required"
+  ,"Agente abierto localmente, sin sincronizar": "Agent running locally, not synchronized"
+  ,"Companion no iniciado. Abre el Companion para detectar discos y procesar descargas.": "Companion not running. Open the Companion to detect drives and process downloads."
+  ,"Companion abierto localmente, pero no está sincronizado con este servidor. Revisa SERVER_URL y AGENT_TOKEN.": "Companion is running locally, but it is not synchronized with this server. Check SERVER_URL and AGENT_TOKEN."
+  ,"El Companion está sincronizado, pero necesita actualizarse para reportar qué discos están conectados.": "The Companion is synchronized, but it must be updated to report which drives are connected."
+  ,"El Companion reporta discos conectados, pero no coinciden con este catálogo. Revisa SERVER_URL y vuelve a escanearlos.": "The Companion reports connected drives, but they do not match this catalog. Check SERVER_URL and scan them again."
+  ,"Companion sincronizado. No hay discos VideoCAT conectados en este momento.": "Companion synchronized. No VideoCAT drives are connected right now."
+  ,"El proceso local está abierto, pero no reporta a este servidor. Revisa SERVER_URL y AGENT_TOKEN.": "The local process is running, but it is not reporting to this server. Check SERVER_URL and AGENT_TOKEN."
+  ,"Instala la versión más reciente del Companion para reportar los discos conectados.": "Install the latest Companion version to report connected drives."
+  ,"El Companion no está en ejecución o no está sincronizado con VideoCAT.": "The Companion is not running or is not synchronized with VideoCAT."
   ,"No se pudo aplicar la acción por lote.": "Could not apply the batch action."
   ,"No se pudo crear la categoria": "Could not create the category"
   ,"No se pudo eliminar la categoria": "Could not delete the category"
@@ -259,6 +279,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,]+) archivo\(s\)$/);
   if (match) return `${match[1]} file(s)`;
+
+  match = text.match(/^(\d+) disco\(s\) conectado\(s\) disponible\(s\) para descargar\.$/);
+  if (match) return `${match[1]} connected drive(s) available for download.`;
+
+  match = text.match(/^(\d+) carpeta\(s\) seleccionada\(s\)\.$/);
+  if (match) return `${match[1]} selected folder(s).`;
 
   match = text.match(/^([A-Z]:|-) · ([\d.,]+) archivo\(s\) · Sin etiqueta$/);
   if (match) return `${match[1]} · ${match[2]} file(s) · No label`;

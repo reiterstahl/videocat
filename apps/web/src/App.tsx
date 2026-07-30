@@ -182,6 +182,7 @@ type VisibleFolder = FolderFacet & {
 type ProtectedPinPrompt = {
   folder: string;
   action: "expand" | "select";
+  scope: "catalog" | "download";
 };
 
 type CompanionAction = "open-file" | "open-folder" | "delete-file";
@@ -205,6 +206,7 @@ type CompanionStatusResponse = {
   staleAfterMs: number;
   version?: number;
   mountedDiskCount?: number;
+  mountedDiskIds?: string[];
 };
 
 type MountedCompanionDisk = {
@@ -495,6 +497,50 @@ function nextSelectedFolders(current: string[], folder: string): string[] {
   return [...current.filter((item) => item !== "." && !isFolderAncestor(item, folder) && !isFolderAncestor(folder, item)), folder];
 }
 
+function visibleFolderOptions(
+  folders: FolderFacet[],
+  expandedFolders: string[],
+  folderSearch: string
+): VisibleFolder[] {
+  const expanded = new Set(expandedFolders);
+  const children = new Map<string, number>();
+  for (const folder of folders) {
+    const parent = parentFolder(folder.path);
+    children.set(parent, (children.get(parent) ?? 0) + 1);
+  }
+  const search = normalizeSearchValue(folderSearch.trim());
+  const searchableFolders = search
+    ? new Set(
+        folders
+          .filter((folder) => normalizeSearchValue(`${folder.label} ${folder.path}`).includes(search))
+          .flatMap((folder) => {
+            const parts = folder.path === "." ? ["."] : folder.path.split("/");
+            const ancestors = parts.map((_part, index) => parts.slice(0, index + 1).join("/"));
+            return [folder.path, ...ancestors];
+          })
+      )
+    : null;
+
+  return [...folders]
+    .sort(compareFolderPaths)
+    .filter((folder) => {
+      if (searchableFolders && !searchableFolders.has(folder.path)) return false;
+      if (searchableFolders) return true;
+      if (folder.path === "." || folder.depth <= 1) return true;
+      const parts = folder.path.split("/");
+      for (let index = 1; index < parts.length; index += 1) {
+        const ancestor = parts.slice(0, index).join("/");
+        if (!expanded.has(ancestor)) return false;
+      }
+      return true;
+    })
+    .map((folder) => ({
+      ...folder,
+      hasChildren: (children.get(folder.path) ?? 0) > 0,
+      isExpanded: expanded.has(folder.path)
+    }));
+}
+
 export function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const stored = localStorage.getItem("videocat-theme");
@@ -570,6 +616,23 @@ export function App() {
   const [selectedDownloadQueueIds, setSelectedDownloadQueueIds] = useState<string[]>([]);
   const [downloadMessage, setDownloadMessage] = useState("");
   const [randomDownloadGb, setRandomDownloadGb] = useState("10");
+  const [companionMountedDiskIds, setCompanionMountedDiskIds] = useState<string[]>([]);
+  const [companionMountedDiskCount, setCompanionMountedDiskCount] = useState(0);
+  const [downloadDiskIds, setDownloadDiskIds] = useState<string[]>([]);
+  const [downloadFacets, setDownloadFacets] = useState<FacetResponse>({
+    folders: [],
+    tags: [],
+    extensions: [],
+    curationStatuses: [],
+    protectedUnlocked: false
+  });
+  const [randomDownloadFolders, setRandomDownloadFolders] = useState<string[]>([]);
+  const [downloadExpandedFolders, setDownloadExpandedFolders] = useState<string[]>([]);
+  const [downloadFolderSearch, setDownloadFolderSearch] = useState("");
+  const [connectedPanelCollapsed, setConnectedPanelCollapsed] = useState(
+    () => localStorage.getItem("videocat-connected-panel-collapsed") === "true"
+  );
+  const previousMountedDiskIdsRef = useRef<Set<string>>(new Set());
   const [folderUsage, setFolderUsage] = useState<FolderUsageItem[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
@@ -590,7 +653,9 @@ export function App() {
   const [profileError, setProfileError] = useState("");
   const [detectingConnected, setDetectingConnected] = useState(false);
   const [connectedMessage, setConnectedMessage] = useState("");
+  const [companionLocalOnline, setCompanionLocalOnline] = useState(false);
   const [companionOnline, setCompanionOnline] = useState(false);
+  const [companionVersion, setCompanionVersion] = useState(0);
   const locale = language === "en" ? "en-US" : "es-CR";
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -627,47 +692,63 @@ export function App() {
     }
     return counts;
   }, [facets.folders]);
-  const visibleFolders = useMemo<VisibleFolder[]>(() => {
-    const expanded = new Set(expandedFolders);
-    const search = normalizeSearchValue(folderSearch.trim());
-    const searchableFolders = search
-      ? new Set(
-          facets.folders
-            .filter((folder) =>
-              normalizeSearchValue(`${folder.label} ${folder.path}`).includes(search)
-            )
-            .flatMap((folder) => {
-              const parts = folder.path === "." ? ["."] : folder.path.split("/");
-              const ancestors = parts.map((_part, index) => parts.slice(0, index + 1).join("/"));
-              return [folder.path, ...ancestors];
-            })
-        )
-      : null;
-    return [...facets.folders]
-      .sort(compareFolderPaths)
-      .filter((folder) => {
-        if (searchableFolders && !searchableFolders.has(folder.path)) return false;
-        if (searchableFolders) return true;
-        if (folder.path === "." || folder.depth <= 1) return true;
-        const parts = folder.path.split("/");
-        for (let index = 1; index < parts.length; index += 1) {
-          const ancestor = parts.slice(0, index).join("/");
-          if (!expanded.has(ancestor)) return false;
-        }
-        return true;
-      })
-      .map((folder) => ({
-        ...folder,
-        hasChildren: (folderChildren.get(folder.path) ?? 0) > 0,
-        isExpanded: expanded.has(folder.path)
-      }));
-  }, [expandedFolders, facets.folders, folderChildren, folderSearch]);
+  const visibleFolders = useMemo(
+    () => visibleFolderOptions(facets.folders, expandedFolders, folderSearch),
+    [expandedFolders, facets.folders, folderSearch]
+  );
+  const downloadFolderChildren = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const folder of downloadFacets.folders) {
+      const parent = parentFolder(folder.path);
+      counts.set(parent, (counts.get(parent) ?? 0) + 1);
+    }
+    return counts;
+  }, [downloadFacets.folders]);
+  const visibleDownloadFolders = useMemo(
+    () => visibleFolderOptions(downloadFacets.folders, downloadExpandedFolders, downloadFolderSearch),
+    [downloadExpandedFolders, downloadFacets.folders, downloadFolderSearch]
+  );
+  const downloadConnectedDisks = useMemo(
+    () => disks.filter((disk) => companionMountedDiskIds.includes(disk.id)),
+    [companionMountedDiskIds, disks]
+  );
+  const companionNeedsUpdate = companionOnline && companionVersion < 5;
+  const companionIndicatorState = companionOnline && !companionNeedsUpdate
+    ? "is-online"
+    : companionLocalOnline || companionOnline
+      ? "is-warning"
+      : "is-offline";
+  const companionIndicatorLabel = companionOnline && !companionNeedsUpdate
+    ? "Agente sincronizado"
+    : companionNeedsUpdate
+      ? "Agente sincronizado; actualización requerida"
+      : companionLocalOnline
+        ? "Agente abierto localmente, sin sincronizar"
+        : "Agente desconectado";
+  const downloadDiskQuery = downloadDiskIds.join(",");
+  const panelDisks = viewMode === "downloads" ? downloadConnectedDisks : disks;
+  const panelSelectedDiskIds = viewMode === "downloads" ? downloadDiskIds : connectedDiskIds;
+  const downloadConnectionMessage = !companionOnline
+    ? companionLocalOnline
+      ? "Companion abierto localmente, pero no está sincronizado con este servidor. Revisa SERVER_URL y AGENT_TOKEN."
+      : "Companion no iniciado. Abre el Companion para detectar discos y procesar descargas."
+    : companionNeedsUpdate
+      ? "El Companion está sincronizado, pero necesita actualizarse para reportar qué discos están conectados."
+      : companionMountedDiskCount > 0 && downloadConnectedDisks.length === 0
+        ? "El Companion reporta discos conectados, pero no coinciden con este catálogo. Revisa SERVER_URL y vuelve a escanearlos."
+        : downloadConnectedDisks.length === 0
+          ? "Companion sincronizado. No hay discos VideoCAT conectados en este momento."
+          : `${downloadConnectedDisks.length} disco(s) conectado(s) disponible(s) para descargar.`;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("videocat-theme", theme);
     document.querySelector<HTMLLinkElement>("link[rel='icon']")?.setAttribute("href", theme === "dark" ? logoWhiteUrl : logoUrl);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem("videocat-connected-panel-collapsed", String(connectedPanelCollapsed));
+  }, [connectedPanelCollapsed]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -717,7 +798,11 @@ export function App() {
 
   useEffect(() => {
     if (!authenticated) {
+      setCompanionLocalOnline(false);
       setCompanionOnline(false);
+      setCompanionVersion(0);
+      setCompanionMountedDiskCount(0);
+      setCompanionMountedDiskIds([]);
       return;
     }
 
@@ -726,6 +811,7 @@ export function App() {
     async function checkCompanionHealth() {
       const storedPort = localStorage.getItem("videocat-companion-port") ?? "29429";
       const ports = [...new Set([storedPort, "29429"].filter(Boolean))];
+      let localOnline = false;
 
       for (const port of ports) {
         try {
@@ -736,8 +822,8 @@ export function App() {
           const result = await response.json().catch(() => ({ ok: false })) as { ok?: boolean };
           if (response.ok && result.ok === true) {
             localStorage.setItem("videocat-companion-port", port);
-            if (!cancelled) setCompanionOnline(true);
-            return;
+            localOnline = true;
+            break;
           }
         } catch {
           try {
@@ -747,19 +833,31 @@ export function App() {
               signal: AbortSignal.timeout(1800)
             });
             localStorage.setItem("videocat-companion-port", port);
-            if (!cancelled) setCompanionOnline(true);
-            return;
+            localOnline = true;
+            break;
           } catch {
             // Try the next known port before marking the companion offline.
           }
         }
       }
 
+      if (!cancelled) setCompanionLocalOnline(localOnline);
+
       try {
         const status = await api<CompanionStatusResponse>("/api/companion/status");
-        if (!cancelled) setCompanionOnline(status.online);
+        if (!cancelled) {
+          setCompanionOnline(status.online);
+          setCompanionVersion(status.online ? (status.version ?? 0) : 0);
+          setCompanionMountedDiskCount(status.online ? (status.mountedDiskCount ?? 0) : 0);
+          setCompanionMountedDiskIds(status.online ? (status.mountedDiskIds ?? []) : []);
+        }
       } catch {
-        if (!cancelled) setCompanionOnline(false);
+        if (!cancelled) {
+          setCompanionOnline(false);
+          setCompanionVersion(0);
+          setCompanionMountedDiskCount(0);
+          setCompanionMountedDiskIds([]);
+        }
       }
     }
 
@@ -773,6 +871,22 @@ export function App() {
       window.clearInterval(interval);
     };
   }, [authenticated]);
+
+  useEffect(() => {
+    const availableIds = companionMountedDiskIds.filter((id) => disks.some((disk) => disk.id === id));
+    const previousIds = previousMountedDiskIdsRef.current;
+    setDownloadDiskIds((current) => {
+      const retained = current.filter((id) => availableIds.includes(id));
+      const newlyMounted = availableIds.filter((id) => !previousIds.has(id));
+      return [...new Set([...retained, ...newlyMounted])];
+    });
+    previousMountedDiskIdsRef.current = new Set(availableIds);
+    if (availableIds.length === 0) {
+      setRandomDownloadFolders([]);
+      setDownloadExpandedFolders([]);
+      setDownloadFolderSearch("");
+    }
+  }, [companionMountedDiskIds, disks]);
 
   useEffect(() => {
     if (!authenticated || disks.length === 0) return;
@@ -805,6 +919,37 @@ export function App() {
       }
     });
   }, [authenticated, catalogVersion, connectedDiskIds.length, diskQuery, disks.length, extension, protectedUnlockVersion]);
+
+  useEffect(() => {
+    if (!authenticated || viewMode !== "downloads" || downloadDiskIds.length === 0) {
+      setDownloadFacets({
+        folders: [],
+        tags: [],
+        extensions: [],
+        curationStatuses: [],
+        protectedUnlocked: false
+      });
+      setRandomDownloadFolders([]);
+      setDownloadExpandedFolders([]);
+      setDownloadFolderSearch("");
+      return;
+    }
+
+    const params = new URLSearchParams({ diskIds: downloadDiskQuery });
+    api<FacetResponse>(`/api/facets?${params.toString()}`).then((response) => {
+      setDownloadFacets(response);
+      setProtectedUnlocked(response.protectedUnlocked);
+      setRandomDownloadFolders((current) => current.filter((folder) => response.folders.some((item) => item.path === folder)));
+      setDownloadExpandedFolders((current) => current.filter((folder) => response.folders.some((item) => item.path === folder)));
+    });
+  }, [
+    authenticated,
+    catalogVersion,
+    downloadDiskIds.length,
+    downloadDiskQuery,
+    protectedUnlockVersion,
+    viewMode
+  ]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -935,7 +1080,7 @@ export function App() {
       void loadDownloadSummary();
     }, 10000);
     return () => window.clearInterval(interval);
-  }, [authenticated, catalogVersion, connectedDiskIds.length, diskQuery, disks.length, protectedUnlockVersion, viewMode]);
+  }, [authenticated, catalogVersion, downloadDiskIds.length, downloadDiskQuery, protectedUnlockVersion, viewMode]);
 
   async function login(event: FormEvent) {
     event.preventDefault();
@@ -1022,12 +1167,12 @@ export function App() {
   }
 
   async function loadDownloadSummary() {
-    if (disks.length > 0 && connectedDiskIds.length === 0) {
+    if (!companionOnline || downloadDiskIds.length === 0) {
       setDownloadSummary({ paused: false, counts: {}, pendingBytes: 0, entries: [] });
       return;
     }
     const params = new URLSearchParams();
-    if (diskQuery) params.set("diskIds", diskQuery);
+    params.set("diskIds", downloadDiskQuery);
     setDownloadLoading(true);
     try {
       const response = await api<DownloadSummaryResponse>(`/api/downloads/summary?${params.toString()}`);
@@ -1064,7 +1209,11 @@ export function App() {
       setDownloadMessage("Indica un tamaño en GB mayor a cero.");
       return;
     }
-    if (connectedDiskIds.length === 0) {
+    if (!companionOnline) {
+      setDownloadMessage("El Companion no está en ejecución o no está sincronizado con VideoCAT.");
+      return;
+    }
+    if (downloadDiskIds.length === 0) {
       setDownloadMessage("Selecciona al menos un disco conectado.");
       return;
     }
@@ -1074,7 +1223,11 @@ export function App() {
     try {
       const response = await api<RandomDownloadResponse>("/api/downloads/random", {
         method: "POST",
-        body: JSON.stringify({ diskIds: connectedDiskIds, targetGb })
+        body: JSON.stringify({
+          diskIds: downloadDiskIds,
+          targetGb,
+          folders: randomDownloadFolders
+        })
       });
       setDownloadMessage(
         response.queued > 0
@@ -1231,10 +1384,14 @@ export function App() {
     void openDetail(nextFile);
   }
 
-  function requestProtectedFolderPin(folder: string, action: ProtectedPinPrompt["action"]) {
+  function requestProtectedFolderPin(
+    folder: string,
+    action: ProtectedPinPrompt["action"],
+    scope: ProtectedPinPrompt["scope"] = "catalog"
+  ) {
     setProtectedPin("");
     setPinSubmitting(false);
-    setPinPrompt({ folder, action });
+    setPinPrompt({ folder, action, scope });
   }
 
   function isFolderLocked(folder: string): boolean {
@@ -1257,7 +1414,17 @@ export function App() {
       setPinPrompt(null);
       setProtectedPin("");
 
-      if (prompt.action === "expand") {
+      if (prompt.scope === "download") {
+        if (prompt.action === "expand") {
+          setDownloadExpandedFolders((current) => (current.includes(prompt.folder) ? current : [...current, prompt.folder]));
+        } else {
+          const hasChildren = (downloadFolderChildren.get(prompt.folder) ?? 0) > 0;
+          if (hasChildren) {
+            setDownloadExpandedFolders((current) => (current.includes(prompt.folder) ? current : [...current, prompt.folder]));
+          }
+          setRandomDownloadFolders((current) => nextSelectedFolders(current, prompt.folder));
+        }
+      } else if (prompt.action === "expand") {
         setExpandedFolders((current) => (current.includes(prompt.folder) ? current : [...current, prompt.folder]));
       } else {
         const hasChildren = (folderChildren.get(prompt.folder) ?? 0) > 0;
@@ -1306,6 +1473,37 @@ export function App() {
     clearDiskScopedFilters();
   }
 
+  function togglePanelDisk(diskId: string) {
+    if (viewMode === "downloads") {
+      setDownloadDiskIds((current) =>
+        current.includes(diskId) ? current.filter((id) => id !== diskId) : [...current, diskId]
+      );
+      setRandomDownloadFolders([]);
+      setDownloadExpandedFolders([]);
+      setDownloadFolderSearch("");
+      return;
+    }
+    toggleDisk(diskId);
+  }
+
+  function selectAllPanelDisks() {
+    if (viewMode === "downloads") {
+      setDownloadDiskIds(downloadConnectedDisks.map((disk) => disk.id));
+      setRandomDownloadFolders([]);
+      return;
+    }
+    selectAllDisks();
+  }
+
+  function selectNoPanelDisks() {
+    if (viewMode === "downloads") {
+      setDownloadDiskIds([]);
+      setRandomDownloadFolders([]);
+      return;
+    }
+    selectNoDisks();
+  }
+
   async function showMountedDisksFromCompanion() {
     const port = localStorage.getItem("videocat-companion-port") ?? "29429";
     const token = localStorage.getItem("videocat-companion-token") ?? "";
@@ -1337,6 +1535,9 @@ export function App() {
       const unmatchedCount = Math.max(0, mountedDisks.length - matchingIds.length);
 
       setConnectedDiskIds(matchingIds);
+      setCompanionOnline(true);
+      setCompanionMountedDiskCount(mountedDisks.length);
+      setCompanionMountedDiskIds(matchingIds);
       clearDiskScopedFilters();
       setConnectedMessage(
         matchingIds.length > 0
@@ -1371,6 +1572,35 @@ export function App() {
     }
 
     setExpandedFolders((current) =>
+      current.includes(folder) ? current.filter((item) => item !== folder) : [...current, folder]
+    );
+  }
+
+  function isDownloadFolderLocked(folder: string): boolean {
+    if (protectedUnlocked) return false;
+    return downloadFacets.folders.some((item) => item.path === folder && item.locked);
+  }
+
+  function toggleDownloadFolder(folder: string) {
+    if (isDownloadFolderLocked(folder)) {
+      requestProtectedFolderPin(folder, "select", "download");
+      return;
+    }
+
+    const hasChildren = (downloadFolderChildren.get(folder) ?? 0) > 0;
+    if (hasChildren) {
+      setDownloadExpandedFolders((current) => (current.includes(folder) ? current : [...current, folder]));
+    }
+    setRandomDownloadFolders((current) => nextSelectedFolders(current, folder));
+  }
+
+  function toggleDownloadFolderExpansion(folder: string) {
+    if (isDownloadFolderLocked(folder)) {
+      requestProtectedFolderPin(folder, "expand", "download");
+      return;
+    }
+
+    setDownloadExpandedFolders((current) =>
       current.includes(folder) ? current.filter((item) => item !== folder) : [...current, folder]
     );
   }
@@ -1756,9 +1986,9 @@ export function App() {
           <div className="brand-word">
             Video<span>CAT</span>
             <em
-              className={`agent-status-dot ${companionOnline ? "is-online" : "is-offline"}`}
-              title={companionOnline ? "Agente conectado" : "Agente desconectado"}
-              aria-label={companionOnline ? "Agente conectado" : "Agente desconectado"}
+              className={`agent-status-dot ${companionIndicatorState}`}
+              title={companionIndicatorLabel}
+              aria-label={companionIndicatorLabel}
             />
           </div>
         </button>
@@ -1825,56 +2055,79 @@ export function App() {
         </div>
       </header>
 
-      <section className="connected-panel">
+      <section className={`connected-panel ${connectedPanelCollapsed ? "is-collapsed" : ""}`}>
         <div className="connected-heading">
           <HardDrive size={18} />
           <strong>Discos conectados</strong>
-          <span className="connected-count">{connectedDiskIds.length} de {disks.length}</span>
-          <div className="connected-actions">
-            <button
-              className="connected-action is-detect"
-              disabled={detectingConnected}
-              onClick={() => void showMountedDisksFromCompanion()}
-              type="button"
-            >
-              {detectingConnected ? "Detectando..." : "Mostrar conectados"}
-            </button>
-            <button
-              className="connected-action"
-              disabled={connectedDiskIds.length === disks.length}
-              onClick={selectAllDisks}
-              type="button"
-            >
-              Todos
-            </button>
-            <button
-              className="connected-action"
-              disabled={connectedDiskIds.length === 0}
-              onClick={selectNoDisks}
-              type="button"
-            >
-              Ninguno
-            </button>
-          </div>
-        </div>
-        {connectedMessage ? <div className="connected-message">{connectedMessage}</div> : null}
-        <div className="disk-pills">
-          {disks.map((disk) => {
-            const active = connectedDiskIds.includes(disk.id);
-            return (
+          <span className="connected-count">{panelSelectedDiskIds.length} de {panelDisks.length}</span>
+          {!connectedPanelCollapsed ? (
+            <div className="connected-actions">
+              {viewMode !== "downloads" ? (
+                <button
+                  className="connected-action is-detect"
+                  disabled={detectingConnected}
+                  onClick={() => void showMountedDisksFromCompanion()}
+                  type="button"
+                >
+                  {detectingConnected ? "Detectando..." : "Mostrar conectados"}
+                </button>
+              ) : null}
               <button
-                key={disk.id}
-                className={`disk-pill ${active ? "is-active" : ""}`}
-                onClick={() => toggleDisk(disk.id)}
+                className="connected-action"
+                disabled={panelDisks.length === 0 || panelSelectedDiskIds.length === panelDisks.length}
+                onClick={selectAllPanelDisks}
                 type="button"
               >
-                <span className="pill-check">{active ? <Check size={14} /> : null}</span>
-                <span>{disk.name}</span>
-                {disk.driveLetter ? <small>{disk.driveLetter}</small> : null}
+                Todos
               </button>
-            );
-          })}
+              <button
+                className="connected-action"
+                disabled={panelSelectedDiskIds.length === 0}
+                onClick={selectNoPanelDisks}
+                type="button"
+              >
+                Ninguno
+              </button>
+            </div>
+          ) : null}
+          <button
+            className="connected-collapse"
+            onClick={() => setConnectedPanelCollapsed((current) => !current)}
+            type="button"
+            title={connectedPanelCollapsed ? "Expandir discos conectados" : "Colapsar discos conectados"}
+            aria-label={connectedPanelCollapsed ? "Expandir discos conectados" : "Colapsar discos conectados"}
+          >
+            {connectedPanelCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />}
+          </button>
         </div>
+        {!connectedPanelCollapsed ? (
+          <>
+            {viewMode === "downloads" ? (
+              <div className={`connected-message ${companionOnline && !companionNeedsUpdate ? "is-online" : companionLocalOnline || companionOnline ? "is-warning" : "is-offline"}`}>
+                {downloadConnectionMessage}
+              </div>
+            ) : connectedMessage ? (
+              <div className="connected-message">{connectedMessage}</div>
+            ) : null}
+            <div className="disk-pills">
+              {panelDisks.map((disk) => {
+                const active = panelSelectedDiskIds.includes(disk.id);
+                return (
+                  <button
+                    key={disk.id}
+                    className={`disk-pill ${active ? "is-active" : ""}`}
+                    onClick={() => togglePanelDisk(disk.id)}
+                    type="button"
+                  >
+                    <span className="pill-check">{active ? <Check size={14} /> : null}</span>
+                    <span>{disk.name}</span>
+                    {disk.driveLetter ? <small>{disk.driveLetter}</small> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="stats-grid">
@@ -2389,7 +2642,7 @@ export function App() {
             <div className="download-header-actions">
               <button
                 className="primary-button"
-                disabled={downloadActionBusy || downloadSummary?.paused}
+                disabled={downloadActionBusy || downloadSummary?.paused || !companionOnline || downloadDiskIds.length === 0}
                 onClick={() => void processDownloadQueueNow()}
                 type="button"
               >
@@ -2419,6 +2672,35 @@ export function App() {
               </button>
             </div>
           </div>
+          {!companionOnline ? (
+            <div className="download-companion-banner is-offline">
+              <AlertTriangle size={18} />
+              <div>
+                <strong>{companionLocalOnline ? "Companion sin sincronizar" : "Companion no iniciado"}</strong>
+                <span>
+                  {companionLocalOnline
+                    ? "El proceso local está abierto, pero no reporta a este servidor. Revisa SERVER_URL y AGENT_TOKEN."
+                    : "Abre el Companion de Windows para detectar discos y procesar esta cola."}
+                </span>
+              </div>
+            </div>
+          ) : companionNeedsUpdate ? (
+            <div className="download-companion-banner">
+              <AlertTriangle size={18} />
+              <div>
+                <strong>Actualización requerida</strong>
+                <span>Instala la versión más reciente del Companion para reportar los discos conectados.</span>
+              </div>
+            </div>
+          ) : downloadConnectedDisks.length === 0 ? (
+            <div className="download-companion-banner">
+              <HardDrive size={18} />
+              <div>
+                <strong>Sin discos conectados</strong>
+                <span>{downloadConnectionMessage}</span>
+              </div>
+            </div>
+          ) : null}
           {downloadSummary?.paused ? <div className="download-paused-banner">Cola pausada: el companion no tomara nuevas descargas hasta reanudarla.</div> : null}
 
           <div className="download-scoreboard">
@@ -2441,7 +2723,7 @@ export function App() {
           </div>
 
           <section className="random-download-panel">
-            <div>
+            <div className="random-download-copy">
               <strong>Selección aleatoria</strong>
               <span>Elige un aproximado en GB y VideoCAT pondrá videos aleatorios de los discos conectados en cola.</span>
             </div>
@@ -2455,10 +2737,84 @@ export function App() {
                 type="number"
               />
             </label>
-            <button className="primary-button" disabled={downloadLoading || connectedDiskIds.length === 0} onClick={() => void queueRandomDownloads()} type="button">
+            <button
+              className="primary-button"
+              disabled={downloadLoading || !companionOnline || downloadDiskIds.length === 0}
+              onClick={() => void queueRandomDownloads()}
+              type="button"
+            >
               <Shuffle size={17} />
               Elegir al azar
             </button>
+            <div className="random-folder-scope">
+              <div className="random-folder-heading">
+                <div>
+                  <strong>Carpetas para la selección</strong>
+                  <span>
+                    {randomDownloadFolders.length > 0
+                      ? `${randomDownloadFolders.length} carpeta(s) seleccionada(s).`
+                      : "Sin selección se usarán todas las carpetas disponibles."}
+                  </span>
+                </div>
+                {randomDownloadFolders.length > 0 ? (
+                  <button className="ghost-button" onClick={() => setRandomDownloadFolders([])} type="button">
+                    Usar todas
+                  </button>
+                ) : null}
+              </div>
+              <div className="folder-search">
+                <Search size={15} />
+                <input
+                  value={downloadFolderSearch}
+                  onChange={(event) => setDownloadFolderSearch(event.target.value)}
+                  placeholder="Buscar carpeta"
+                />
+                {downloadFolderSearch ? (
+                  <button onClick={() => setDownloadFolderSearch("")} type="button" title="Limpiar busqueda de carpetas">
+                    <X size={14} />
+                  </button>
+                ) : null}
+              </div>
+              <div className="random-folder-list">
+                {visibleDownloadFolders.length > 0 ? (
+                  visibleDownloadFolders.map((folder) => (
+                    <div
+                      key={folder.path}
+                      className={`folder-option ${randomDownloadFolders.includes(folder.path) ? "is-active" : ""}`}
+                      style={{ "--folder-depth": folder.depth } as CSSProperties}
+                      title={folder.path}
+                    >
+                      <button
+                        className="folder-expander"
+                        onClick={() => toggleDownloadFolderExpansion(folder.path)}
+                        disabled={!folder.hasChildren}
+                        type="button"
+                        title={folder.isExpanded ? "Colapsar carpeta" : "Expandir carpeta"}
+                      >
+                        {folder.hasChildren
+                          ? folder.isExpanded
+                            ? <ChevronDown size={15} />
+                            : <ChevronRight size={15} />
+                          : null}
+                      </button>
+                      <button className="folder-select" onClick={() => toggleDownloadFolder(folder.path)} type="button">
+                        {folder.locked ? <Lock size={15} /> : <FolderOpen size={15} />}
+                        <span>{folder.label}</span>
+                        <small>{folder.count}</small>
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="facet-empty">
+                    {downloadDiskIds.length === 0
+                      ? "Selecciona al menos un disco conectado."
+                      : downloadFolderSearch
+                        ? "Sin coincidencias de carpeta."
+                        : "Sin carpetas para estos discos."}
+                  </div>
+                )}
+              </div>
+            </div>
           </section>
           {downloadMessage ? <div className="review-message">{downloadMessage}</div> : null}
 
@@ -2538,7 +2894,7 @@ export function App() {
                         <div>
                           <strong>{entry.file.filename}</strong>
                           <span>{entry.file.relativePath}</span>
-                          <CategoryBadges file={entry.file} categories={facets.curationStatuses} />
+                          <CategoryBadges file={entry.file} categories={downloadFacets.curationStatuses} />
                         </div>
                       </div>
                     </td>

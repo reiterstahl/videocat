@@ -128,7 +128,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 4;
+const companionVersion = 5;
 let downloadProcessingRunning = false;
 
 class AgentAuthError extends Error {
@@ -569,7 +569,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
         method: "POST",
         body: JSON.stringify({
           version: companionVersion,
-          mountedDiskCount: mounted.length
+          mountedDiskCount: mounted.length,
+          mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))]
         })
       });
     } catch (error) {
@@ -579,8 +580,11 @@ async function startCompanionDiskWatcher(): Promise<void> {
     }
   }
 
-  await checkMountedDisks(true);
   await sendHeartbeat();
+  setInterval(() => {
+    void sendHeartbeat();
+  }, heartbeatMs);
+  await checkMountedDisks(true);
   setInterval(() => {
     void checkMountedDisks(false).catch((error) => {
       console.warn(`Fallo revisando discos conectados: ${error instanceof Error ? error.message : String(error)}`);
@@ -601,9 +605,6 @@ async function startCompanionDiskWatcher(): Promise<void> {
       console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
     });
   }, downloadPollMs);
-  setInterval(() => {
-    void sendHeartbeat();
-  }, heartbeatMs);
   console.log(`Detector de discos VideoCAT activo cada ${pollMs}ms.`);
   console.log(`Reescaneo de rutas monitoreadas activo cada ${scanPollMs}ms.`);
   console.log(`Revision de borrados pendientes activa cada ${deletePollMs}ms.`);

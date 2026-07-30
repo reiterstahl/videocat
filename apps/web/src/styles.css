@@ -160,6 +160,11 @@ button {
   background: #d94538;
 }
 
+.agent-status-dot.is-warning {
+  background: #e39718;
+  box-shadow: 0 0 0 3px rgba(227, 151, 24, 0.2);
+}
+
 @keyframes agent-pulse {
   0% {
     transform: scale(0.92);
@@ -342,6 +347,10 @@ select:focus {
   margin-bottom: 12px;
 }
 
+.connected-panel.is-collapsed .connected-heading {
+  margin-bottom: 0;
+}
+
 .connected-heading svg {
   color: var(--matrix-primary);
 }
@@ -357,6 +366,25 @@ select:focus {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.connected-collapse {
+  width: 32px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  border: 1px solid #c7d0d5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #27333a;
+  padding: 0;
+}
+
+.connected-collapse:hover {
+  border-color: var(--matrix-primary);
+  color: var(--matrix-primary-ink);
+  background: var(--matrix-primary-soft);
 }
 
 .connected-action {
@@ -386,6 +414,18 @@ select:focus {
   color: #7a5b2a;
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+.connected-message.is-online {
+  color: #147548;
+}
+
+.connected-message.is-offline {
+  color: #b22f27;
+}
+
+.connected-message.is-warning {
+  color: #9a6511;
 }
 
 .disk-pills {
@@ -1559,6 +1599,39 @@ select:focus {
   background: #ffffff;
 }
 
+.download-companion-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 16px 0;
+  border: 1px solid #d9a20b;
+  border-radius: 8px;
+  background: #fff8dc;
+  color: #654800;
+  padding: 11px 12px;
+}
+
+.download-companion-banner.is-offline {
+  border-color: #d84a3e;
+  background: #fff0ee;
+  color: #8f231c;
+}
+
+.download-companion-banner strong,
+.download-companion-banner span {
+  display: block;
+}
+
+.download-companion-banner strong {
+  font-size: 0.9rem;
+}
+
+.download-companion-banner span {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .random-download-panel strong,
 .random-download-panel span,
 .random-download-panel label {
@@ -1584,6 +1657,40 @@ select:focus {
   border: 1px solid #c7d0d5;
   border-radius: 6px;
   padding: 0 10px;
+}
+
+.random-folder-scope {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  border-top: 1px solid #d7dee2;
+  padding-top: 12px;
+}
+
+.random-folder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.random-folder-heading > div {
+  min-width: 0;
+}
+
+.random-folder-heading .ghost-button {
+  flex: 0 0 auto;
+  min-height: 34px;
+}
+
+.random-folder-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 3px;
 }
 
 .download-status {
@@ -3241,6 +3348,18 @@ tbody tr.curation-row {
     grid-template-columns: 1fr;
   }
 
+  .random-folder-scope {
+    grid-column: auto;
+  }
+
+  .random-folder-list {
+    grid-template-columns: 1fr;
+  }
+
+  .random-folder-heading {
+    align-items: flex-start;
+  }
+
   .download-header-actions {
     flex-wrap: wrap;
     justify-content: stretch;
@@ -3264,11 +3383,16 @@ tbody tr.curation-row {
   }
 
   .connected-actions {
+    order: 4;
     width: 100%;
   }
 
   .connected-action {
     flex: 1 1 0;
+  }
+
+  .connected-collapse {
+    margin-left: auto;
   }
 
   .searchbar {
@@ -3513,6 +3637,7 @@ tbody tr.curation-row {
 :root[data-theme="dark"] .audit-chip,
 :root[data-theme="dark"] .review-score-card,
 :root[data-theme="dark"] .random-download-panel,
+:root[data-theme="dark"] .download-companion-banner,
 :root[data-theme="dark"] .review-recent-card,
 :root[data-theme="dark"] .duplicate-group {
   background: #151c21;
@@ -3567,6 +3692,22 @@ tbody tr.curation-row {
   background: #10171c;
   border-color: #33444d;
   color: #9aabb4;
+}
+
+:root[data-theme="dark"] .random-folder-scope {
+  border-color: #2b3941;
+}
+
+:root[data-theme="dark"] .download-companion-banner {
+  border-color: #6b5720;
+  background: #28230f;
+  color: #f2d675;
+}
+
+:root[data-theme="dark"] .download-companion-banner.is-offline {
+  border-color: #74352f;
+  background: #2c1715;
+  color: #ffaaa2;
 }
 
 :root[data-theme="dark"] .folder-search input {
@@ -3883,6 +4024,7 @@ tbody tr.curation-row {
 
 :root[data-theme="dark"] .disk-pill,
 :root[data-theme="dark"] .connected-action,
+:root[data-theme="dark"] .connected-collapse,
 :root[data-theme="dark"] .folder-option,
 :root[data-theme="dark"] .curation-filter,
 :root[data-theme="dark"] .curation-action,

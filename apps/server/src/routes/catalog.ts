@@ -37,7 +37,8 @@ const downloadQueueRemoveSchema = z.object({
 });
 const randomDownloadSchema = z.object({
   diskIds: z.array(z.string().uuid()).min(1).max(100),
-  targetGb: z.number().positive().max(500)
+  targetGb: z.number().positive().max(500),
+  folders: z.array(z.string().trim().min(1).max(1000)).max(100).default([])
 });
 const downloadPauseSchema = z.object({
   paused: z.boolean()
@@ -116,6 +117,68 @@ async function setAppMetricValue(key: string, value: bigint): Promise<void> {
   `);
 }
 
+const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
+const companionStaleAfterMs = 45_000;
+
+async function appSettingValue(key: string): Promise<string | null> {
+  const rows = await prisma.$queryRaw<Array<{ value: string }>>(Prisma.sql`
+    SELECT "value"
+    FROM "AppSetting"
+    WHERE "key" = ${key}
+    LIMIT 1
+  `);
+  return rows[0]?.value ?? null;
+}
+
+async function companionPresence(): Promise<{
+  online: boolean;
+  lastSeenAt: number;
+  staleAfterMs: number;
+  version: number;
+  mountedDiskCount: number;
+  mountedDiskIds: string[];
+}> {
+  const [lastSeenAt, version, mountedDiskCount, mountedSetting] = await Promise.all([
+    appMetricValue("companion_last_seen_at"),
+    appMetricValue("companion_version"),
+    appMetricValue("companion_mounted_disk_count"),
+    appSettingValue(companionMountedDiskIdsKey)
+  ]);
+  const online = lastSeenAt > 0 && Date.now() - lastSeenAt <= companionStaleAfterMs;
+  let mountedIdentifiers: string[] = [];
+  if (online && mountedSetting) {
+    try {
+      const parsed = JSON.parse(mountedSetting) as unknown;
+      if (Array.isArray(parsed)) {
+        mountedIdentifiers = [...new Set(parsed.filter((value): value is string => typeof value === "string"))].slice(0, 100);
+      }
+    } catch {
+      mountedIdentifiers = [];
+    }
+  }
+
+  const mountedDisks = mountedIdentifiers.length > 0
+    ? await prisma.disk.findMany({
+        where: {
+          OR: [
+            { id: { in: mountedIdentifiers } },
+            { volumeId: { in: mountedIdentifiers } }
+          ]
+        },
+        select: { id: true }
+      })
+    : [];
+
+  return {
+    online,
+    lastSeenAt,
+    staleAfterMs: companionStaleAfterMs,
+    version,
+    mountedDiskCount: online ? mountedDiskCount : 0,
+    mountedDiskIds: online ? mountedDisks.map((disk) => disk.id) : []
+  };
+}
+
 async function recentReviewedIds(protectedUnlocked: boolean, take: number, diskIds: string[] = [], filterRequested = false): Promise<string[]> {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT "id"::text AS "id"
@@ -170,6 +233,24 @@ function protectedPathSql(field: Prisma.Sql, protectedUnlocked: boolean): Prisma
     protectedFolderPatterns.map((pattern) => Prisma.sql`${field} ILIKE ${`%${escapeLikePattern(pattern)}%`} ESCAPE '\\'`),
     " OR "
   )})`;
+}
+
+function randomDownloadFolderSql(folders: string[]): Prisma.Sql {
+  if (folders.length === 0) return Prisma.empty;
+  const conditions = folders.map((folder) => {
+    if (folder === ".") {
+      return Prisma.sql`(
+        v."relativePath" NOT LIKE ${"%/%"}
+        AND v."relativePath" NOT LIKE ${"%\\\\%"} ESCAPE '\\'
+      )`;
+    }
+
+    return Prisma.sql`(
+      v."relativePath" LIKE ${`${escapeLikePattern(folder)}/%`} ESCAPE '\\'
+      OR v."relativePath" LIKE ${`${escapeLikePattern(folder)}\\\\%`} ESCAPE '\\'
+    )`;
+  });
+  return Prisma.sql`AND (${Prisma.join(conditions, " OR ")})`;
 }
 
 function commaList(value: string | undefined): string[] {
@@ -1486,8 +1567,17 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, queued: files.length };
   });
 
-  app.post("/api/downloads/random", { preHandler: requireWebAuth }, async (request) => {
+  app.post("/api/downloads/random", { preHandler: requireWebAuth }, async (request, reply) => {
     const body = randomDownloadSchema.parse(request.body);
+    const presence = await companionPresence();
+    if (!presence.online) {
+      return reply.code(409).send({ message: "Companion is offline" });
+    }
+    const mountedDiskIds = new Set(presence.mountedDiskIds);
+    if (body.diskIds.some((diskId) => !mountedDiskIds.has(diskId))) {
+      return reply.code(409).send({ message: "One or more selected disks are not connected" });
+    }
+
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const targetBytes = BigInt(Math.ceil(body.targetGb * 1024 ** 3));
     const rows = await prisma.$queryRaw<Array<{
@@ -1517,6 +1607,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           OR v."relativePath" ILIKE 'System Volume Information/%'
           OR v."relativePath" ILIKE 'System Volume Information\\%'
         )
+        ${randomDownloadFolderSql(body.folders)}
         ${protectedPathSql(Prisma.sql`v."relativePath"`, protectedUnlocked)}
       ORDER BY random()
       LIMIT 2000
@@ -1612,21 +1703,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/companion/status", { preHandler: requireWebAuth }, async () => {
-    const [lastSeenAt, version, mountedDiskCount] = await Promise.all([
-      appMetricValue("companion_last_seen_at"),
-      appMetricValue("companion_version"),
-      appMetricValue("companion_mounted_disk_count")
-    ]);
-    const now = Date.now();
-    const staleAfterMs = 45000;
-    const online = lastSeenAt > 0 && now - lastSeenAt <= staleAfterMs;
+    const presence = await companionPresence();
 
     return {
-      online,
-      lastSeenAt: lastSeenAt > 0 ? new Date(lastSeenAt).toISOString() : null,
-      staleAfterMs,
-      version,
-      mountedDiskCount
+      online: presence.online,
+      lastSeenAt: presence.lastSeenAt > 0 ? new Date(presence.lastSeenAt).toISOString() : null,
+      staleAfterMs: presence.staleAfterMs,
+      version: presence.version,
+      mountedDiskCount: presence.mountedDiskCount,
+      mountedDiskIds: presence.mountedDiskIds
     };
   });
 }
