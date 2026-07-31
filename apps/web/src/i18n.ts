@@ -122,8 +122,10 @@ const en: Record<string, string> = {
   "Sin discos conectados": "No connected drives",
   "Procesar cola": "Process queue",
   "Reanudar": "Resume",
-  "Pausar": "Pause",
+  "Detener": "Stop",
   "Vaciar cola": "Clear queue",
+  "Eliminar cola": "Clear completed",
+  "Eliminar historial completado": "Clear completed history",
   "Actualizar": "Refresh",
   "Cola pausada: el companion no tomara nuevas descargas hasta reanudarla.": "Queue paused: the companion will not take new downloads until resumed.",
   "En cola": "Queued",
@@ -219,6 +221,7 @@ const en: Record<string, string> = {
   ,"Cola de descarga reanudada.": "Download queue resumed."
   ,"No se pudo cambiar el estado de la cola.": "Could not change queue status."
   ,"No se pudo vaciar la cola.": "Could not clear the queue."
+  ,"No se pudo eliminar el historial de descargas.": "Could not clear the download history."
   ,"No se pudieron retirar elementos de la cola.": "Could not remove items from the queue."
   ,"Companion no iniciado o bloqueado por el navegador.": "Companion not running or blocked by the browser."
   ,"Token local no valido": "Invalid local token"
@@ -285,6 +288,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^(\d+) carpeta\(s\) seleccionada\(s\)\.$/);
   if (match) return `${match[1]} selected folder(s).`;
+
+  match = text.match(/^(\d+) descarga\(s\) completada\(s\) eliminadas del historial\.$/);
+  if (match) return `${match[1]} completed download(s) removed from history.`;
 
   match = text.match(/^([A-Z]:|-) · ([\d.,]+) archivo\(s\) · Sin etiqueta$/);
   if (match) return `${match[1]} · ${match[2]} file(s) · No label`;

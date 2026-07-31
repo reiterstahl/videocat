@@ -1525,6 +1525,16 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, cleared: ids.length };
   });
 
+  app.delete("/api/downloads/history", { preHandler: requireWebAuth }, async () => {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      DELETE FROM "DownloadQueue"
+      WHERE "status" = 'done'
+      RETURNING "id"::text AS "id"
+    `);
+
+    return { ok: true, cleared: rows.length };
+  });
+
   app.post("/api/downloads/queue/remove", { preHandler: requireWebAuth }, async (request) => {
     const body = downloadQueueRemoveSchema.parse(request.body);
     const uniqueIds = [...new Set(body.queueIds)];

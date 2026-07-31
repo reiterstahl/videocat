@@ -616,7 +616,7 @@ select:focus {
 
 .view-header.downloads-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(620px, max-content);
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   align-items: center;
   gap: 14px;
 }
@@ -626,8 +626,22 @@ select:focus {
 }
 
 .download-header-actions button {
-  min-width: 140px;
+  min-width: 128px;
   white-space: nowrap;
+}
+
+@media (max-width: 1120px) {
+  .view-header.downloads-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .view-header.downloads-header .download-header-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 .download-paused-banner {

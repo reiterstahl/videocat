@@ -613,6 +613,8 @@ export function App() {
   const [downloadSummary, setDownloadSummary] = useState<DownloadSummaryResponse | null>(null);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadActionBusy, setDownloadActionBusy] = useState(false);
+  const [downloadPauseBusy, setDownloadPauseBusy] = useState(false);
+  const [downloadProcessing, setDownloadProcessing] = useState(false);
   const [selectedDownloadQueueIds, setSelectedDownloadQueueIds] = useState<string[]>([]);
   const [downloadMessage, setDownloadMessage] = useState("");
   const [randomDownloadGb, setRandomDownloadGb] = useState("10");
@@ -1244,7 +1246,8 @@ export function App() {
   }
 
   async function setDownloadPaused(paused: boolean) {
-    setDownloadActionBusy(true);
+    if (downloadPauseBusy) return;
+    setDownloadPauseBusy(true);
     setDownloadMessage("");
     try {
       const response = await api<{ ok: boolean; paused: boolean }>("/api/downloads/pause", {
@@ -1257,7 +1260,7 @@ export function App() {
     } catch (error) {
       setDownloadMessage(error instanceof Error ? error.message : "No se pudo cambiar el estado de la cola.");
     } finally {
-      setDownloadActionBusy(false);
+      setDownloadPauseBusy(false);
     }
   }
 
@@ -1276,6 +1279,29 @@ export function App() {
       await loadDownloadSummary();
     } catch (error) {
       setDownloadMessage(error instanceof Error ? error.message : "No se pudo vaciar la cola.");
+    } finally {
+      setDownloadActionBusy(false);
+    }
+  }
+
+  async function clearProcessedDownloadQueue() {
+    const doneCount = downloadSummary?.counts.done ?? 0;
+    if (doneCount === 0) return;
+
+    const confirmMessage = language === "en"
+      ? "This will remove completed items from the download history. It does not delete copied files, original videos, or download tags. Continue?"
+      : "Esto eliminara los elementos completados del historial de descargas. No borra archivos copiados, videos originales ni etiquetas de descarga. Quieres continuar?";
+    if (!window.confirm(confirmMessage)) return;
+
+    setDownloadActionBusy(true);
+    setDownloadMessage("");
+    try {
+      const response = await api<{ ok: boolean; cleared: number }>("/api/downloads/history", { method: "DELETE" });
+      setDownloadMessage(`${response.cleared} descarga(s) completada(s) eliminadas del historial.`);
+      setCatalogVersion((value) => value + 1);
+      await loadDownloadSummary();
+    } catch (error) {
+      setDownloadMessage(error instanceof Error ? error.message : "No se pudo eliminar el historial de descargas.");
     } finally {
       setDownloadActionBusy(false);
     }
@@ -1323,6 +1349,7 @@ export function App() {
 
   async function processDownloadQueueNow() {
     setDownloadActionBusy(true);
+    setDownloadProcessing(true);
     setDownloadMessage("");
     try {
       const port = localStorage.getItem("videocat-companion-port") ?? "29429";
@@ -1348,6 +1375,7 @@ export function App() {
     } catch {
       setDownloadMessage("Companion no iniciado o bloqueado por el navegador.");
     } finally {
+      setDownloadProcessing(false);
       setDownloadActionBusy(false);
     }
   }
@@ -2642,7 +2670,7 @@ export function App() {
             <div className="download-header-actions">
               <button
                 className="primary-button"
-                disabled={downloadActionBusy || downloadSummary?.paused || !companionOnline || downloadDiskIds.length === 0}
+                disabled={downloadActionBusy || downloadProcessing || downloadSummary?.paused || !companionOnline || downloadDiskIds.length === 0}
                 onClick={() => void processDownloadQueueNow()}
                 type="button"
               >
@@ -2651,12 +2679,12 @@ export function App() {
               </button>
               <button
                 className="secondary-button"
-                disabled={downloadActionBusy}
+                disabled={downloadPauseBusy}
                 onClick={() => void setDownloadPaused(!(downloadSummary?.paused ?? false))}
                 type="button"
               >
                 {downloadSummary?.paused ? <Play size={17} /> : <Pause size={17} />}
-                {downloadSummary?.paused ? "Reanudar" : "Pausar"}
+                {downloadSummary?.paused ? "Reanudar" : "Detener"}
               </button>
               <button
                 className="danger-button"
@@ -2666,6 +2694,16 @@ export function App() {
               >
                 <Trash2 size={17} />
                 Vaciar cola
+              </button>
+              <button
+                className="secondary-button"
+                disabled={downloadActionBusy || downloadProcessing || (downloadSummary?.counts.done ?? 0) === 0}
+                onClick={() => void clearProcessedDownloadQueue()}
+                type="button"
+                title="Eliminar historial completado"
+              >
+                <Trash2 size={17} />
+                Eliminar cola
               </button>
               <button className="secondary-button" disabled={downloadLoading || downloadActionBusy} onClick={() => void loadDownloadSummary()} type="button">
                 Actualizar
