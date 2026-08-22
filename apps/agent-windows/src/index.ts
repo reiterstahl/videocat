@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, type Dirent } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -147,7 +147,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 8;
+const companionVersion = 9;
 let downloadProcessingRunning = false;
 let companionScanRunning = false;
 
@@ -1597,11 +1597,51 @@ function mediaToolCandidates(environmentKey: "FFMPEG_PATH" | "FFPROBE_PATH", fal
   return [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate)))];
 }
 
+async function discoverWinGetMediaTools(): Promise<Map<"ffmpeg" | "ffprobe", string>> {
+  const discovered = new Map<"ffmpeg" | "ffprobe", string>();
+  if (process.platform !== "win32") return discovered;
+
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const packagesRoot = path.join(localAppData, "Microsoft", "WinGet", "Packages");
+  try {
+    const packages = await fs.readdir(packagesRoot, { withFileTypes: true });
+    const queue = packages
+      .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().includes("ffmpeg"))
+      .map((entry) => ({ directory: path.join(packagesRoot, entry.name), depth: 0 }));
+
+    while (queue.length > 0 && discovered.size < 2) {
+      const current = queue.shift()!;
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(current.directory, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const absolute = path.join(current.directory, entry.name);
+        const normalizedName = entry.name.toLowerCase();
+        if ((entry.isFile() || entry.isSymbolicLink()) && (normalizedName === "ffmpeg.exe" || normalizedName === "ffprobe.exe")) {
+          discovered.set(normalizedName === "ffmpeg.exe" ? "ffmpeg" : "ffprobe", absolute);
+        } else if (entry.isDirectory() && current.depth < 6) {
+          queue.push({ directory: absolute, depth: current.depth + 1 });
+        }
+      }
+    }
+  } catch {
+    // WinGet is optional; the configured path and other known locations are still checked.
+  }
+  return discovered;
+}
+
 async function reportMediaToolAvailability(): Promise<void> {
+  const winGetTools = await discoverWinGetMediaTools();
   for (const [environmentKey, fallback] of [["FFMPEG_PATH", "ffmpeg"], ["FFPROBE_PATH", "ffprobe"]] as const) {
     let lastError: unknown;
     let selected = "";
-    for (const executable of mediaToolCandidates(environmentKey, fallback)) {
+    const candidates = [...mediaToolCandidates(environmentKey, fallback), winGetTools.get(fallback)]
+      .filter((candidate): candidate is string => Boolean(candidate));
+    for (const executable of [...new Set(candidates)]) {
       try {
         await execFileAsync(executable, ["-version"], { maxBuffer: 1024 * 1024 });
         selected = executable;
