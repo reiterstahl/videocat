@@ -40,6 +40,17 @@ import type { Disk, Stats, VideoFile } from "./types";
 type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "createdAt";
 type SortDirection = "asc" | "desc";
 type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "audit" | "admin" | "profile";
+const companionDefaultPort = 29429;
+const companionFallbackPortCount = 10;
+
+function companionPortCandidates(storedPort: string | null): string[] {
+  const fallbackPorts = Array.from(
+    { length: companionFallbackPortCount + 1 },
+    (_, index) => String(companionDefaultPort + index)
+  );
+  return [...new Set([storedPort, ...fallbackPorts].filter(Boolean))] as string[];
+}
+
 type CurationStatus = string;
 type CurationCategory = {
   key: string;
@@ -615,6 +626,7 @@ export function App() {
   const [downloadActionBusy, setDownloadActionBusy] = useState(false);
   const [downloadPauseBusy, setDownloadPauseBusy] = useState(false);
   const [downloadProcessing, setDownloadProcessing] = useState(false);
+  const [clearProcessedQueuePromptOpen, setClearProcessedQueuePromptOpen] = useState(false);
   const [selectedDownloadQueueIds, setSelectedDownloadQueueIds] = useState<string[]>([]);
   const [downloadMessage, setDownloadMessage] = useState("");
   const [randomDownloadGb, setRandomDownloadGb] = useState("10");
@@ -811,8 +823,8 @@ export function App() {
     let cancelled = false;
 
     async function checkCompanionHealth() {
-      const storedPort = localStorage.getItem("videocat-companion-port") ?? "29429";
-      const ports = [...new Set([storedPort, "29429"].filter(Boolean))];
+      const storedPort = localStorage.getItem("videocat-companion-port");
+      const ports = companionPortCandidates(storedPort);
       let localOnline = false;
 
       for (const port of ports) {
@@ -1284,15 +1296,14 @@ export function App() {
     }
   }
 
-  async function clearProcessedDownloadQueue() {
+  function requestClearProcessedDownloadQueue() {
     const doneCount = downloadSummary?.counts.done ?? 0;
     if (doneCount === 0) return;
+    setClearProcessedQueuePromptOpen(true);
+  }
 
-    const confirmMessage = language === "en"
-      ? "This will remove completed items from the download history. It does not delete copied files, original videos, or download tags. Continue?"
-      : "Esto eliminara los elementos completados del historial de descargas. No borra archivos copiados, videos originales ni etiquetas de descarga. Quieres continuar?";
-    if (!window.confirm(confirmMessage)) return;
-
+  async function clearProcessedDownloadQueue() {
+    setClearProcessedQueuePromptOpen(false);
     setDownloadActionBusy(true);
     setDownloadMessage("");
     try {
@@ -2698,7 +2709,7 @@ export function App() {
               <button
                 className="secondary-button"
                 disabled={downloadActionBusy || downloadProcessing || (downloadSummary?.counts.done ?? 0) === 0}
-                onClick={() => void clearProcessedDownloadQueue()}
+                onClick={requestClearProcessedDownloadQueue}
                 type="button"
                 title="Eliminar historial completado"
               >
@@ -3300,6 +3311,13 @@ export function App() {
           }}
         />
       ) : null}
+      {clearProcessedQueuePromptOpen ? (
+        <ClearDownloadHistoryConfirmModal
+          submitting={downloadActionBusy}
+          onCancel={() => setClearProcessedQueuePromptOpen(false)}
+          onConfirm={() => void clearProcessedDownloadQueue()}
+        />
+      ) : null}
     </main>
   );
 }
@@ -3378,6 +3396,67 @@ function ProtectedPinModal({
           onChange={(event) => onChange(event.target.value)}
           aria-label="PIN de 4 digitos"
         />
+      </section>
+    </div>
+  );
+}
+
+function ClearDownloadHistoryConfirmModal({
+  submitting,
+  onCancel,
+  onConfirm
+}: {
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="delete-confirm-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-download-history-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !submitting) onCancel();
+      }}
+    >
+      <section className="delete-confirm-panel queue-history-confirm-panel">
+        <header className="delete-confirm-header">
+          <div className="delete-confirm-icon">
+            <Trash2 size={22} />
+          </div>
+          <div>
+            <span>Confirmacion requerida</span>
+            <h2 id="clear-download-history-title">Eliminar historial de descargas</h2>
+          </div>
+          <button className="icon-button" onClick={onCancel} disabled={submitting} type="button" title="Cancelar">
+            <X size={18} />
+          </button>
+        </header>
+        <div className="delete-confirm-body">
+          <p>Esto eliminara los elementos completados del historial de descargas.</p>
+          <div className="queue-history-confirm-note">
+            No borra archivos copiados, videos originales ni etiquetas de descarga.
+          </div>
+        </div>
+        <footer className="delete-confirm-actions">
+          <button className="secondary-button" onClick={onCancel} disabled={submitting} type="button">
+            Cancelar
+          </button>
+          <button className="danger-button" onClick={onConfirm} disabled={submitting} type="button">
+            <Trash2 size={16} />
+            Eliminar cola
+          </button>
+        </footer>
       </section>
     </div>
   );

@@ -2411,6 +2411,17 @@ tbody tr.curation-row {
   line-height: 1.45;
 }
 
+.queue-history-confirm-note {
+  border: 1px solid #ffd3cd;
+  border-radius: 8px;
+  background: #fff7f5;
+  color: #7b4a40;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.45;
+  padding: 11px 12px;
+}
+
 .delete-file-target {
   display: grid;
   gap: 4px;
