@@ -1527,10 +1527,21 @@ async function* walkVideos(root: string, errors?: PendingAgentError[], diskRoot?
   }
 }
 
-async function loadState(statePath: string): Promise<State> {
+async function loadState(statePath: string, legacyPaths: string[] = []): Promise<State> {
   try {
     return JSON.parse(await fs.readFile(statePath, "utf8")) as State;
   } catch {
+    for (const legacyPath of legacyPaths) {
+      if (path.resolve(legacyPath) === path.resolve(statePath)) continue;
+      try {
+        const legacyState = JSON.parse(await fs.readFile(legacyPath, "utf8")) as State;
+        await saveState(statePath, legacyState);
+        console.log(`Estado anterior del agente migrado a ${statePath}`);
+        return legacyState;
+      } catch {
+        // Try the next legacy location.
+      }
+    }
     return { completed: {} };
   }
 }
@@ -2006,8 +2017,11 @@ async function runScan(args: Args): Promise<void> {
     })
   });
 
-  const statePath = path.join(agentStateRoot(), resolved.volumeId ?? disk.id, "scan-state.json");
-  const state = await loadState(statePath);
+  const stateIdentifier = resolved.volumeId ?? disk.id;
+  const statePath = path.join(agentStateRoot(), stateIdentifier, "scan-state.json");
+  const state = await loadState(statePath, [
+    path.join(process.cwd(), ".videocat-agent-state", stateIdentifier, "scan-state.json")
+  ]);
   const repairPaths = args.thumbnails && args.repairThumbnails !== false
     ? await thumbnailRepairPaths(disk.id)
     : new Set<string>();
