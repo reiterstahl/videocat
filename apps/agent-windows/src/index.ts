@@ -544,7 +544,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       const mounted = await discoverCompanionTargets();
       for (const { root, marker } of mounted) {
         console.log(`Revision periodica de ruta VideoCAT: ${root} -> ${marker.diskName}`);
-        await scanTarget(root, marker, false);
+        await scanTarget(root, marker, true);
       }
     } finally {
       running = false;

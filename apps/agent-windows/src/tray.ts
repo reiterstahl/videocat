@@ -738,6 +738,7 @@ function openConfigWindow(): void {
     width: 680,
     height: 620,
     title: "VideoCAT Companion",
+    icon: iconPath() || undefined,
     resizable: true,
     webPreferences: {
       preload: preloadPath(),
@@ -868,6 +869,7 @@ function openLogWindow(): void {
     width: 980,
     height: 620,
     title: "VideoCAT Actividad",
+    icon: iconPath() || undefined,
     resizable: true,
     webPreferences: {
       preload: preloadPath(),
@@ -911,7 +913,7 @@ function updateMenu(): void {
         label: `${disk.marker.diskName} (${disk.root})`,
         submenu: [
           {
-            label: "Escanear ahora",
+            label: "Escanear y reparar miniaturas",
             enabled: !busy,
             click: () => runAgentTask(`Escaneo ${disk.marker.diskName}`, ["scan", "--path", disk.root])
           },
@@ -926,7 +928,7 @@ function updateMenu(): void {
         label: `${target.name} (${target.path})`,
         submenu: [
           {
-            label: "Escanear ahora",
+            label: "Escanear y reparar miniaturas",
             enabled: !busy,
             click: () => runAgentTask(`Escaneo ${target.name}`, [
               "scan",

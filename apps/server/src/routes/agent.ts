@@ -120,6 +120,37 @@ const companionHeartbeatSchema = z.object({
 });
 const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
 const expectedThumbnailKinds = Array.from({ length: 15 }, (_value, index) => `frame_${String(index + 1).padStart(2, "0")}`);
+const thumbnailRepairConcurrency = 32;
+
+async function missingThumbnailKindsOnDisk(
+  thumbnails: Array<{ kind: string; relativePath: string }>,
+  thumbnailsBaseDir: string
+): Promise<string[]> {
+  const thumbnailsByKind = new Map(thumbnails.map((thumbnail) => [thumbnail.kind, thumbnail]));
+  const directoryContents = new Map<string, Set<string>>();
+
+  for (const thumbnail of thumbnails) {
+    const thumbnailPath = path.resolve(thumbnailsBaseDir, ...thumbnail.relativePath.split("/"));
+    if (!thumbnailPath.startsWith(`${thumbnailsBaseDir}${path.sep}`)) continue;
+
+    const directory = path.dirname(thumbnailPath);
+    if (directoryContents.has(directory)) continue;
+    try {
+      directoryContents.set(directory, new Set(await fs.readdir(directory)));
+    } catch {
+      directoryContents.set(directory, new Set());
+    }
+  }
+
+  return expectedThumbnailKinds.filter((kind) => {
+    const thumbnail = thumbnailsByKind.get(kind);
+    if (!thumbnail) return true;
+
+    const thumbnailPath = path.resolve(thumbnailsBaseDir, ...thumbnail.relativePath.split("/"));
+    if (!thumbnailPath.startsWith(`${thumbnailsBaseDir}${path.sep}`)) return true;
+    return !directoryContents.get(path.dirname(thumbnailPath))?.has(path.basename(thumbnailPath));
+  });
+}
 
 function monthlyDownloadTag(date = new Date()): { key: string; label: string } {
   const months = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -204,18 +235,21 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       where: { diskId: disk.id },
       select: {
         relativePath: true,
-        thumbnails: { select: { kind: true } }
+        thumbnails: { select: { kind: true, relativePath: true } }
       },
       orderBy: { relativePath: "asc" }
     });
 
-    const repairFiles = files.flatMap((file) => {
-      const availableKinds = new Set(file.thumbnails.map((thumbnail) => thumbnail.kind));
-      const missingKinds = expectedThumbnailKinds.filter((kind) => !availableKinds.has(kind));
-      return missingKinds.length > 0
-        ? [{ relativePath: file.relativePath, missingKinds }]
-        : [];
-    });
+    const thumbnailsBaseDir = path.resolve(env.THUMBNAILS_DIR);
+    const repairFiles: Array<{ relativePath: string; missingKinds: string[] }> = [];
+    for (let index = 0; index < files.length; index += thumbnailRepairConcurrency) {
+      const batch = files.slice(index, index + thumbnailRepairConcurrency);
+      const checked = await Promise.all(batch.map(async (file) => ({
+        relativePath: file.relativePath,
+        missingKinds: await missingThumbnailKindsOnDisk(file.thumbnails, thumbnailsBaseDir)
+      })));
+      repairFiles.push(...checked.filter((file) => file.missingKinds.length > 0));
+    }
 
     return {
       disk: { id: disk.id, name: disk.name },

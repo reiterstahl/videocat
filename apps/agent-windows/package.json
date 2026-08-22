@@ -1,6 +1,6 @@
 {
   "name": "@videocat/agent-windows",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "VideoCAT Windows agent and tray companion.",
   "author": "VideoCAT contributors",
   "private": true,
@@ -75,7 +75,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "../../logo.png",
       "target": [
         "portable"
       ]
