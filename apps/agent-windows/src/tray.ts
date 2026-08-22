@@ -397,7 +397,7 @@ async function refreshMountedDisks(): Promise<void> {
 function startCompanion(): void {
   if (companion && !companion.killed) return;
 
-  addLog("info", "companion", "Iniciando companion.");
+  addLog("info", "companion", `Iniciando companion v${app.getVersion()}.`);
   companion = spawnAgent(["companion"]);
   companion.stdout.on("data", (chunk) => {
     const text = String(chunk);

@@ -119,6 +119,7 @@ const companionHeartbeatSchema = z.object({
   mountedDiskIds: z.array(z.string().uuid()).max(100).optional()
 });
 const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
+const expectedThumbnailKinds = Array.from({ length: 15 }, (_value, index) => `frame_${String(index + 1).padStart(2, "0")}`);
 
 function monthlyDownloadTag(date = new Date()): { key: string; label: string } {
   const months = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -192,6 +193,35 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }
     });
     return { scan };
+  });
+
+  app.get("/api/agent/disks/:id/thumbnail-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const disk = await diskByAgentIdentifier(id);
+    if (!disk) return reply.code(404).send({ message: "Disk not found" });
+
+    const files = await prisma.videoFile.findMany({
+      where: { diskId: disk.id },
+      select: {
+        relativePath: true,
+        thumbnails: { select: { kind: true } }
+      },
+      orderBy: { relativePath: "asc" }
+    });
+
+    const repairFiles = files.flatMap((file) => {
+      const availableKinds = new Set(file.thumbnails.map((thumbnail) => thumbnail.kind));
+      const missingKinds = expectedThumbnailKinds.filter((kind) => !availableKinds.has(kind));
+      return missingKinds.length > 0
+        ? [{ relativePath: file.relativePath, missingKinds }]
+        : [];
+    });
+
+    return {
+      disk: { id: disk.id, name: disk.name },
+      expectedThumbnailCount: expectedThumbnailKinds.length,
+      files: repairFiles
+    };
   });
 
   app.post("/api/agent/files/batch", { preHandler: requireAgentAuth }, async (request) => {

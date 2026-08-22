@@ -25,6 +25,7 @@ type Args = {
   scanRoots: string[];
   batchSize: number;
   thumbnails: boolean;
+  repairThumbnails?: boolean;
 };
 
 type DiskMarker = {
@@ -118,6 +119,13 @@ type DownloadQueueResponse = {
   files: DownloadQueueFile[];
 };
 
+type ThumbnailRepairQueueResponse = {
+  files: Array<{
+    relativePath: string;
+    missingKinds: string[];
+  }>;
+};
+
 const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
   const frame = String(index + 1).padStart(2, "0");
   return [`frame_${frame}`, (index + 1) / 16] as const;
@@ -128,7 +136,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 5;
+const companionVersion = 6;
 let downloadProcessingRunning = false;
 
 class AgentAuthError extends Error {
@@ -217,7 +225,8 @@ function parseArgs(argv: string[]): Args {
     rootAsPath: firstValue(values, "root-as-path") === true,
     scanRoots: stringValues(values, "scan-root"),
     batchSize: Number(firstValue(values, "batch-size") ?? 50),
-    thumbnails: firstValue(values, "no-thumbnails") !== true
+    thumbnails: firstValue(values, "no-thumbnails") !== true,
+    repairThumbnails: firstValue(values, "no-thumbnail-repair") !== true
   };
 }
 
@@ -473,7 +482,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   let downloadReviewRunning = false;
   let heartbeatRunning = false;
 
-  async function scanTarget(root: string, marker: DiskMarker): Promise<void> {
+  async function scanTarget(root: string, marker: DiskMarker, repairThumbnails: boolean): Promise<void> {
     await runScan({
       command: "scan",
       path: root,
@@ -484,7 +493,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
       rootAsPath: true,
       scanRoots: marker.scanRoots,
       batchSize: 50,
-      thumbnails: true
+      thumbnails: true,
+      repairThumbnails
     });
   }
 
@@ -509,7 +519,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
         const key = `${marker.diskId}@${root}`;
         if (!initial && seen.has(key)) continue;
         console.log(`Revision automatica de disco VideoCAT: ${root} -> ${marker.diskName}`);
-        await scanTarget(root, marker);
+        await scanTarget(root, marker, true);
         await processMarkedDeletesForDisk(root, marker);
         await processDownloadQueueForDisk(root, marker);
       }
@@ -527,7 +537,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       const mounted = await discoverCompanionTargets();
       for (const { root, marker } of mounted) {
         console.log(`Revision periodica de ruta VideoCAT: ${root} -> ${marker.diskName}`);
-        await scanTarget(root, marker);
+        await scanTarget(root, marker, false);
       }
     } finally {
       running = false;
@@ -1474,7 +1484,13 @@ function thumbnailTempName(relativePathValue: string, kind: string): string {
   return `${digest}-${kind}.jpg`;
 }
 
-async function countVideos(targets: ScanTarget[], diskRoot: string, state: State, errors: PendingAgentError[]): Promise<CountResult> {
+async function countVideos(
+  targets: ScanTarget[],
+  diskRoot: string,
+  state: State,
+  errors: PendingAgentError[],
+  thumbnailRepairPaths: Set<string>
+): Promise<CountResult> {
   let total = 0;
   let pending = 0;
   let skipped = 0;
@@ -1486,7 +1502,7 @@ async function countVideos(targets: ScanTarget[], diskRoot: string, state: State
       try {
         const stat = await fs.stat(filePath);
         const rel = relativePath(diskRoot, filePath);
-        if (state.completed[rel] === stat.mtime.getTime()) {
+        if (state.completed[rel] === stat.mtime.getTime() && !thumbnailRepairPaths.has(rel)) {
           skipped += 1;
         } else {
           pending += 1;
@@ -1669,8 +1685,13 @@ async function processFile(
   }
 }
 
-async function uploadBatch(scanId: string, diskId: string, batch: ProcessedFile[]): Promise<void> {
-  if (batch.length === 0) return;
+async function uploadBatch(
+  scanId: string,
+  diskId: string,
+  batch: ProcessedFile[],
+  errors: PendingAgentError[]
+): Promise<number> {
+  if (batch.length === 0) return 0;
   await api("/api/agent/files/batch", {
     method: "POST",
     headers: authHeaders(),
@@ -1681,10 +1702,41 @@ async function uploadBatch(scanId: string, diskId: string, batch: ProcessedFile[
     })
   });
 
+  let uploadFailures = 0;
   for (const item of batch) {
     for (const thumb of item.thumbnails) {
-      await uploadThumbnail(diskId, item.record.relativePath, thumb);
+      try {
+        await uploadThumbnail(diskId, item.record.relativePath, thumb);
+      } catch (error) {
+        uploadFailures += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Fallo subiendo miniatura ${thumb.kind} para ${compactFileLabel(item.record.absolutePath)}; continuando con el siguiente archivo.`);
+        errors.push({
+          category: auditCategory(error, "thumbnail"),
+          phase: "thumbnail_upload",
+          code: errorCode(error),
+          message,
+          absolutePath: item.record.absolutePath,
+          relativePath: item.record.relativePath
+        });
+      } finally {
+        await fs.rm(thumb.filePath, { force: true }).catch(() => undefined);
+      }
     }
+  }
+  return uploadFailures;
+}
+
+async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
+  try {
+    const response = await api<ThumbnailRepairQueueResponse>(`/api/agent/disks/${diskId}/thumbnail-repair-queue`, {
+      method: "GET",
+      headers: authHeaders()
+    });
+    return new Set(response.files.map((file) => file.relativePath));
+  } catch (error) {
+    console.warn(`No se pudo consultar la reparacion de miniaturas; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
+    return new Set();
   }
 }
 
@@ -1821,6 +1873,13 @@ async function runScan(args: Args): Promise<void> {
 
   const statePath = path.join(process.cwd(), ".videocat-agent-state", resolved.volumeId ?? disk.id, "scan-state.json");
   const state = await loadState(statePath);
+  const repairPaths = args.thumbnails && args.repairThumbnails !== false
+    ? await thumbnailRepairPaths(disk.id)
+    : new Set<string>();
+
+  if (repairPaths.size > 0) {
+    console.log(`Reparacion automatica: ${repairPaths.size} video(s) tienen miniaturas faltantes y se volveran a procesar.`);
+  }
 
   const { scan } = await api<{ scan: { id: string } }>("/api/agent/scan/start", {
     method: "POST",
@@ -1829,7 +1888,7 @@ async function runScan(args: Args): Promise<void> {
   });
   const auditErrors: PendingAgentError[] = [];
   const folderSizeCache = new Map<string, number | null>();
-  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors);
+  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors, repairPaths);
   if (auditErrors.length > 0) {
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
@@ -1860,7 +1919,7 @@ async function runScan(args: Args): Promise<void> {
     batch.push(...processed);
     failed += processed.filter((item) => item.record.status !== "scanned").length;
     if (batch.length >= args.batchSize) {
-      await uploadBatch(scan.id, disk.id, batch);
+      failed += await uploadBatch(scan.id, disk.id, batch, auditErrors);
       for (const item of batch) {
         state.completed[item.record.relativePath] = new Date(item.record.modifiedAt ?? 0).getTime();
       }
@@ -1891,7 +1950,7 @@ async function runScan(args: Args): Promise<void> {
         throw error;
       }
       const rel = relativePath(resolved.diskRoot, filePath);
-      if (state.completed[rel] === stat.mtime.getTime()) {
+      if (state.completed[rel] === stat.mtime.getTime() && !repairPaths.has(rel)) {
         skipped += 1;
         continue;
       }
@@ -1906,7 +1965,7 @@ async function runScan(args: Args): Promise<void> {
 
   if (pendingPaths.length > 0) await processGroup(pendingPaths);
   if (batch.length > 0) {
-    await uploadBatch(scan.id, disk.id, batch);
+    failed += await uploadBatch(scan.id, disk.id, batch, auditErrors);
     for (const item of batch) {
       state.completed[item.record.relativePath] = new Date(item.record.modifiedAt ?? 0).getTime();
     }
