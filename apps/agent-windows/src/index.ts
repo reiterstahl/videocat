@@ -10,7 +10,14 @@ import { pipeline } from "node:stream/promises";
 import { createInterface } from "node:readline/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { AgentErrorInput, AgentFileInput, formatBytes, isVideoExtension } from "@videocat/shared";
+import {
+  AgentErrorInput,
+  AgentFileInput,
+  companionDefaultPort,
+  companionPortCandidates,
+  formatBytes,
+  isVideoExtension
+} from "@videocat/shared";
 
 const execFileAsync = promisify(execFile);
 
@@ -136,7 +143,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 6;
+const companionVersion = 7;
 let downloadProcessingRunning = false;
 
 class AgentAuthError extends Error {
@@ -1065,7 +1072,7 @@ async function companionHealthCheck(port: number): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) });
     const body = await response.json().catch(() => null) as { ok?: boolean; app?: string } | null;
-    return response.ok && body?.ok === true;
+    return response.ok && body?.ok === true && body.app === companionAppName;
   } catch {
     return false;
   }
@@ -1127,26 +1134,40 @@ type CompanionListenResult = "listening" | "occupied" | "unavailable";
 
 async function listenCompanion(server: http.Server, port: number, host: string): Promise<CompanionListenResult> {
   return new Promise<CompanionListenResult>((resolve) => {
-    const onError = (error: NodeJS.ErrnoException) => {
+    const cleanup = () => {
       server.removeListener("error", onError);
+      server.removeListener("listening", onListening);
+    };
+    const onError = (error: NodeJS.ErrnoException) => {
+      cleanup();
       resolve(error.code === "EADDRINUSE" ? "occupied" : "unavailable");
+    };
+    const onListening = () => {
+      cleanup();
+      resolve("listening");
     };
 
     server.once("error", onError);
-    server.listen(port, host, () => {
-      server.removeListener("error", onError);
-      resolve("listening");
-    });
+    server.once("listening", onListening);
+    try {
+      server.listen(port, host);
+    } catch {
+      cleanup();
+      resolve("unavailable");
+    }
   });
 }
 
 async function runCompanion(): Promise<void> {
   const host = "127.0.0.1";
-  const port = Number(process.env.COMPANION_PORT ?? 29429);
+  const configuredPort = Number(process.env.COMPANION_PORT ?? companionDefaultPort);
+  const requestedPort = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65535
+    ? configuredPort
+    : companionDefaultPort;
   const allowedOrigins = companionAllowedOrigins();
 
-  let activeServer: http.Server;
-  const server = http.createServer((request, response) => {
+  let activeServer: http.Server | null = null;
+  const requestHandler: http.RequestListener = (request, response) => {
     void (async () => {
       const origin = companionOrigin(request);
       const responseOrigin = origin && allowedOrigins.has(origin) ? origin : undefined;
@@ -1173,7 +1194,7 @@ async function runCompanion(): Promise<void> {
 
       if (request.url === "/shutdown" && request.method === "POST") {
         jsonResponse(response, 200, { ok: true }, responseOrigin);
-        setTimeout(() => activeServer.close(() => process.exit(0)), 50);
+        setTimeout(() => activeServer?.close(() => process.exit(0)), 50);
         return;
       }
 
@@ -1220,74 +1241,60 @@ async function runCompanion(): Promise<void> {
     })().catch(() => {
       jsonResponse(response, 500, { ok: false, reason: "open_failed" });
     });
-  });
-  activeServer = server;
+  };
 
-  const firstListen = await listenCompanion(server, port, host);
-  if (firstListen === "occupied") {
-    console.log(`El puerto ${port} ya esta ocupado. Intentando reemplazar el companion anterior...`);
-    const healthOk = await companionHealthCheck(port);
-    if (healthOk) await shutdownExistingCompanion(port);
-    await new Promise((resolve) => setTimeout(resolve, 450));
+  async function tryPort(port: number): Promise<CompanionListenResult> {
+    const candidateServer = http.createServer(requestHandler);
+    const result = await listenCompanion(candidateServer, port, host);
+    if (result === "listening") {
+      activeServer = candidateServer;
+    } else {
+      candidateServer.removeAllListeners();
+    }
+    return result;
+  }
 
-    const pids = await windowsListeningPids(port);
-    if (pids.length > 0) {
-      console.log(`Cerrando proceso anterior en puerto ${port}: PID ${pids.join(", ")}`);
-      await killWindowsPids(pids);
+  let selectedPort: number | null = null;
+  const firstListen = await tryPort(requestedPort);
+  if (firstListen === "listening") {
+    selectedPort = requestedPort;
+  } else if (firstListen === "occupied") {
+    const healthOk = await companionHealthCheck(requestedPort);
+    if (healthOk) {
+      console.log(`El puerto ${requestedPort} pertenece a otro Companion. Intentando reemplazarlo...`);
+      await shutdownExistingCompanion(requestedPort);
       await new Promise((resolve) => setTimeout(resolve, 450));
+      const pids = await windowsListeningPids(requestedPort);
+      if (pids.length > 0) {
+        console.log(`Cerrando Companion anterior en puerto ${requestedPort}: PID ${pids.join(", ")}`);
+        await killWindowsPids(pids);
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      if (await tryPort(requestedPort) === "listening") selectedPort = requestedPort;
+    } else {
+      console.warn(`El puerto ${requestedPort} esta ocupado por otra aplicacion; se dejara intacta.`);
     }
+  } else {
+    console.warn(`Windows no permitio abrir el puerto ${requestedPort}.`);
+  }
 
-    const retryServer = http.createServer(server.listeners("request")[0] as http.RequestListener);
-    activeServer = retryServer;
-    const retryListen = await listenCompanion(retryServer, port, host);
-    if (retryListen === "listening") {
-      console.log(`VideoCAT Companion reemplazado correctamente.`);
-      console.log(`VideoCAT Companion escuchando en http://${host}:${port}`);
-      console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
-      console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
-      await startCompanionDiskWatcher();
-      return;
-    }
-
-    console.warn(`No se pudo usar el puerto ${port} (${retryListen}). Buscando un puerto local alternativo...`);
-
-    const fallbackPorts = Array.from({ length: 10 }, (_, index) => port + index + 1)
-      .filter((candidate) => candidate > 0 && candidate <= 65535);
-    for (const fallbackPort of fallbackPorts) {
-      const fallbackListen = await listenCompanion(retryServer, fallbackPort, host);
-      if (fallbackListen === "listening") {
-        console.log(`VideoCAT Companion escuchando en http://${host}:${fallbackPort} (puerto alternativo; el solicitado fue ${port}).`);
-        console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
-        console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
-        await startCompanionDiskWatcher();
-        return;
+  if (selectedPort == null) {
+    console.log("Buscando un puerto local alternativo...");
+    for (const fallbackPort of companionPortCandidates(requestedPort)) {
+      if (fallbackPort === requestedPort) continue;
+      if (await tryPort(fallbackPort) === "listening") {
+        selectedPort = fallbackPort;
+        break;
       }
     }
+  }
 
-    console.error(`No pude iniciar el companion en ${port} ni en sus 10 puertos siguientes. Cambia COMPANION_PORT o revisa los puertos reservados de Windows.`);
+  if (selectedPort == null) {
+    console.error(`No pude iniciar el companion. Puertos probados: ${companionPortCandidates(requestedPort).join(", ")}.`);
     return;
   }
 
-  if (firstListen === "unavailable") {
-    console.warn(`Windows no permitio abrir el puerto ${port}. Buscando un puerto local alternativo...`);
-    const fallbackPorts = Array.from({ length: 10 }, (_, index) => port + index + 1)
-      .filter((candidate) => candidate > 0 && candidate <= 65535);
-    for (const fallbackPort of fallbackPorts) {
-      const fallbackListen = await listenCompanion(server, fallbackPort, host);
-      if (fallbackListen === "listening") {
-        console.log(`VideoCAT Companion escuchando en http://${host}:${fallbackPort} (puerto alternativo; el solicitado fue ${port}).`);
-        console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
-        console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
-        await startCompanionDiskWatcher();
-        return;
-      }
-    }
-
-    console.error(`Windows no permitio iniciar el companion en ${port} ni en sus 10 puertos siguientes. Cambia COMPANION_PORT o revisa los puertos reservados de Windows.`);
-    return;
-  }
-
-  console.log(`VideoCAT Companion escuchando en http://${host}:${port}`);
+  console.log(`VideoCAT Companion escuchando en http://${host}:${selectedPort}${selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})`}.`);
   console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
   console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
   await startCompanionDiskWatcher();

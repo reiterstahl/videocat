@@ -32,7 +32,7 @@ import {
   User,
   X
 } from "lucide-react";
-import { formatBytes, formatDuration } from "@videocat/shared";
+import { companionPortCandidates, formatBytes, formatDuration } from "@videocat/shared";
 import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, type Language } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
 import type { Disk, Stats, VideoFile } from "./types";
@@ -40,15 +40,10 @@ import type { Disk, Stats, VideoFile } from "./types";
 type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "createdAt";
 type SortDirection = "asc" | "desc";
 type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "audit" | "admin" | "profile";
-const companionDefaultPort = 29429;
-const companionFallbackPortCount = 10;
 
-function companionPortCandidates(storedPort: string | null): string[] {
-  const fallbackPorts = Array.from(
-    { length: companionFallbackPortCount + 1 },
-    (_, index) => String(companionDefaultPort + index)
-  );
-  return [...new Set([storedPort, ...fallbackPorts].filter(Boolean))] as string[];
+function localCompanionPortCandidates(storedPort: string | null): string[] {
+  const parsedStoredPort = storedPort ? Number(storedPort) : undefined;
+  return companionPortCandidates(parsedStoredPort).map(String);
 }
 
 type CurationStatus = string;
@@ -824,34 +819,23 @@ export function App() {
 
     async function checkCompanionHealth() {
       const storedPort = localStorage.getItem("videocat-companion-port");
-      const ports = companionPortCandidates(storedPort);
+      const ports = localCompanionPortCandidates(storedPort);
       let localOnline = false;
 
       for (const port of ports) {
         try {
           const response = await fetch(`http://127.0.0.1:${port}/health`, {
             cache: "no-store",
-            signal: AbortSignal.timeout(1800)
+            signal: AbortSignal.timeout(700)
           });
-          const result = await response.json().catch(() => ({ ok: false })) as { ok?: boolean };
-          if (response.ok && result.ok === true) {
+          const result = await response.json().catch(() => ({ ok: false })) as { ok?: boolean; app?: string };
+          if (response.ok && result.ok === true && result.app === "videocat-companion") {
             localStorage.setItem("videocat-companion-port", port);
             localOnline = true;
             break;
           }
         } catch {
-          try {
-            await fetch(`http://127.0.0.1:${port}/health`, {
-              cache: "no-store",
-              mode: "no-cors",
-              signal: AbortSignal.timeout(1800)
-            });
-            localStorage.setItem("videocat-companion-port", port);
-            localOnline = true;
-            break;
-          } catch {
-            // Try the next known port before marking the companion offline.
-          }
+          // Try the next known port before marking the companion offline.
         }
       }
 

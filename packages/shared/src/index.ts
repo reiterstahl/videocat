@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const companionDefaultPort = 29429;
+const companionFallbackPorts = [18431, 23447, 31469, 37483, 43517, 49627, 55733, 60149, 15319, 26891] as const;
+
+export function companionPortCandidates(preferredPort: number = companionDefaultPort): number[] {
+  return [...new Set([preferredPort, companionDefaultPort, ...companionFallbackPorts])]
+    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535);
+}
+
 export const videoExtensions = [
   ".mp4",
   ".mov",
