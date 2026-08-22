@@ -60,6 +60,9 @@ Variables útiles:
 SERVER_URL=http://192.168.1.x:8081
 WEB_URL=https://videocat.example.com
 AGENT_TOKEN=change-me-agent-token
+AGENT_STATE_DIR=
+FFMPEG_PATH=
+FFPROBE_PATH=
 COMPANION_PORT=29429
 COMPANION_ALLOWED_ORIGINS=https://videocat.example.com,http://192.168.1.x:8081,http://localhost:5173,http://127.0.0.1:5173
 COMPANION_DISK_POLL_MS=5000
@@ -75,6 +78,7 @@ COMPANION_DISABLED_DISK_IDS=
 
 ## Notas
 
-- `ffmpeg` y `ffprobe` deben estar disponibles en el `PATH` de Windows para generar metadatos y miniaturas.
+- El Companion busca `ffmpeg` y `ffprobe` en el `PATH` y en ubicaciones comunes de WinGet, Scoop y Chocolatey. Si no los encuentra, configura `FFMPEG_PATH` y `FFPROBE_PATH`.
+- El estado persistente del agente se guarda por defecto en `%LOCALAPPDATA%\VideoCAT\agent-state`; `AGENT_STATE_DIR` permite cambiarlo.
 - El escaneo sigue respetando `.videocat-disk.json` y sus `scanRoots`.
 - La app no se configura para iniciar con Windows automáticamente todavía.

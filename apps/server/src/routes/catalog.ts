@@ -32,6 +32,9 @@ const fileBatchCategorySchema = z.object({
 const downloadQueueSchema = z.object({
   fileIds: z.array(z.string().uuid()).min(1).max(500)
 });
+const thumbnailRegenerationSchema = z.object({
+  fileIds: z.array(z.string().uuid()).min(1).max(500)
+});
 const downloadQueueRemoveSchema = z.object({
   queueIds: z.array(z.string().uuid()).min(1).max(500)
 });
@@ -1167,6 +1170,55 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       files: filesWithCategories.map((file) =>
         serializeFile(file, isProtectedPath(file.relativePath) ? 0 : (duplicateCountBySize.get(file.sizeBytes.toString()) ?? 0))
       )
+    };
+  });
+
+  app.post("/api/files/batch/thumbnails/regenerate", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = thumbnailRegenerationSchema.parse(request.body);
+    const uniqueIds = [...new Set(body.fileIds)];
+    const protectedUnlocked = isProtectedFolderUnlocked(request);
+    const files = await prisma.videoFile.findMany({
+      where: { id: { in: uniqueIds } },
+      select: {
+        id: true,
+        relativePath: true,
+        disk: { select: { id: true, volumeId: true } },
+        thumbnails: { select: { relativePath: true } }
+      }
+    });
+
+    if (files.length !== uniqueIds.length) {
+      return reply.code(404).send({ message: "One or more files were not found" });
+    }
+    if (files.some((file) => isHiddenSystemPath(file.relativePath))) {
+      return reply.code(404).send({ message: "One or more files were not found" });
+    }
+    if (!protectedUnlocked && files.some((file) => isProtectedPath(file.relativePath))) {
+      return reply.code(403).send({ message: "PIN required" });
+    }
+
+    await prisma.thumbnail.deleteMany({ where: { videoFileId: { in: uniqueIds } } });
+
+    const thumbnailsBaseDir = path.resolve(env.THUMBNAILS_DIR);
+    let removedFiles = 0;
+    for (const file of files) {
+      for (const thumbnail of file.thumbnails) {
+        const thumbnailPath = path.resolve(thumbnailsBaseDir, ...thumbnail.relativePath.split("/"));
+        if (!thumbnailPath.startsWith(`${thumbnailsBaseDir}${path.sep}`)) continue;
+        try {
+          await fs.rm(thumbnailPath, { force: true });
+          removedFiles += 1;
+        } catch {
+          // Removing the database records is enough for the repair queue to regenerate them.
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      queued: files.length,
+      removedFiles,
+      diskIds: [...new Set(files.map((file) => file.disk.volumeId ?? file.disk.id))]
     };
   });
 

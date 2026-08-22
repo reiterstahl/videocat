@@ -239,6 +239,9 @@ SERVER_URL=https://cat.example.com
 WEB_URL=https://cat.example.com
 AGENT_TOKEN=replace-with-agent-token
 AGENT_CONCURRENCY=2
+AGENT_STATE_DIR=
+FFMPEG_PATH=
+FFPROBE_PATH=
 COMPANION_PORT=29429
 COMPANION_ALLOWED_ORIGINS=https://cat.example.com,http://localhost:5173,http://127.0.0.1:5173
 COMPANION_DISK_POLL_MS=5000
@@ -419,8 +422,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.6
-reiterstahl/videocat-web:0.1.6
+reiterstahl/videocat-server:0.1.7
+reiterstahl/videocat-web:0.1.7
 ```
 
 `latest` tags are also published:
@@ -467,8 +470,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.6 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.6 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.7 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.7 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -481,10 +484,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.6
+  image: reiterstahl/videocat-server:0.1.7
 
 web:
-  image: reiterstahl/videocat-web:0.1.6
+  image: reiterstahl/videocat-web:0.1.7
 ```
 
 ## Main Endpoints

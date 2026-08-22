@@ -90,6 +90,7 @@ const en: Record<string, string> = {
   "Añadir": "Add",
   "Quitar": "Remove",
   "Marcar para borrar": "Mark for deletion",
+  "Regenerar miniaturas": "Regenerate thumbnails",
   "Limpiar": "Clear",
   "Seleccionar página": "Select page",
   "Archivo": "File",

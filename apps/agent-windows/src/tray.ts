@@ -46,6 +46,9 @@ const configKeys = [
   "SERVER_URL",
   "WEB_URL",
   "AGENT_TOKEN",
+  "AGENT_STATE_DIR",
+  "FFMPEG_PATH",
+  "FFPROBE_PATH",
   "COMPANION_PORT",
   "COMPANION_ALLOWED_ORIGINS",
   "COMPANION_TOKEN",
@@ -480,6 +483,9 @@ function configHtml(): string {
       <label class="full">SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
       <label class="full">WEB_URL<input name="WEB_URL" placeholder="https://cat.example.com" /></label>
       <label class="full">AGENT_TOKEN <span class="required">*</span><input name="AGENT_TOKEN" required type="password" /></label>
+      <label class="full">AGENT_STATE_DIR<input name="AGENT_STATE_DIR" placeholder="Automatico: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
+      <label>FFMPEG_PATH<input name="FFMPEG_PATH" placeholder="ffmpeg o C:\\ffmpeg\\bin\\ffmpeg.exe" /></label>
+      <label>FFPROBE_PATH<input name="FFPROBE_PATH" placeholder="ffprobe o C:\\ffmpeg\\bin\\ffprobe.exe" /></label>
       <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
       <label>COMPANION_TOKEN<input name="COMPANION_TOKEN" type="password" /></label>
       <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>

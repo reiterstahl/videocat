@@ -21,7 +21,7 @@ export function serializeDisk(disk: Disk) {
 export function serializeThumbnail(thumbnail: Thumbnail) {
   return {
     ...thumbnail,
-    url: thumbnailUrl(thumbnail.relativePath)
+    url: `${thumbnailUrl(thumbnail.relativePath)}?v=${thumbnail.createdAt.getTime()}`
   };
 }
 

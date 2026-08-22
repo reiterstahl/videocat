@@ -591,7 +591,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       },
       update: {
         timestampSeconds,
-        relativePath: thumbnailRelativePath
+        relativePath: thumbnailRelativePath,
+        createdAt: new Date()
       }
     });
 

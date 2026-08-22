@@ -89,6 +89,10 @@ type CompanionOpenRequest = {
   relativePath?: string;
 };
 
+type CompanionThumbnailRepairRequest = {
+  diskIds?: string[];
+};
+
 type CompanionResult =
   | { ok: true }
   | { ok: false; reason: "bad_request" | "forbidden" | "not_available" | "open_failed"; detail?: string };
@@ -143,8 +147,9 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 7;
+const companionVersion = 8;
 let downloadProcessingRunning = false;
+let companionScanRunning = false;
 
 class AgentAuthError extends Error {
   constructor(message: string) {
@@ -506,8 +511,9 @@ async function startCompanionDiskWatcher(): Promise<void> {
   }
 
   async function checkMountedDisks(initial = false): Promise<void> {
-    if (running) return;
+    if (running || companionScanRunning) return;
     running = true;
+    companionScanRunning = true;
     try {
       const mounted = await discoverCompanionTargets();
       const current = new Set(mounted.map(({ root, marker }) => `${marker.diskId}@${root}`));
@@ -534,12 +540,14 @@ async function startCompanionDiskWatcher(): Promise<void> {
       seen = current;
     } finally {
       running = false;
+      companionScanRunning = false;
     }
   }
 
   async function reviewKnownTargets(): Promise<void> {
-    if (running) return;
+    if (running || companionScanRunning) return;
     running = true;
+    companionScanRunning = true;
     try {
       const mounted = await discoverCompanionTargets();
       for (const { root, marker } of mounted) {
@@ -548,6 +556,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       }
     } finally {
       running = false;
+      companionScanRunning = false;
     }
   }
 
@@ -627,6 +636,45 @@ async function startCompanionDiskWatcher(): Promise<void> {
   console.log(`Revision de borrados pendientes activa cada ${deletePollMs}ms.`);
   console.log(`Revision de descargas pendientes activa cada ${downloadPollMs}ms.`);
   console.log(`Heartbeat del companion activo cada ${heartbeatMs}ms.`);
+}
+
+async function repairMountedThumbnailsNow(diskIds: string[]): Promise<number> {
+  companionScanRunning = true;
+  try {
+    const requested = new Set(diskIds.filter(Boolean));
+    const mounted = (await discoverCompanionTargets()).filter(({ marker }) =>
+      requested.size === 0 || requested.has(marker.diskId)
+    );
+    for (const { root, marker } of mounted) {
+      console.log(`Regeneracion manual de miniaturas: ${root} -> ${marker.diskName}`);
+      await runScan({
+        command: "scan",
+        path: root,
+        diskName: marker.diskName,
+        diskId: marker.diskId,
+        volumeId: marker.diskId,
+        volumeLabel: undefined,
+        rootAsPath: true,
+        scanRoots: marker.scanRoots,
+        batchSize: 50,
+        thumbnails: true,
+        repairThumbnails: true
+      });
+    }
+    return mounted.length;
+  } finally {
+    companionScanRunning = false;
+  }
+}
+
+function requestMountedThumbnailRepair(diskIds: string[]): { accepted: boolean; busy: boolean } {
+  if (companionScanRunning) return { accepted: false, busy: true };
+  void repairMountedThumbnailsNow(diskIds).then((processedDisks) => {
+    console.log(`Regeneracion manual finalizada en ${processedDisks} disco(s).`);
+  }).catch((error) => {
+    console.error(`Fallo en regeneracion manual de miniaturas: ${compactToolError(error)}`);
+  });
+  return { accepted: true, busy: false };
 }
 
 function jsonResponse(response: http.ServerResponse, statusCode: number, body: unknown, origin?: string): void {
@@ -1223,6 +1271,22 @@ async function runCompanion(): Promise<void> {
         return;
       }
 
+      if (request.url === "/repair-thumbnails" && request.method === "POST") {
+        let body: CompanionThumbnailRepairRequest;
+        try {
+          body = await readJsonBody(request) as CompanionThumbnailRepairRequest;
+        } catch {
+          jsonResponse(response, 400, { ok: false, reason: "bad_request" }, responseOrigin);
+          return;
+        }
+        const diskIds = Array.isArray(body.diskIds)
+          ? [...new Set(body.diskIds.filter((value): value is string => typeof value === "string"))].slice(0, 100)
+          : [];
+        const result = requestMountedThumbnailRepair(diskIds);
+        jsonResponse(response, 200, { ok: true, ...result }, responseOrigin);
+        return;
+      }
+
       if ((request.url === "/open-file" || request.url === "/open-folder" || request.url === "/delete-file") && request.method === "POST") {
         let body: CompanionOpenRequest;
         try {
@@ -1297,6 +1361,7 @@ async function runCompanion(): Promise<void> {
   console.log(`VideoCAT Companion escuchando en http://${host}:${selectedPort}${selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})`}.`);
   console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
   console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
+  await reportMediaToolAvailability();
   await startCompanionDiskWatcher();
 }
 
@@ -1486,6 +1551,63 @@ function compactFileLabel(filePath: string): string {
   return `${extension} ...${suffix}`;
 }
 
+function compactToolError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/\s+/g, " ").trim().slice(0, 360);
+}
+
+function agentStateRoot(): string {
+  const configured = process.env.AGENT_STATE_DIR?.trim();
+  if (configured) return path.resolve(configured);
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    return path.join(localAppData, "VideoCAT", "agent-state");
+  }
+  return path.join(os.homedir(), ".local", "state", "videocat-agent");
+}
+
+function mediaToolPath(environmentKey: "FFMPEG_PATH" | "FFPROBE_PATH", fallback: "ffmpeg" | "ffprobe"): string {
+  return process.env[environmentKey]?.trim() || fallback;
+}
+
+function mediaToolCandidates(environmentKey: "FFMPEG_PATH" | "FFPROBE_PATH", fallback: "ffmpeg" | "ffprobe"): string[] {
+  const executable = `${fallback}.exe`;
+  const candidates = [process.env[environmentKey]?.trim(), fallback];
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const userProfile = process.env.USERPROFILE || os.homedir();
+    candidates.push(
+      path.join(localAppData, "Microsoft", "WinGet", "Links", executable),
+      path.join(userProfile, "scoop", "apps", "ffmpeg", "current", "bin", executable),
+      path.join("C:\\", "ffmpeg", "bin", executable),
+      path.join("C:\\", "ProgramData", "chocolatey", "bin", executable)
+    );
+  }
+  return [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate)))];
+}
+
+async function reportMediaToolAvailability(): Promise<void> {
+  for (const [environmentKey, fallback] of [["FFMPEG_PATH", "ffmpeg"], ["FFPROBE_PATH", "ffprobe"]] as const) {
+    let lastError: unknown;
+    let selected = "";
+    for (const executable of mediaToolCandidates(environmentKey, fallback)) {
+      try {
+        await execFileAsync(executable, ["-version"], { maxBuffer: 1024 * 1024 });
+        selected = executable;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (selected) {
+      process.env[environmentKey] = selected;
+      console.log(`${fallback} disponible: ${selected}`);
+    } else {
+      console.error(`${fallback} no disponible: ${compactToolError(lastError)}. Configura ${environmentKey} en Configuracion.`);
+    }
+  }
+}
+
 function thumbnailTempName(relativePathValue: string, kind: string): string {
   const digest = crypto.createHash("sha256").update(relativePathValue).digest("hex").slice(0, 32);
   return `${digest}-${kind}.jpg`;
@@ -1572,7 +1694,7 @@ function parseFps(value?: string): number | null {
 }
 
 async function ffprobe(filePath: string) {
-  const { stdout } = await execFileAsync("ffprobe", [
+  const { stdout } = await execFileAsync(mediaToolPath("FFPROBE_PATH", "ffprobe"), [
     "-v",
     "quiet",
     "-print_format",
@@ -1604,7 +1726,7 @@ async function ffprobe(filePath: string) {
 
 async function createThumbnail(source: string, destination: string, seconds: number): Promise<void> {
   await fs.mkdir(path.dirname(destination), { recursive: true });
-  await execFileAsync("ffmpeg", [
+  await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), [
     "-y",
     "-ss",
     String(Math.max(0, seconds)),
@@ -1652,11 +1774,12 @@ async function processFile(
     let errorMessage: string | null = null;
 
     if (thumbnailsEnabled && metadata.durationSeconds) {
+      let thumbnailFailures = 0;
       for (const [kind, percent] of thumbnailPercents) {
         const timestampSeconds = Math.max(0.1, metadata.durationSeconds * percent);
         const destination = path.join(
-          process.cwd(),
-          ".videocat-agent-state",
+          agentStateRoot(),
+          "temporary-thumbnails",
           scanId,
           thumbnailTempName(rel, kind)
         );
@@ -1664,9 +1787,13 @@ async function processFile(
           await createThumbnail(filePath, destination, timestampSeconds);
           thumbs.push({ kind, timestampSeconds, filePath: destination });
         } catch (error) {
+          thumbnailFailures += 1;
           status = "thumbnail_failed";
           errorMessage = error instanceof Error ? error.message : "thumbnail_failed";
         }
+      }
+      if (thumbnailFailures > 0) {
+        console.warn(`Miniaturas fallidas ${thumbnailFailures}/${thumbnailPercents.length} para ${compactFileLabel(filePath)}: ${compactToolError(errorMessage)}`);
       }
     }
 
@@ -1680,6 +1807,7 @@ async function processFile(
       thumbnails: thumbs
     };
   } catch (error) {
+    console.warn(`Metadatos fallidos para ${compactFileLabel(filePath)}: ${compactToolError(error)}`);
     return {
       record: {
         ...baseRecord,
@@ -1878,7 +2006,7 @@ async function runScan(args: Args): Promise<void> {
     })
   });
 
-  const statePath = path.join(process.cwd(), ".videocat-agent-state", resolved.volumeId ?? disk.id, "scan-state.json");
+  const statePath = path.join(agentStateRoot(), resolved.volumeId ?? disk.id, "scan-state.json");
   const state = await loadState(statePath);
   const repairPaths = args.thumbnails && args.repairThumbnails !== false
     ? await thumbnailRepairPaths(disk.id)
@@ -1988,6 +2116,7 @@ async function runScan(args: Args): Promise<void> {
     headers: authHeaders(),
     body: JSON.stringify({ scanId: scan.id })
   });
+  await fs.rm(path.join(agentStateRoot(), "temporary-thumbnails", scan.id), { recursive: true, force: true }).catch(() => undefined);
 
   console.log("Escaneo finalizado.");
   console.log(`Detectados: ${discovered}. Omitidos por estado local: ${skipped}. Subidos: ${uploaded}. Fallos: ${failed}.`);

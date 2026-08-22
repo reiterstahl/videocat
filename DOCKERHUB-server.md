@@ -109,7 +109,7 @@ Back up this volume together with PostgreSQL.
 Versioned tags are stable:
 
 ```text
-reiterstahl/videocat-server:0.1.6
+reiterstahl/videocat-server:0.1.7
 ```
 
 `latest` points to the newest published build:

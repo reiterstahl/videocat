@@ -1201,6 +1201,54 @@ export function App() {
     }
   }
 
+  async function regenerateSelectedThumbnails() {
+    if (selectedFileIds.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    try {
+      const queued = await api<{ ok: boolean; queued: number; diskIds: string[] }>("/api/files/batch/thumbnails/regenerate", {
+        method: "POST",
+        body: JSON.stringify({ fileIds: selectedFileIds })
+      });
+      setSelectedFileIds([]);
+      setCatalogVersion((value) => value + 1);
+
+      if (!companionLocalOnline) {
+        setBulkMessage(`${queued.queued} video(s) en cola para regenerar. El companion los procesara en su proxima revision.`);
+        return;
+      }
+
+      const port = localStorage.getItem("videocat-companion-port") ?? "29429";
+      const token = localStorage.getItem("videocat-companion-token") ?? "";
+      const headers = new Headers({ "Content-Type": "application/json" });
+      if (token) headers.set("X-VideoCat-Companion-Token", token);
+      const response = await fetch(`http://127.0.0.1:${port}/repair-thumbnails`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ diskIds: queued.diskIds })
+      });
+      const result = await response.json().catch(() => ({ ok: false })) as {
+        ok?: boolean;
+        accepted?: boolean;
+        busy?: boolean;
+        reason?: string;
+      };
+      if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
+        setBulkMessage(`${queued.queued} video(s) en cola. El token local del companion no es valido.`);
+      } else if (result.busy) {
+        setBulkMessage(`${queued.queued} video(s) en cola. El companion terminara primero el escaneo actual.`);
+      } else if (response.ok && result.ok && result.accepted) {
+        setBulkMessage(`${queued.queued} video(s) en cola. Regeneracion iniciada en el companion.`);
+      } else {
+        setBulkMessage(`${queued.queued} video(s) en cola. Se procesaran en la proxima revision del companion.`);
+      }
+    } catch (error) {
+      setBulkMessage(error instanceof Error ? error.message : "No se pudo solicitar la regeneracion de miniaturas.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function queueRandomDownloads() {
     const targetGb = Number(randomDownloadGb);
     if (!Number.isFinite(targetGb) || targetGb <= 0) {
@@ -2455,6 +2503,15 @@ export function App() {
               >
                 <Download size={16} />
                 A descargar
+              </button>
+              <button
+                className="secondary-button"
+                disabled={bulkBusy}
+                onClick={() => void regenerateSelectedThumbnails()}
+                type="button"
+              >
+                <Image size={16} />
+                Regenerar miniaturas
               </button>
               <button className="ghost-button" disabled={bulkBusy} onClick={clearFileSelection} type="button">
                 Limpiar
