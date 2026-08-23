@@ -60,7 +60,7 @@ async function setAppSettingValue(key: string, value: string): Promise<void> {
   `);
 }
 
-function videoFileData(diskId: string, file: ReturnType<typeof filesBatchSchema.parse>["files"][number]) {
+function videoFileData(diskId: string, scanId: string, file: ReturnType<typeof filesBatchSchema.parse>["files"][number]) {
   return {
     diskId,
     filename: file.filename,
@@ -83,7 +83,27 @@ function videoFileData(diskId: string, file: ReturnType<typeof filesBatchSchema.
     bitrate: file.metadata?.bitrate ?? null,
     containerFormat: file.metadata?.containerFormat ?? null,
     streamCount: file.metadata?.streamCount ?? null,
-    ffprobeJson: file.metadata?.raw ?? undefined
+    ffprobeJson: file.metadata?.raw ?? undefined,
+    isPresent: true,
+    missingSince: null,
+    lastSeenScanId: scanId
+  };
+}
+
+function normalizedScanRoot(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+|\/+$/g, "");
+  return normalized || ".";
+}
+
+function scannedScopeWhere(scanRoots: string[]): Prisma.VideoFileWhereInput {
+  if (scanRoots.includes(".")) return {};
+  return {
+    OR: scanRoots.map((root) => ({
+      OR: [
+        { relativePath: root },
+        { relativePath: { startsWith: `${root}/` } }
+      ]
+    }))
   };
 }
 
@@ -232,7 +252,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
 
     const files = await prisma.videoFile.findMany({
-      where: { diskId: disk.id },
+      where: { diskId: disk.id, isPresent: true },
       select: {
         relativePath: true,
         thumbnails: { select: { kind: true, relativePath: true } }
@@ -265,7 +285,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     for (const file of body.files) {
       if (file.status !== "scanned") errorCount += 1;
 
-      const data = videoFileData(body.diskId, file);
+      const data = videoFileData(body.diskId, body.scanId, file);
       const existing = await prisma.videoFile.findUnique({
         where: {
           diskId_relativePath: {
@@ -350,6 +370,27 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, accepted: body.files.length };
   });
 
+  app.post("/api/agent/scans/:id/seen", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({
+      paths: z.array(z.string().trim().min(1).max(2000)).min(1).max(500)
+    }).parse(request.body);
+    const scan = await prisma.scan.findUnique({ where: { id }, select: { diskId: true, status: true } });
+    if (!scan) return reply.code(404).send({ message: "Scan not found" });
+    if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+
+    const paths = [...new Set(body.paths.map((value) => normalizedScanRoot(value)))];
+    const reactivated = await prisma.videoFile.updateMany({
+      where: { diskId: scan.diskId, relativePath: { in: paths }, isPresent: false },
+      data: { isPresent: true, missingSince: null, lastSeenScanId: id }
+    });
+    const seen = await prisma.videoFile.updateMany({
+      where: { diskId: scan.diskId, relativePath: { in: paths } },
+      data: { isPresent: true, missingSince: null, lastSeenScanId: id }
+    });
+    return { ok: true, seen: seen.count, reactivated: reactivated.count };
+  });
+
   app.post("/api/agent/errors/batch", { preHandler: requireAgentAuth }, async (request) => {
     const body = agentErrorsBatchSchema.parse(request.body);
     await prisma.agentError.createMany({
@@ -379,7 +420,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const files = await prisma.videoFile.findMany({
       where: {
         diskId: disk.id,
-        curationStatus: "delete"
+        curationStatus: "delete",
+        isPresent: true
       },
       select: {
         id: true,
@@ -452,6 +494,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       INNER JOIN "VideoFile" v ON v."id" = dq."videoFileId"
       INNER JOIN "Disk" d ON d."id" = v."diskId"
       WHERE dq."status" = 'queued'
+        AND v."isPresent" = TRUE
         ${diskFilter}
       ORDER BY dq."requestedAt" ASC
       LIMIT 1
@@ -599,12 +642,38 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { thumbnail };
   });
 
-  app.post("/api/agent/scan/finish", { preHandler: requireAgentAuth }, async (request) => {
-    const body = z.object({ scanId: z.string().uuid() }).parse(request.body);
+  app.post("/api/agent/scan/finish", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const body = z.object({
+      scanId: z.string().uuid(),
+      reconcile: z.boolean().default(false),
+      scanRoots: z.array(z.string().trim().min(1).max(1000)).max(100).default([])
+    }).parse(request.body);
+    const current = await prisma.scan.findUnique({ where: { id: body.scanId } });
+    if (!current) return reply.code(404).send({ message: "Scan not found" });
+    if (current.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+
+    let markedAbsent = 0;
+    if (body.reconcile) {
+      const scanRoots = [...new Set(body.scanRoots.map(normalizedScanRoot))];
+      if (scanRoots.length === 0) return reply.code(400).send({ message: "scanRoots are required for reconciliation" });
+      const result = await prisma.videoFile.updateMany({
+        where: {
+          diskId: current.diskId,
+          isPresent: true,
+          AND: [
+            scannedScopeWhere(scanRoots),
+            { OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }] }
+          ]
+        },
+        data: { isPresent: false, missingSince: new Date() }
+      });
+      markedAbsent = result.count;
+    }
+
     const scan = await prisma.scan.update({
       where: { id: body.scanId },
       data: { status: "finished", finishedAt: new Date() }
     });
-    return { scan };
+    return { scan, reconciliation: { markedAbsent } };
   });
 }

@@ -58,7 +58,8 @@ function sevenDaysAgo(): Date {
 
 function visibleReviewSql(protectedUnlocked: boolean): Prisma.Sql {
   return Prisma.sql`
-    AND NOT (
+    AND "isPresent" = TRUE
+      AND NOT (
         "relativePath" ILIKE '$RECYCLE.BIN'
         OR "relativePath" ILIKE '$RECYCLE.BIN/%'
         OR "relativePath" ILIKE '$RECYCLE.BIN\\%'
@@ -346,6 +347,7 @@ function firstProtectedFolderPath(pathValue: string): string | null {
 }
 
 function applyHiddenPathFilter(where: Prisma.VideoFileWhereInput): void {
+  where.isPresent = true;
   where.AND = [
     ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
     {
@@ -875,7 +877,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       include: fileIncludes()
     });
-    if (!file) return reply.code(404).send({ message: "File not found" });
+    if (!file || !file.isPresent) return reply.code(404).send({ message: "File not found" });
     if (isHiddenSystemPath(file.relativePath)) return reply.code(404).send({ message: "File not found" });
     if (isProtectedPath(file.relativePath) && !protectedUnlocked) {
       return reply.code(403).send({ message: "PIN required" });
@@ -914,7 +916,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       include: { thumbnails: true }
     });
-    if (!file) return reply.code(404).send({ message: "File not found" });
+    if (!file || !file.isPresent) return reply.code(404).send({ message: "File not found" });
     if (isHiddenSystemPath(file.relativePath)) return reply.code(404).send({ message: "File not found" });
     if (isProtectedPath(file.relativePath) && !protectedUnlocked) {
       return reply.code(403).send({ message: "PIN required" });
@@ -1043,7 +1045,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     }
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const current = await prisma.videoFile.findUnique({ where: { id } });
-    if (!current) return reply.code(404).send({ message: "File not found" });
+    if (!current || !current.isPresent) return reply.code(404).send({ message: "File not found" });
     if (isHiddenSystemPath(current.relativePath)) return reply.code(404).send({ message: "File not found" });
     if (isProtectedPath(current.relativePath) && !protectedUnlocked) {
       return reply.code(403).send({ message: "PIN required" });
@@ -1088,7 +1090,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const currentFiles = await prisma.videoFile.findMany({
-      where: { id: { in: uniqueIds } },
+      where: { id: { in: uniqueIds }, isPresent: true },
       select: { id: true, relativePath: true, sizeBytes: true, curationStatus: true }
     });
     if (currentFiles.length !== uniqueIds.length) {
@@ -1152,7 +1154,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const files = await prisma.videoFile.findMany({
-      where: { id: { in: uniqueIds } },
+      where: { id: { in: uniqueIds }, isPresent: true },
       include: fileIncludes()
     });
     const filesWithCategories = await attachCategoryKeys(files);
@@ -1178,7 +1180,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const uniqueIds = [...new Set(body.fileIds)];
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const files = await prisma.videoFile.findMany({
-      where: { id: { in: uniqueIds } },
+      where: { id: { in: uniqueIds }, isPresent: true },
       select: {
         id: true,
         relativePath: true,
@@ -1230,7 +1232,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const current = await prisma.videoFile.findUnique({ where: { id } });
-    if (!current) return reply.code(404).send({ message: "File not found" });
+    if (!current || !current.isPresent) return reply.code(404).send({ message: "File not found" });
     if (isHiddenSystemPath(current.relativePath)) return reply.code(404).send({ message: "File not found" });
     if (isProtectedPath(current.relativePath) && !protectedUnlocked) {
       return reply.code(403).send({ message: "PIN required" });
@@ -1354,6 +1356,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       FROM "Disk" d
       INNER JOIN "VideoFile" v ON v."diskId" = d."id"
       WHERE v."curationStatus" = 'delete'
+        AND v."isPresent" = TRUE
         AND NOT (
           v."relativePath" ILIKE '$RECYCLE.BIN'
           OR v."relativePath" ILIKE '$RECYCLE.BIN/%'
@@ -1436,6 +1439,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       ? Prisma.sql`AND v."diskId" IN (${Prisma.join(diskIds.map((id) => Prisma.sql`${id}::uuid`))})`
       : Prisma.empty;
     const visibleSql = Prisma.sql`
+      AND v."isPresent" = TRUE
       AND NOT (
         v."relativePath" ILIKE '$RECYCLE.BIN'
         OR v."relativePath" ILIKE '$RECYCLE.BIN/%'
@@ -1618,7 +1622,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const body = downloadQueueSchema.parse(request.body);
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const files = await prisma.videoFile.findMany({
-      where: { id: { in: body.fileIds } },
+      where: { id: { in: body.fileIds }, isPresent: true },
       select: { id: true, relativePath: true }
     });
     if (files.length !== new Set(body.fileIds).size) return reply.code(404).send({ message: "One or more files were not found" });
@@ -1649,6 +1653,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       SELECT v."id"::text AS "id", v."sizeBytes" AS "sizeBytes"
       FROM "VideoFile" v
       WHERE v."diskId" IN (${Prisma.join(body.diskIds.map((id) => Prisma.sql`${id}::uuid`))})
+        AND v."isPresent" = TRUE
         AND NOT EXISTS (
           SELECT 1
           FROM "VideoFileCategory" vc

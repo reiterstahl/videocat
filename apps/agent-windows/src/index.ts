@@ -83,6 +83,10 @@ type CountResult = {
   skipped: number;
 };
 
+type ScanCompleteness = {
+  complete: boolean;
+};
+
 type CompanionOpenRequest = {
   diskId?: string;
   absolutePath?: string;
@@ -147,7 +151,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 9;
+const companionVersion = 10;
 let downloadProcessingRunning = false;
 let companionScanRunning = false;
 
@@ -1499,7 +1503,12 @@ function auditError(error: unknown, phase: string, absolutePath: string, diskRoo
   };
 }
 
-async function* walkVideos(root: string, errors?: PendingAgentError[], diskRoot?: string): AsyncGenerator<string> {
+async function* walkVideos(
+  root: string,
+  errors?: PendingAgentError[],
+  diskRoot?: string,
+  completeness?: ScanCompleteness
+): AsyncGenerator<string> {
   let entries: Awaited<ReturnType<typeof fs.opendir>>;
   try {
     entries = await fs.opendir(root);
@@ -1508,6 +1517,7 @@ async function* walkVideos(root: string, errors?: PendingAgentError[], diskRoot?
     if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
       console.warn(`Omitiendo carpeta no accesible: ${root}`);
       errors?.push(auditError(error, "walk", root, diskRoot));
+      if (completeness) completeness.complete = false;
       return;
     }
     throw error;
@@ -1520,7 +1530,7 @@ async function* walkVideos(root: string, errors?: PendingAgentError[], diskRoot?
         console.log(`Omitiendo carpeta de sistema: ${absolute}`);
         continue;
       }
-      yield* walkVideos(absolute, errors, diskRoot);
+      yield* walkVideos(absolute, errors, diskRoot, completeness);
     } else if (entry.isFile() && isVideoExtension(path.extname(entry.name))) {
       yield absolute;
     }
@@ -1669,7 +1679,8 @@ async function countVideos(
   diskRoot: string,
   state: State,
   errors: PendingAgentError[],
-  thumbnailRepairPaths: Set<string>
+  thumbnailRepairPaths: Set<string>,
+  completeness: ScanCompleteness
 ): Promise<CountResult> {
   let total = 0;
   let pending = 0;
@@ -1677,7 +1688,7 @@ async function countVideos(
 
   for (const target of targets) {
     console.log(`Contando videos en ${target.scanPath}`);
-    for await (const filePath of walkVideos(target.scanPath, errors, diskRoot)) {
+    for await (const filePath of walkVideos(target.scanPath, errors, diskRoot, completeness)) {
       total += 1;
       try {
         const stat = await fs.stat(filePath);
@@ -1692,6 +1703,7 @@ async function countVideos(
         if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
           console.warn(`Omitiendo archivo no accesible durante conteo: ${filePath}`);
           errors.push(auditError(error, "count", filePath, diskRoot));
+          completeness.complete = false;
           continue;
         }
         throw error;
@@ -1913,6 +1925,19 @@ async function uploadBatch(
   return uploadFailures;
 }
 
+async function uploadSeenPaths(scanId: string, paths: string[]): Promise<number> {
+  let reactivated = 0;
+  for (let index = 0; index < paths.length; index += 500) {
+    const response = await api<{ reactivated: number }>(`/api/agent/scans/${scanId}/seen`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ paths: paths.slice(index, index + 500) })
+    });
+    reactivated += response.reactivated;
+  }
+  return reactivated;
+}
+
 async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
   try {
     const response = await api<ThumbnailRepairQueueResponse>(`/api/agent/disks/${diskId}/thumbnail-repair-queue`, {
@@ -2076,8 +2101,9 @@ async function runScan(args: Args): Promise<void> {
     body: JSON.stringify({ diskId: disk.id, rootPath: resolved.diskRoot })
   });
   const auditErrors: PendingAgentError[] = [];
+  const completeness: ScanCompleteness = { complete: true };
   const folderSizeCache = new Map<string, number | null>();
-  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors, repairPaths);
+  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors, repairPaths, completeness);
   if (auditErrors.length > 0) {
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
@@ -2097,6 +2123,7 @@ async function runScan(args: Args): Promise<void> {
   let skipped = 0;
   let failed = 0;
   let processedPending = 0;
+  const seenRelativePaths = new Set<string>();
 
   async function processGroup(paths: string[]) {
     const processed = await Promise.all(paths.map((item) => {
@@ -2124,7 +2151,7 @@ async function runScan(args: Args): Promise<void> {
 
   for (const target of scanTargets) {
     console.log(`Escaneando ${target.scanPath}`);
-    for await (const filePath of walkVideos(target.scanPath, auditErrors, resolved.diskRoot)) {
+    for await (const filePath of walkVideos(target.scanPath, auditErrors, resolved.diskRoot, completeness)) {
       discovered += 1;
       let stat: Awaited<ReturnType<typeof fs.stat>>;
       try {
@@ -2134,11 +2161,13 @@ async function runScan(args: Args): Promise<void> {
         if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
           console.warn(`Omitiendo archivo no accesible: ${filePath}`);
           auditErrors.push(auditError(error, "stat", filePath, resolved.diskRoot));
+          completeness.complete = false;
           continue;
         }
         throw error;
       }
       const rel = relativePath(resolved.diskRoot, filePath);
+      seenRelativePaths.add(rel);
       if (state.completed[rel] === stat.mtime.getTime() && !repairPaths.has(rel)) {
         skipped += 1;
         continue;
@@ -2165,15 +2194,25 @@ async function runScan(args: Args): Promise<void> {
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
 
-  await api("/api/agent/scan/finish", {
+  const reactivated = await uploadSeenPaths(scan.id, [...seenRelativePaths]);
+  const scanRoots = scanTargets.map((target) => {
+    const root = relativePath(resolved.diskRoot, target.scanPath);
+    return root || ".";
+  });
+  const finished = await api<{ reconciliation: { markedAbsent: number } }>("/api/agent/scan/finish", {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ scanId: scan.id })
+    body: JSON.stringify({ scanId: scan.id, reconcile: completeness.complete, scanRoots })
   });
   await fs.rm(path.join(agentStateRoot(), "temporary-thumbnails", scan.id), { recursive: true, force: true }).catch(() => undefined);
 
   console.log("Escaneo finalizado.");
   console.log(`Detectados: ${discovered}. Omitidos por estado local: ${skipped}. Subidos: ${uploaded}. Fallos: ${failed}.`);
+  if (completeness.complete) {
+    console.log(`Conciliacion terminada: ${finished.reconciliation.markedAbsent} ausente(s), ${reactivated} reactivado(s).`);
+  } else {
+    console.warn("Conciliacion omitida: la pasada tuvo errores de acceso y no es seguro declarar archivos ausentes.");
+  }
 }
 
 async function main() {

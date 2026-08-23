@@ -86,6 +86,7 @@ Main features:
 - Lets you stop monitoring manual paths and ignore detected VideoCAT drives without deleting their marker.
 - Periodically checks for newly connected drives.
 - Periodically rescans monitored paths to detect new content.
+- Reconciles missing files after complete scans: hides them without losing tags, metadata or history and reactivates them if they return.
 - Scans drives or paths on demand.
 - Processes pending deletes automatically.
 - Processes the `A descargar` queue, copying files into the configured local folder.
@@ -422,8 +423,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.7
-reiterstahl/videocat-web:0.1.7
+reiterstahl/videocat-server:0.1.9
+reiterstahl/videocat-web:0.1.9
 ```
 
 `latest` tags are also published:
@@ -470,8 +471,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.7 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.7 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.9 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.9 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -484,10 +485,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.7
+  image: reiterstahl/videocat-server:0.1.9
 
 web:
-  image: reiterstahl/videocat-web:0.1.7
+  image: reiterstahl/videocat-web:0.1.9
 ```
 
 ## Main Endpoints

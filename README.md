@@ -86,6 +86,7 @@ Funciones principales:
 - Permite dejar de monitorear rutas manuales y ocultar discos VideoCAT detectados sin borrar su marcador.
 - Revisa periódicamente si se conectaron nuevos discos.
 - Reescanea periódicamente las rutas monitoreadas para detectar contenido nuevo.
+- Concilia archivos ausentes tras pasadas completas: los oculta sin perder etiquetas, metadatos ni historial y los reactiva si reaparecen.
 - Escanea discos o rutas bajo solicitud.
 - Procesa borrados pendientes automáticamente.
 - Procesa la cola `A descargar`, copiando archivos hacia la carpeta local configurada.
@@ -422,8 +423,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.7
-reiterstahl/videocat-web:0.1.7
+reiterstahl/videocat-server:0.1.9
+reiterstahl/videocat-web:0.1.9
 ```
 
 También se publican etiquetas `latest`:
@@ -470,8 +471,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.7 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.7 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.9 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile -t reiterstahl/videocat-web:0.1.9 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -484,10 +485,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.7
+  image: reiterstahl/videocat-server:0.1.9
 
 web:
-  image: reiterstahl/videocat-web:0.1.7
+  image: reiterstahl/videocat-web:0.1.9
 ```
 
 ## Endpoints principales
