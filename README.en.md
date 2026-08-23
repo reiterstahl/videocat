@@ -97,24 +97,23 @@ Main features:
 
 ## Current Release
 
-The first public release is `v0.1.0`.
+The current release is `v0.1.9`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.0.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.9.exe`
 
 Recommended companion verification:
 
 ```text
-SHA-256: 057dc8fa22834ea9c0bb4de5b2abe612bddc6446395c20e65154bfa820250b5b
-MD5:     54d481f48c27b7a91d9a6c17e1b655eb
+SHA-256 and MD5 checksums for the executable are published as assets in the corresponding release.
 ```
 
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.0.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.9.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -307,7 +306,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.0.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.9.exe
 ```
 
 Usage:
