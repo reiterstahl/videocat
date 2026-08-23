@@ -435,7 +435,7 @@ function configHtml(): string {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>VideoCAT Companion</title>
+  <title>VideoCAT Companion v${app.getVersion()}</title>
   <style>
     :root { color-scheme: dark; }
     body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #10171c; color: #eef5f7; }
@@ -470,12 +470,13 @@ function configHtml(): string {
     #status { min-height: 18px; color: #93d8af; font-size: 13px; font-weight: 800; }
     #status.is-error { color: #ffb4a4; }
     #status.is-info { color: #b1c4ce; }
+    .version { color: #fc6121; font-size: 12px; font-weight: 800; vertical-align: middle; }
   </style>
 </head>
 <body>
   <main>
     <div>
-      <h1>VideoCAT Companion</h1>
+      <h1>VideoCAT Companion <span class="version">v${app.getVersion()}</span></h1>
       <p>Configura la conexion que usa el agente para reportar escaneos y recibir tareas.</p>
     </div>
     <form id="form" class="grid">
@@ -743,7 +744,7 @@ function openConfigWindow(): void {
   configWindow = new BrowserWindow({
     width: 680,
     height: 620,
-    title: "VideoCAT Companion",
+    title: `VideoCAT Companion v${app.getVersion()}`,
     icon: iconPath() || undefined,
     resizable: true,
     webPreferences: {
@@ -764,7 +765,7 @@ function logHtml(): string {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>VideoCAT Actividad</title>
+  <title>VideoCAT Actividad v${app.getVersion()}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -787,12 +788,13 @@ function logHtml(): string {
     .error .level { color: #ffb4a4; background: rgba(239, 68, 68, 0.2); }
     footer { padding: 10px 18px; color: #78909c; border-top: 1px solid #26343c; background: #121b20; font-size: 12px; font-weight: 700; }
     .empty { color: #78909c; padding: 20px; text-align: center; font-family: Segoe UI, Arial, sans-serif; }
+    .version { color: #fc6121; font-size: 12px; font-weight: 800; vertical-align: middle; }
   </style>
 </head>
 <body>
   <main>
     <header>
-      <h1>Actividad de VideoCAT Companion</h1>
+      <h1>Actividad de VideoCAT Companion <span class="version">v${app.getVersion()}</span></h1>
       <div class="actions">
         <label><input id="follow" type="checkbox" checked /> Seguir</label>
         <button id="clear" type="button">Limpiar</button>
@@ -874,7 +876,7 @@ function openLogWindow(): void {
   logWindow = new BrowserWindow({
     width: 980,
     height: 620,
-    title: "VideoCAT Actividad",
+    title: `VideoCAT Actividad v${app.getVersion()}`,
     icon: iconPath() || undefined,
     resizable: true,
     webPreferences: {
@@ -909,7 +911,7 @@ function iconPath(): string {
 
 function updateMenu(): void {
   if (!tray) return;
-  const companionLabel = companion ? "Companion activo" : "Companion detenido";
+  const companionLabel = `${companion ? "Companion activo" : "Companion detenido"} v${app.getVersion()}`;
 
   const manualTargets = parseTargets(process.env.COMPANION_MONITORED_TARGETS).filter((target) => target.enabled !== false);
   const diskItems = lastMounted.length === 0 && manualTargets.length === 0
@@ -1035,7 +1037,7 @@ async function main(): Promise<void> {
 
   const icon = iconPath();
   tray = new Tray(icon ? nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }) : nativeImage.createEmpty());
-  tray.setToolTip("VideoCAT Companion");
+  tray.setToolTip(`VideoCAT Companion v${app.getVersion()}`);
   tray.on("click", () => void openVideoCat());
 
   startCompanion();

@@ -141,6 +141,17 @@ button {
   color: var(--matrix-primary);
 }
 
+.app-version {
+  align-self: flex-end;
+  margin-bottom: -2px;
+  color: #81919a;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  opacity: 0.82;
+}
+
 .agent-status-dot {
   width: 10px;
   height: 10px;

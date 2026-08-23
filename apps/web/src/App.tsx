@@ -224,6 +224,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.9";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -2056,6 +2057,7 @@ export function App() {
           <img className="brand-logo" src={activeLogo} alt="" />
           <div className="brand-word">
             Video<span>CAT</span>
+            <small className="app-version">v{webVersion}</small>
             <em
               className={`agent-status-dot ${companionIndicatorState}`}
               title={companionIndicatorLabel}
