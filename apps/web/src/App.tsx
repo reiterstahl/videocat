@@ -98,6 +98,11 @@ type DownloadSummaryResponse = {
   entries: DownloadQueueEntry[];
 };
 
+type DownloadSpeedSample = {
+  timestamp: number;
+  bytesPerSecond: number;
+};
+
 type RandomDownloadResponse = {
   queued: number;
   queuedBytes: number;
@@ -448,6 +453,52 @@ function downloadProgressPercent(entry: DownloadQueueEntry): number {
   return Math.max(0, Math.min(100, Math.round((entry.progressBytes / entry.file.sizeBytes) * 100)));
 }
 
+function transferEtaLabel(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return "Calculando...";
+  const rounded = Math.max(1, Math.ceil(seconds));
+  if (rounded < 60) return `${rounded} s`;
+  if (rounded < 3600) return `${Math.floor(rounded / 60)} min ${rounded % 60} s`;
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  return `${hours} h ${minutes} min`;
+}
+
+function TransferSpeedChart({ samples }: { samples: DownloadSpeedSample[] }) {
+  const width = 640;
+  const height = 150;
+  const chartSamples = samples.length > 1
+    ? samples
+    : samples.length === 1
+      ? [{ ...samples[0], timestamp: samples[0].timestamp - 1 }, samples[0]]
+      : [
+          { timestamp: Date.now() - 1, bytesPerSecond: 0 },
+          { timestamp: Date.now(), bytesPerSecond: 0 }
+        ];
+  const maxSpeed = Math.max(1, ...chartSamples.map((sample) => sample.bytesPerSecond));
+  const points = chartSamples.map((sample, index) => {
+    const x = chartSamples.length === 1 ? width : (index / (chartSamples.length - 1)) * width;
+    const y = height - (sample.bytesPerSecond / maxSpeed) * (height - 14) - 7;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const areaPoints = `0,${height} ${points.join(" ")} ${width},${height}`;
+
+  return (
+    <svg
+      aria-label="Velocidad reciente de transferencia"
+      className="transfer-speed-chart"
+      preserveAspectRatio="none"
+      role="img"
+      viewBox={`0 0 ${width} ${height}`}
+    >
+      <line className="transfer-chart-grid" x1="0" x2={width} y1={height * 0.25} y2={height * 0.25} />
+      <line className="transfer-chart-grid" x1="0" x2={width} y1={height * 0.5} y2={height * 0.5} />
+      <line className="transfer-chart-grid" x1="0" x2={width} y1={height * 0.75} y2={height * 0.75} />
+      <polygon className="transfer-chart-area" points={areaPoints} />
+      <polyline className="transfer-chart-line" points={points.join(" ")} />
+    </svg>
+  );
+}
+
 function folderPath(filePath: string): string {
   const index = Math.max(filePath.lastIndexOf("\\"), filePath.lastIndexOf("/"));
   return index >= 0 ? filePath.slice(0, index) : filePath;
@@ -622,6 +673,7 @@ export function App() {
   const [downloadActionBusy, setDownloadActionBusy] = useState(false);
   const [downloadPauseBusy, setDownloadPauseBusy] = useState(false);
   const [downloadProcessing, setDownloadProcessing] = useState(false);
+  const [downloadSpeedSamples, setDownloadSpeedSamples] = useState<DownloadSpeedSample[]>([]);
   const [clearProcessedQueuePromptOpen, setClearProcessedQueuePromptOpen] = useState(false);
   const [selectedDownloadQueueIds, setSelectedDownloadQueueIds] = useState<string[]>([]);
   const [downloadMessage, setDownloadMessage] = useState("");
@@ -642,6 +694,11 @@ export function App() {
   const [connectedPanelCollapsed, setConnectedPanelCollapsed] = useState(
     () => localStorage.getItem("videocat-connected-panel-collapsed") === "true"
   );
+  const downloadProgressSampleRef = useRef<{
+    queueId: string;
+    progressBytes: number;
+    timestamp: number;
+  } | null>(null);
   const previousMountedDiskIdsRef = useRef<Set<string>>(new Set());
   const [folderUsage, setFolderUsage] = useState<FolderUsageItem[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
@@ -683,6 +740,33 @@ export function App() {
   );
   const allRemovableDownloadsSelected = removableDownloadEntries.length > 0 &&
     removableDownloadEntries.every((entry) => selectedDownloadQueueIdSet.has(entry.id));
+  const activeDownload = useMemo(
+    () => (downloadSummary?.entries ?? []).find((entry) => entry.status === "downloading") ?? null,
+    [downloadSummary]
+  );
+  const activeDownloadPercent = activeDownload ? downloadProgressPercent(activeDownload) : 0;
+  const currentDownloadSpeed = useMemo(() => {
+    if (!activeDownload || downloadSpeedSamples.length === 0) return 0;
+    const progressUpdatedAt = activeDownload.progressUpdatedAt
+      ? new Date(activeDownload.progressUpdatedAt).getTime()
+      : 0;
+    if (progressUpdatedAt > 0 && Date.now() - progressUpdatedAt > 8000) return 0;
+    const recent = downloadSpeedSamples.slice(-5);
+    return recent.reduce((total, sample) => total + sample.bytesPerSecond, 0) / recent.length;
+  }, [activeDownload, downloadSpeedSamples]);
+  const activeDownloadRemainingBytes = activeDownload
+    ? Math.max(0, activeDownload.file.sizeBytes - activeDownload.progressBytes)
+    : 0;
+  const activeDownloadEta = activeDownload && currentDownloadSpeed > 0
+    ? activeDownloadRemainingBytes / currentDownloadSpeed
+    : null;
+  const pendingDownloadBytes = Math.max(
+    0,
+    (downloadSummary?.pendingBytes ?? 0) - (activeDownload?.progressBytes ?? 0)
+  );
+  const downloadQueueEta = activeDownload && currentDownloadSpeed > 0
+    ? pendingDownloadBytes / currentDownloadSpeed
+    : null;
 
   function reviewQuerySuffix(): string {
     if (disks.length === 0) return "";
@@ -1076,10 +1160,52 @@ export function App() {
     if (!authenticated || viewMode !== "downloads") return;
     void loadDownloadSummary();
     const interval = window.setInterval(() => {
-      void loadDownloadSummary();
-    }, 10000);
+      void loadDownloadSummary(true);
+    }, (downloadSummary?.counts.downloading ?? 0) > 0 ? 2000 : 10000);
     return () => window.clearInterval(interval);
-  }, [authenticated, catalogVersion, downloadDiskIds.length, downloadDiskQuery, protectedUnlockVersion, viewMode]);
+  }, [authenticated, catalogVersion, downloadDiskIds.length, downloadDiskQuery, downloadSummary?.counts.downloading, protectedUnlockVersion, viewMode]);
+
+  useEffect(() => {
+    if (!activeDownload) {
+      downloadProgressSampleRef.current = null;
+      setDownloadSpeedSamples((current) => current.length > 0 ? [] : current);
+      return;
+    }
+
+    const serverTimestamp = activeDownload.progressUpdatedAt
+      ? new Date(activeDownload.progressUpdatedAt).getTime()
+      : Date.now();
+    const timestamp = Number.isFinite(serverTimestamp) ? serverTimestamp : Date.now();
+    const previous = downloadProgressSampleRef.current;
+
+    if (!previous || previous.queueId !== activeDownload.id || activeDownload.progressBytes < previous.progressBytes) {
+      let initialSpeed = 0;
+      const startedAt = activeDownload.startedAt ? new Date(activeDownload.startedAt).getTime() : 0;
+      if (activeDownload.progressBytes > 0 && startedAt > 0 && timestamp > startedAt) {
+        initialSpeed = activeDownload.progressBytes / ((timestamp - startedAt) / 1000);
+      }
+      setDownloadSpeedSamples(initialSpeed > 0 ? [{ timestamp, bytesPerSecond: initialSpeed }] : []);
+      downloadProgressSampleRef.current = {
+        queueId: activeDownload.id,
+        progressBytes: activeDownload.progressBytes,
+        timestamp
+      };
+      return;
+    }
+
+    if (activeDownload.progressBytes <= previous.progressBytes) return;
+    const elapsedSeconds = Math.max(0.1, (timestamp - previous.timestamp) / 1000);
+    const bytesPerSecond = (activeDownload.progressBytes - previous.progressBytes) / elapsedSeconds;
+    setDownloadSpeedSamples((current) => [
+      ...current,
+      { timestamp, bytesPerSecond }
+    ].slice(-30));
+    downloadProgressSampleRef.current = {
+      queueId: activeDownload.id,
+      progressBytes: activeDownload.progressBytes,
+      timestamp
+    };
+  }, [activeDownload]);
 
   async function login(event: FormEvent) {
     event.preventDefault();
@@ -1165,21 +1291,21 @@ export function App() {
     }
   }
 
-  async function loadDownloadSummary() {
+  async function loadDownloadSummary(silent = false) {
     if (!companionOnline || downloadDiskIds.length === 0) {
       setDownloadSummary({ paused: false, counts: {}, pendingBytes: 0, entries: [] });
       return;
     }
     const params = new URLSearchParams();
     params.set("diskIds", downloadDiskQuery);
-    setDownloadLoading(true);
+    if (!silent) setDownloadLoading(true);
     try {
       const response = await api<DownloadSummaryResponse>(`/api/downloads/summary?${params.toString()}`);
       setDownloadSummary(response);
       const removableIds = new Set(response.entries.filter((entry) => entry.status === "queued" || entry.status === "failed").map((entry) => entry.id));
       setSelectedDownloadQueueIds((current) => current.filter((id) => removableIds.has(id)));
     } finally {
-      setDownloadLoading(false);
+      if (!silent) setDownloadLoading(false);
     }
   }
 
@@ -2795,24 +2921,87 @@ export function App() {
           ) : null}
           {downloadSummary?.paused ? <div className="download-paused-banner">Cola pausada: el companion no tomara nuevas descargas hasta reanudarla.</div> : null}
 
-          <div className="download-scoreboard">
-            <div className="review-score-card">
-              <span>En cola</span>
-              <strong>{(downloadSummary?.counts.queued ?? 0).toLocaleString(locale)}</strong>
+          <section
+            aria-label="Resumen de transferencias"
+            className={`transfer-overview ${activeDownload ? "is-active" : downloadSummary?.paused ? "is-paused" : "is-idle"}`}
+          >
+            <div className="transfer-primary">
+              <div className="transfer-file-copy">
+                <span className="transfer-state-label">
+                  <i aria-hidden="true" />
+                  {activeDownload
+                    ? "Transferencia activa"
+                    : downloadSummary?.paused
+                      ? "Cola detenida"
+                      : (downloadSummary?.counts.queued ?? 0) > 0
+                        ? "Lista para procesar"
+                        : "Sin transferencias pendientes"}
+                </span>
+                <strong title={activeDownload?.file.filename}>
+                  {activeDownload?.file.filename ?? "VideoCAT Companion"}
+                </strong>
+                <span className="transfer-file-path" title={activeDownload?.file.relativePath}>
+                  {activeDownload
+                    ? `${activeDownload.file.disk?.name ?? "-"} · ${activeDownload.file.relativePath}`
+                    : downloadSummary?.paused
+                      ? "La descarga actual terminará antes de detener la cola."
+                      : (downloadSummary?.counts.queued ?? 0) > 0
+                        ? "El companion puede comenzar con el siguiente archivo."
+                        : "Añade videos a la cola para comenzar una transferencia."}
+                </span>
+              </div>
+              <div className="transfer-percent">
+                <strong>{activeDownload ? `${activeDownloadPercent}%` : "-"}</strong>
+                <span>Progreso del archivo</span>
+              </div>
             </div>
-            <div className="review-score-card is-today">
-              <span>Descargando</span>
-              <strong>{(downloadSummary?.counts.downloading ?? 0).toLocaleString(locale)}</strong>
+
+            <div className="transfer-main-progress" aria-label={`Progreso ${activeDownloadPercent}%`}>
+              <span style={{ width: `${activeDownloadPercent}%` }} />
             </div>
-            <div className="review-score-card">
-              <span>Pendiente</span>
-              <strong>{formatBytes(downloadSummary?.pendingBytes ?? 0)}</strong>
+            <div className="transfer-progress-caption">
+              <span>{activeDownload ? formatBytes(activeDownload.progressBytes) : "0 B"}</span>
+              <span>{activeDownload ? formatBytes(activeDownload.file.sizeBytes) : "-"}</span>
             </div>
-            <div className="review-score-card is-freed">
-              <span>Descargados</span>
-              <strong>{(downloadSummary?.counts.done ?? 0).toLocaleString(locale)}</strong>
+
+            <div className="transfer-detail-grid">
+              <div className="transfer-chart-panel">
+                <div className="transfer-chart-heading">
+                  <div>
+                    <span>Velocidad reciente</span>
+                    <strong>{activeDownload ? `${formatBytes(Math.round(currentDownloadSpeed))}/s` : "-"}</strong>
+                  </div>
+                  <small>Últimas 30 muestras</small>
+                </div>
+                <TransferSpeedChart samples={downloadSpeedSamples} />
+              </div>
+              <dl className="transfer-vitals">
+                <div>
+                  <dt>ETA del archivo</dt>
+                  <dd>{activeDownload ? transferEtaLabel(activeDownloadEta) : "-"}</dd>
+                </div>
+                <div>
+                  <dt>ETA de la cola</dt>
+                  <dd>{activeDownload ? transferEtaLabel(downloadQueueEta) : "-"}</dd>
+                </div>
+                <div>
+                  <dt>Resta en este archivo</dt>
+                  <dd>{activeDownload ? formatBytes(activeDownloadRemainingBytes) : "-"}</dd>
+                </div>
+                <div>
+                  <dt>Cola restante</dt>
+                  <dd>{formatBytes(pendingDownloadBytes)}</dd>
+                </div>
+              </dl>
             </div>
-          </div>
+
+            <div className="transfer-queue-summary">
+              <div><span>En cola</span><strong>{(downloadSummary?.counts.queued ?? 0).toLocaleString(locale)}</strong></div>
+              <div><span>Descargando</span><strong>{(downloadSummary?.counts.downloading ?? 0).toLocaleString(locale)}</strong></div>
+              <div><span>Pendiente</span><strong>{formatBytes(pendingDownloadBytes)}</strong></div>
+              <div><span>Descargados</span><strong>{(downloadSummary?.counts.done ?? 0).toLocaleString(locale)}</strong></div>
+            </div>
+          </section>
 
           <section className="random-download-panel">
             <div className="random-download-copy">
