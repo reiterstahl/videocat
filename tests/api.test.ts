@@ -91,6 +91,7 @@ test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TEST
 test("categories, download queue and scan reconciliation work together", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const volumeId = `phase-one-${suffix}`;
+  const categoryLabel = `P1 ${suffix.slice(-12)}`;
   let diskId = "";
   let categoryKey = "";
 
@@ -109,9 +110,9 @@ test("categories, download queue and scan reconciliation work together", { skip:
       method: "POST",
       url: "/api/categories",
       headers: webMutationHeaders(cookie),
-      payload: { label: `Phase One ${suffix}`, color: "#2A9FD6" }
+      payload: { label: categoryLabel, color: "#2A9FD6" }
     });
-    assert.equal(categoryResponse.statusCode, 200);
+    assert.equal(categoryResponse.statusCode, 200, categoryResponse.body);
     categoryKey = categoryResponse.json().category.key;
 
     const registerResponse = await app.inject({
