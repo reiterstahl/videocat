@@ -32,18 +32,18 @@ export const fileScanStatusSchema = z.enum([
 export type FileScanStatus = z.infer<typeof fileScanStatusSchema>;
 
 export const registerDiskSchema = z.object({
-  name: z.string().min(1),
-  volumeLabel: z.string().optional().nullable(),
-  volumeId: z.string().optional().nullable(),
-  driveLetter: z.string().optional().nullable(),
+  name: z.string().min(1).max(200),
+  volumeLabel: z.string().max(200).optional().nullable(),
+  volumeId: z.string().max(500).optional().nullable(),
+  driveLetter: z.string().max(20).optional().nullable(),
   totalBytes: z.number().int().nonnegative().optional().nullable(),
-  fileSystem: z.string().optional().nullable(),
-  notes: z.string().optional().nullable()
+  fileSystem: z.string().max(100).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable()
 });
 
 export const scanStartSchema = z.object({
   diskId: z.string().uuid(),
-  rootPath: z.string().min(1)
+  rootPath: z.string().min(1).max(2000)
 });
 
 export const ffprobeVideoMetadataSchema = z.object({
@@ -51,26 +51,26 @@ export const ffprobeVideoMetadataSchema = z.object({
   width: z.number().int().positive().nullable().optional(),
   height: z.number().int().positive().nullable().optional(),
   fps: z.number().nonnegative().nullable().optional(),
-  videoCodec: z.string().nullable().optional(),
-  audioCodec: z.string().nullable().optional(),
+  videoCodec: z.string().max(100).nullable().optional(),
+  audioCodec: z.string().max(100).nullable().optional(),
   audioChannels: z.number().int().nonnegative().nullable().optional(),
   bitrate: z.number().int().nonnegative().nullable().optional(),
-  containerFormat: z.string().nullable().optional(),
+  containerFormat: z.string().max(200).nullable().optional(),
   streamCount: z.number().int().nonnegative().nullable().optional(),
   raw: z.unknown().optional()
 });
 
 export const agentFileSchema = z.object({
-  filename: z.string().min(1),
-  extension: z.string().min(1),
-  absolutePath: z.string().min(1),
-  relativePath: z.string().min(1),
+  filename: z.string().min(1).max(500),
+  extension: z.string().min(1).max(20),
+  absolutePath: z.string().min(1).max(4000),
+  relativePath: z.string().min(1).max(4000),
   sizeBytes: z.number().int().nonnegative(),
   folderSizeBytes: z.number().int().nonnegative().nullable().optional(),
   createdAt: z.string().datetime().nullable().optional(),
   modifiedAt: z.string().datetime().nullable().optional(),
   status: fileScanStatusSchema,
-  errorMessage: z.string().nullable().optional(),
+  errorMessage: z.string().max(4000).nullable().optional(),
   metadata: ffprobeVideoMetadataSchema.nullable().optional()
 });
 

@@ -13,6 +13,8 @@ import { catalogRoutes } from "./routes/catalog.js";
 const app = Fastify({
   logger: true,
   bodyLimit: 1024 * 1024 * 25,
+  connectionTimeout: 10_000,
+  requestTimeout: 120_000,
   trustProxy: env.TRUST_PROXY
 });
 

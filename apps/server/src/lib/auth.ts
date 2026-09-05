@@ -23,7 +23,8 @@ function clientKey(request: FastifyRequest, scope: string): string {
 function verifyJwt(token: string, audience: string): JwtPayload {
   const payload = jwt.verify(token, env.JWT_SECRET, {
     issuer: jwtIssuer,
-    audience
+    audience,
+    algorithms: ["HS256"]
   });
   if (typeof payload === "string") throw new Error("Invalid token payload");
   return payload;
@@ -38,6 +39,7 @@ export function signSession(username: string): string {
     subject: username,
     issuer: jwtIssuer,
     audience: webAudience,
+    algorithm: "HS256",
     expiresIn: "12h"
   });
 }
@@ -50,6 +52,7 @@ export function signProtectedFolderUnlock(): string {
   return jwt.sign({ scope: "protected-folder" }, env.JWT_SECRET, {
     issuer: jwtIssuer,
     audience: protectedAudience,
+    algorithm: "HS256",
     expiresIn: "12h"
   });
 }

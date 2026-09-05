@@ -78,12 +78,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return protectedSecurityProfile();
   });
 
-  app.patch("/api/profile/security", { preHandler: requireWebAuth }, async (request) => {
+  app.patch("/api/profile/security", { preHandler: requireWebAuth }, async (request, reply) => {
     const body = profileSecuritySchema.parse(request.body);
-    return updateProtectedSecurityProfile({
+    const profile = await updateProtectedSecurityProfile({
       currentPin: body.currentPin || undefined,
       newPin: body.newPin || undefined,
       protectedFolderPatterns: normalizeProtectedPatterns(body.protectedFolderPatterns)
     });
+    if (body.newPin) clearProtectedFolderCookie(reply);
+    return profile;
   });
 }

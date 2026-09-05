@@ -22,6 +22,11 @@ rand_pin() {
     shuf -i 1000-9999 -n 1
     return
   fi
+  if [ -r /dev/urandom ]; then
+    value="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
+    printf "%04d\n" "$((1000 + (value % 9000)))"
+    return
+  fi
   printf "%04d\n" "$((1000 + ($(date +%s) % 9000)))"
 }
 
@@ -43,6 +48,7 @@ else
 fi
 
 if [ ! -f .env ]; then
+  umask 077
   jwt_secret="$(rand_hex)"
   agent_token="$(rand_hex)"
   postgres_password="$(rand_hex)"

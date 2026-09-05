@@ -221,7 +221,7 @@ Para pruebas locales sin HTTPS puedes usar `COOKIE_SECURE=false`. En producción
 
 Requisitos:
 
-- Node.js 20 o superior.
+- Node.js 22 o superior; Node.js 24 LTS es la versión recomendada.
 - `ffmpeg` y `ffprobe` disponibles en `PATH`.
 - Disco externo montado y desbloqueado si usa BitLocker.
 

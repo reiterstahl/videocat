@@ -26,6 +26,25 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
+const configuredWebOrigins = env.WEB_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean);
+if (configuredWebOrigins.length === 0) {
+  throw new Error("WEB_ORIGIN must contain at least one http:// or https:// origin.");
+}
+env.WEB_ORIGIN = configuredWebOrigins.map((origin) => {
+  try {
+    const parsed = new URL(origin);
+    const hasUnexpectedParts = parsed.username
+      || parsed.password
+      || (parsed.pathname !== "/" && parsed.pathname !== "")
+      || parsed.search
+      || parsed.hash;
+    if (!["http:", "https:"].includes(parsed.protocol) || hasUnexpectedParts) throw new Error();
+    return parsed.origin;
+  } catch {
+    throw new Error(`WEB_ORIGIN contains an invalid origin: ${origin}`);
+  }
+}).join(",");
+
 function assertProductionSecret(name: string, value: string, minimumLength: number, blockedValues: string[]): void {
   if (process.env.NODE_ENV !== "production") return;
   const normalized = value.trim().toLowerCase();

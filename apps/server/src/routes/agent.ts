@@ -278,8 +278,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post("/api/agent/files/batch", { preHandler: requireAgentAuth }, async (request) => {
+  app.post("/api/agent/files/batch", { preHandler: requireAgentAuth }, async (request, reply) => {
     const body = filesBatchSchema.parse(request.body);
+    const scan = await prisma.scan.findUnique({
+      where: { id: body.scanId },
+      select: { diskId: true, status: true }
+    });
+    if (!scan || scan.diskId !== body.diskId) return reply.code(404).send({ message: "Scan not found for disk" });
+    if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     let errorCount = 0;
 
     for (const file of body.files) {
@@ -391,8 +397,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, seen: seen.count, reactivated: reactivated.count };
   });
 
-  app.post("/api/agent/errors/batch", { preHandler: requireAgentAuth }, async (request) => {
+  app.post("/api/agent/errors/batch", { preHandler: requireAgentAuth }, async (request, reply) => {
     const body = agentErrorsBatchSchema.parse(request.body);
+    const scan = await prisma.scan.findUnique({
+      where: { id: body.scanId },
+      select: { diskId: true, status: true }
+    });
+    if (!scan || scan.diskId !== body.diskId) return reply.code(404).send({ message: "Scan not found for disk" });
+    if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     await prisma.agentError.createMany({
       data: body.errors.map((error) => ({
         diskId: body.diskId,
@@ -603,37 +615,52 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!data) return reply.code(400).send({ message: "Missing thumbnail file" });
 
     const fields = data.fields as Record<string, { value?: unknown }>;
-    const diskId = String(fields.diskId?.value ?? "");
-    const relativePath = String(fields.relativePath?.value ?? "");
-    const kind = thumbnailKindSchema.parse(String(fields.kind?.value ?? ""));
-    const timestampSeconds = Number(fields.timestampSeconds?.value ?? 0);
+    const metadata = z.object({
+      diskId: z.string().uuid(),
+      relativePath: z.string().trim().min(1).max(4000),
+      kind: thumbnailKindSchema,
+      timestampSeconds: z.coerce.number().finite().nonnegative()
+    }).parse({
+      diskId: String(fields.diskId?.value ?? ""),
+      relativePath: String(fields.relativePath?.value ?? ""),
+      kind: String(fields.kind?.value ?? ""),
+      timestampSeconds: fields.timestampSeconds?.value ?? 0
+    });
 
     const videoFile = await prisma.videoFile.findUnique({
-      where: { diskId_relativePath: { diskId, relativePath } }
+      where: { diskId_relativePath: { diskId: metadata.diskId, relativePath: metadata.relativePath } }
     });
     if (!videoFile) return reply.code(404).send({ message: "Video file must be uploaded before thumbnails" });
 
-    const filename = `${kind}.jpg`;
-    const thumbnailRelativePath = path.posix.join(diskId, videoFile.id, filename);
+    const image = await data.toBuffer();
+    const isJpeg = image.length >= 4
+      && image[0] === 0xff
+      && image[1] === 0xd8
+      && image[image.length - 2] === 0xff
+      && image[image.length - 1] === 0xd9;
+    if (!isJpeg) return reply.code(415).send({ message: "Thumbnail must be a valid JPEG image" });
+
+    const filename = `${metadata.kind}.jpg`;
+    const thumbnailRelativePath = path.posix.join(metadata.diskId, videoFile.id, filename);
     const destination = path.join(env.THUMBNAILS_DIR, thumbnailRelativePath);
     await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.writeFile(destination, await data.toBuffer());
+    await fs.writeFile(destination, image);
 
     const thumbnail = await prisma.thumbnail.upsert({
       where: {
         videoFileId_kind: {
           videoFileId: videoFile.id,
-          kind
+          kind: metadata.kind
         }
       },
       create: {
         videoFileId: videoFile.id,
-        kind,
-        timestampSeconds,
+        kind: metadata.kind,
+        timestampSeconds: metadata.timestampSeconds,
         relativePath: thumbnailRelativePath
       },
       update: {
-        timestampSeconds,
+        timestampSeconds: metadata.timestampSeconds,
         relativePath: thumbnailRelativePath,
         createdAt: new Date()
       }

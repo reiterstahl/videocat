@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/web/package.json apps/web/package.json
@@ -15,6 +15,8 @@ ARG VITE_VIDEOCAT_VERSION=0.1.9
 ENV VITE_VIDEOCAT_VERSION=$VITE_VIDEOCAT_VERSION
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/web
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30.4-alpine
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1

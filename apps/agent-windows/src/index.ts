@@ -162,6 +162,13 @@ class AgentAuthError extends Error {
   }
 }
 
+class AgentRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = "AgentRequestError";
+  }
+}
+
 function envSource(name: string): string {
   if (envSources.has(name)) return envSources.get(name)!;
   return process.env[name] ? "variables de entorno de PowerShell/sistema" : "no configurado";
@@ -690,6 +697,7 @@ function jsonResponse(response: http.ServerResponse, statusCode: number, body: u
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
+    "Vary": "Origin",
     "X-Content-Type-Options": "nosniff"
   });
   response.end(JSON.stringify(body));
@@ -779,15 +787,15 @@ async function resolveCompanionPath(body: CompanionOpenRequest): Promise<string 
   const mounted = await discoverCompanionTargets();
   const match = mounted.find(({ marker }) => marker.diskId === body.diskId);
   if (match) {
-    return path.join(match.root, ...relative.split("/"));
+    return canonicalPathInsideRoot(match.root, relative);
   }
 
   if (body.absolutePath) {
     const root = volumeRootFromPath(normalizeScanPath(body.absolutePath));
     const marker = await readMarkerAtRoot(root);
-    if (marker?.diskId === body.diskId) return path.join(root, ...relative.split("/"));
+    if (marker?.diskId === body.diskId) return canonicalPathInsideRoot(root, relative);
     const manual = monitoredCompanionTargets().find((target) => target.id === body.diskId);
-    if (manual) return path.join(manual.path, ...relative.split("/"));
+    if (manual) return canonicalPathInsideRoot(manual.path, relative);
   }
 
   return null;
@@ -834,7 +842,8 @@ async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promis
 
   const response = await fetch(`${process.env.SERVER_URL}${url}`, {
     ...init,
-    headers
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(60_000)
   });
   if (!response.ok) {
     throw new Error(`${response.status} ${await response.text()}`);
@@ -850,6 +859,20 @@ function safePathInsideRoot(root: string, relativePathValue: string): string | n
   const fromRoot = path.relative(rootResolved, target);
   if (!fromRoot || fromRoot.startsWith("..") || path.isAbsolute(fromRoot)) return null;
   return target;
+}
+
+async function canonicalPathInsideRoot(root: string, relativePathValue: string): Promise<string | null> {
+  const target = safePathInsideRoot(root, relativePathValue);
+  if (!target) return null;
+
+  try {
+    const [canonicalRoot, canonicalTarget] = await Promise.all([fs.realpath(root), fs.realpath(target)]);
+    const fromRoot = path.relative(canonicalRoot, canonicalTarget);
+    if (!fromRoot || fromRoot.startsWith("..") || path.isAbsolute(fromRoot)) return null;
+    return canonicalTarget;
+  } catch {
+    return null;
+  }
 }
 
 async function removeDeletedFileFromCatalog(fileId: string): Promise<void> {
@@ -894,7 +917,13 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
     try {
       const kind = await existingPath(target);
       if (kind === "file") {
-        await deleteLocalFile(target);
+        const canonicalTarget = await canonicalPathInsideRoot(root, file.relativePath);
+        if (!canonicalTarget) {
+          failed += 1;
+          console.warn(`Ruta fuera de la unidad omitida: ${file.relativePath}`);
+          continue;
+        }
+        await deleteLocalFile(canonicalTarget);
         await removeDeletedFileFromCatalog(file.id);
         deleted += 1;
         console.log(`Borrado automatico: ${file.relativePath}`);
@@ -971,7 +1000,7 @@ async function copyFileWithProgress(source: string, destination: string, file: D
   }
 
   const sourceStream = createReadStream(source);
-  const destinationStream = createWriteStream(destination);
+  const destinationStream = createWriteStream(destination, { flags: "wx" });
   const progress = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       copiedBytes += chunk.length;
@@ -1065,9 +1094,17 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
           continue;
         }
 
+        const canonicalSource = await canonicalPathInsideRoot(root, file.relativePath);
+        if (!canonicalSource) {
+          failed += 1;
+          await updateDownloadStatus(file.id, "failed", { errorMessage: `Ruta fuera de la unidad omitida: ${file.relativePath}` }).catch(() => undefined);
+          console.warn(`Descarga omitida porque la ruta sale de la unidad: ${file.relativePath}`);
+          continue;
+        }
+
         await updateDownloadStatus(file.id, "downloading", { progressBytes: 0 });
         destination = await uniqueDestinationPath(downloadDir, marker.diskName, file.filename);
-        await copyFileWithProgress(source, destination, file);
+        await copyFileWithProgress(canonicalSource, destination, file);
         await updateDownloadStatus(file.id, "done", { destinationPath: destination });
         copied += 1;
         console.log(`Descarga completada: ${file.relativePath} -> ${destination}`);
@@ -1132,8 +1169,11 @@ async function companionHealthCheck(port: number): Promise<boolean> {
 
 async function shutdownExistingCompanion(port: number): Promise<boolean> {
   try {
+    const headers = new Headers();
+    if (process.env.COMPANION_TOKEN) headers.set("X-VideoCat-Companion-Token", process.env.COMPANION_TOKEN);
     const response = await fetch(`http://127.0.0.1:${port}/shutdown`, {
       method: "POST",
+      headers,
       signal: AbortSignal.timeout(1000)
     });
     return response.ok;
@@ -1225,12 +1265,12 @@ async function runCompanion(): Promise<void> {
       const responseOrigin = origin && allowedOrigins.has(origin) ? origin : undefined;
 
       if (request.url === "/health" && request.method === "GET") {
-        jsonResponse(response, 200, { ok: true, app: companionAppName, version: companionVersion }, origin);
+        jsonResponse(response, 200, { ok: true, app: companionAppName, version: companionVersion }, responseOrigin);
         return;
       }
 
       if (request.url === "/health" && request.method === "OPTIONS") {
-        jsonResponse(response, 204, {}, origin);
+        jsonResponse(response, 204, {}, responseOrigin);
         return;
       }
 
@@ -1244,14 +1284,14 @@ async function runCompanion(): Promise<void> {
         return;
       }
 
-      if (request.url === "/shutdown" && request.method === "POST") {
-        jsonResponse(response, 200, { ok: true }, responseOrigin);
-        setTimeout(() => activeServer?.close(() => process.exit(0)), 50);
+      if (!isCompanionTokenAllowed(request)) {
+        jsonResponse(response, 401, { ok: false, reason: "forbidden" }, responseOrigin);
         return;
       }
 
-      if (!isCompanionTokenAllowed(request)) {
-        jsonResponse(response, 401, { ok: false, reason: "forbidden" }, responseOrigin);
+      if (request.url === "/shutdown" && request.method === "POST") {
+        jsonResponse(response, 200, { ok: true }, responseOrigin);
+        setTimeout(() => activeServer?.close(() => process.exit(0)), 50);
         return;
       }
 
@@ -1454,18 +1494,21 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      const response = await fetch(`${requiredEnv("SERVER_URL")}${url}`, init);
+      const response = await fetch(`${requiredEnv("SERVER_URL")}${url}`, {
+        ...init,
+        signal: init.signal ?? AbortSignal.timeout(60_000)
+      });
       if (!response.ok) {
         const body = await response.text();
         if (response.status === 401 && body.includes("Invalid agent token")) {
           throw new AgentAuthError(`${response.status} ${body}\n${agentTokenHint()}`);
         }
-        throw new Error(`${response.status} ${body}`);
+        throw new AgentRequestError(`${response.status} ${body}`, response.status === 408 || response.status === 429 || response.status >= 500);
       }
       return (await response.json()) as T;
     } catch (error) {
       lastError = error;
-      if (error instanceof AgentAuthError) throw error;
+      if (error instanceof AgentAuthError || (error instanceof AgentRequestError && !error.retryable)) throw error;
       const waitMs = 800 * attempt;
       console.warn(`Intento ${attempt}/${retries} fallo para ${url}. Reintentando en ${waitMs}ms.`);
       await new Promise((resolve) => setTimeout(resolve, waitMs));

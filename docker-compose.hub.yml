@@ -17,6 +17,7 @@ services:
   server:
     image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.9}}
     restart: unless-stopped
+    init: true
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +45,8 @@ services:
     image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.9}}
     restart: unless-stopped
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     ports:
       - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PUBLISHED_PORT:-8081}:80"
 

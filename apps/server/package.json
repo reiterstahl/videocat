@@ -18,7 +18,7 @@
     "@fastify/multipart": "^10.0.0",
     "@prisma/client": "^5.17.0",
     "@videocat/shared": "0.1.0",
-    "fastify": "^5.8.5",
+    "fastify": "^5.12.3",
     "jsonwebtoken": "^9.0.2",
     "zod": "^3.23.8"
   },

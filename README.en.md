@@ -221,7 +221,7 @@ For local HTTP testing you can use `COOKIE_SECURE=false`. In production with HTT
 
 Requirements:
 
-- Node.js 20 or newer.
+- Node.js 22 or newer; Node.js 24 LTS is recommended.
 - `ffmpeg` and `ffprobe` available in `PATH`.
 - External drive mounted and manually unlocked if it uses BitLocker.
 

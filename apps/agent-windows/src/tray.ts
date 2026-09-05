@@ -427,7 +427,11 @@ function stopCompanion(): void {
 
 async function openVideoCat(): Promise<void> {
   const target = process.env.WEB_URL ?? process.env.SERVER_URL ?? "http://localhost:8081";
-  await shell.openExternal(target);
+  const parsed = new URL(target);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("WEB_URL debe usar http:// o https://.");
+  }
+  await shell.openExternal(parsed.toString());
 }
 
 function configHtml(): string {
@@ -750,7 +754,8 @@ function openConfigWindow(): void {
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
   configWindow.removeMenu();
@@ -882,7 +887,8 @@ function openLogWindow(): void {
     webPreferences: {
       preload: preloadPath(),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
   logWindow.removeMenu();

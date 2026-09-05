@@ -53,7 +53,14 @@ function hashPin(pin: string): string {
 function verifyHashedPin(pin: string, storedHash: string): boolean {
   const [algorithm, iterationText, salt, expected] = storedHash.split("$");
   const iterations = Number(iterationText);
-  if (algorithm !== "pbkdf2-sha256" || !Number.isInteger(iterations) || !salt || !expected) return false;
+  if (
+    algorithm !== "pbkdf2-sha256"
+    || !Number.isInteger(iterations)
+    || iterations < 100_000
+    || iterations > 1_000_000
+    || !/^[a-f0-9]{32}$/i.test(salt ?? "")
+    || !/^[a-f0-9]{64}$/i.test(expected ?? "")
+  ) return false;
   const actual = crypto.pbkdf2Sync(pin, salt, iterations, 32, "sha256").toString("hex");
   return constantTimeEqual(actual, expected);
 }
