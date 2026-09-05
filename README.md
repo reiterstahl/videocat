@@ -10,6 +10,7 @@
   <p>
     <a href="https://videocat.centeran.com"><img alt="Website" src="https://img.shields.io/badge/Website-videocat.centeran.com-FC6121?style=for-the-badge" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/reiterstahl/videocat?label=Release&style=for-the-badge&color=FC6121" /></a>
+    <a href="https://github.com/reiterstahl/videocat/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/reiterstahl/videocat/ci.yml?branch=main&label=CI&style=for-the-badge" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Windows Companion" src="https://img.shields.io/badge/Windows-Companion-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
     <a href="https://github.com/reiterstahl/videocat/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0--or--later-2E8B57?style=for-the-badge" /></a>
     <a href="https://github.com/sponsors/reiterstahl"><img alt="Sponsor" src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" /></a>
@@ -56,6 +57,7 @@ El sistema tiene dos partes:
 - Categorías personalizadas con colores, asignables de forma múltiple por video.
 - Categorías incluidas para revisión: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` y otras definidas por el usuario.
 - Review aleatorio de videos pendientes, filtrable por discos seleccionados/conectados.
+- Precarga del siguiente video y sus miniaturas para hacer más fluido el flujo de review.
 - Indicadores de review: pendientes, marcados hoy, racha semanal y GB liberados.
 - Modal de espacio a recuperar que recomienda qué disco conectar para liberar más espacio.
 - Sección `A descargar` para poner videos en cola y copiarlos desde discos conectados hacia una carpeta local.
@@ -94,6 +96,8 @@ Funciones principales:
 - Abre la carpeta local del archivo.
 - Reporta estado a la web para mostrar si el companion está sincronizado.
 - Ejecuta borrados solo cuando el disco correcto está conectado y la ruta es segura.
+- Valida la ruta canónica antes de abrir, copiar o borrar para impedir escapes mediante enlaces o junctions.
+- Evita sobrescribir por accidente un archivo existente en la carpeta de descarga.
 
 ## Release actual
 
@@ -336,14 +340,24 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 - La web requiere login.
 - Las rutas del agente están protegidas por `AGENT_TOKEN`.
 - El companion local puede protegerse con `COMPANION_TOKEN`.
+- Las sesiones JWT restringen explícitamente el algoritmo de firma y caducan a las 12 horas.
+- Las operaciones web que modifican datos validan su origen contra `WEB_ORIGIN`.
+- La API utiliza límites de cuerpo y tiempo, rate limiting acotado y respuestas sensibles sin caché.
+- Nginx y Fastify envían CSP, HSTS bajo HTTPS y otras cabeceras de endurecimiento.
+- Las miniaturas se validan como JPEG antes de guardarse.
+- Las rutas locales se resuelven de forma canónica antes de abrir, copiar o borrar archivos.
 - Cookies seguras y `TRUST_PROXY` están soportados para despliegues con HTTPS.
 - Folders cuyo nombre coincida con `PROTECTED_FOLDER_PATTERNS` requieren PIN en la sesión web.
 - El servidor no necesita acceso directo a tus discos externos.
 - Los videos originales no se suben al servidor.
 - Se suben metadatos, rutas relativas, miniaturas y errores de auditoría.
 - El borrado físico ocurre solo en Windows, por el companion, cuando el disco está conectado.
+- CI ejecuta instalación limpia, auditoría de dependencias, typecheck y build en cada cambio a `main` y en cada pull request.
+- Dependabot revisa semanalmente dependencias npm, imágenes base y GitHub Actions.
 
 `PROTECTED_FOLDER_PATTERNS` es una lista separada por comas. Para una instalación pública o genérica puedes usar valores como `Private,Protected`. Para una instalación privada, define ahí los fragmentos reales de nombre de carpeta que quieres proteger sin modificar el código.
+
+Consulta [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada y [ROADMAP.es.md](ROADMAP.es.md) para conocer el plan de endurecimiento y fiabilidad pendiente.
 
 ## Backups
 
@@ -499,7 +513,7 @@ Agente:
 - `POST /api/agent/files/batch`
 - `POST /api/agent/thumbnails/upload`
 - `POST /api/agent/scan/finish`
-- `POST /api/agent/audit/errors`
+- `POST /api/agent/errors/batch`
 
 Web:
 

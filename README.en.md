@@ -10,6 +10,7 @@
   <p>
     <a href="https://videocat.centeran.com"><img alt="Website" src="https://img.shields.io/badge/Website-videocat.centeran.com-FC6121?style=for-the-badge" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/reiterstahl/videocat?label=Release&style=for-the-badge&color=FC6121" /></a>
+    <a href="https://github.com/reiterstahl/videocat/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/reiterstahl/videocat/ci.yml?branch=main&label=CI&style=for-the-badge" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Windows Companion" src="https://img.shields.io/badge/Windows-Companion-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
     <a href="https://github.com/reiterstahl/videocat/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0--or--later-2E8B57?style=for-the-badge" /></a>
     <a href="https://github.com/sponsors/reiterstahl"><img alt="Sponsor" src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" /></a>
@@ -56,6 +57,7 @@ The system has two parts:
 - Custom multi-category labels with colors.
 - Built-in review categories: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` and user-defined categories.
 - Random review flow for pending videos, filtered by selected/connected drives.
+- Preloading for the next video and its thumbnails to keep review decisions responsive.
 - Review indicators: pending count, marked today, weekly streak and freed GB.
 - Recoverable-space modal that recommends which drive to connect to free the most space.
 - `A descargar` download queue to copy selected videos from connected drives into a local folder.
@@ -94,6 +96,8 @@ Main features:
 - Opens the local folder for a file.
 - Reports status to the web UI so the site can show whether the companion is synced.
 - Deletes files only when the correct drive is connected and the path is safe.
+- Resolves canonical paths before opening, copying or deleting to prevent symlink and junction escapes.
+- Avoids accidentally overwriting an existing file in the download folder.
 
 ## Current Release
 
@@ -336,14 +340,24 @@ If you use `Mostrar conectados`, Review picks random videos only from the select
 - The web app requires login.
 - Agent routes are protected by `AGENT_TOKEN`.
 - The local companion can be protected with `COMPANION_TOKEN`.
+- Session JWTs explicitly restrict the signing algorithm and expire after 12 hours.
+- State-changing web operations validate their origin against `WEB_ORIGIN`.
+- The API enforces body and time limits, bounded rate limiting and no-store responses for sensitive data.
+- Nginx and Fastify send CSP, HSTS over HTTPS and additional hardening headers.
+- Thumbnail uploads are validated as JPEG before being stored.
+- Local paths are resolved canonically before files are opened, copied or deleted.
 - Secure cookies and `TRUST_PROXY` are supported for HTTPS deployments.
 - Folders matching `PROTECTED_FOLDER_PATTERNS` require a PIN in the web session.
 - The server does not need direct access to your external drives.
 - Original videos are not uploaded to the server.
 - Metadata, relative paths, thumbnails and audit errors are uploaded.
 - Physical deletion happens only on Windows, through the companion, when the drive is connected.
+- CI runs a clean install, dependency audit, typecheck and build for every change to `main` and every pull request.
+- Dependabot checks npm dependencies, base images and GitHub Actions every week.
 
 `PROTECTED_FOLDER_PATTERNS` is a comma-separated list. For a public or generic installation, use values such as `Private,Protected`. For a private deployment, set it to the real folder-name fragments you want to protect without changing the code.
+
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting and [ROADMAP.md](ROADMAP.md) for the remaining security and reliability plan.
 
 ## Backups
 
@@ -499,7 +513,7 @@ Agent:
 - `POST /api/agent/files/batch`
 - `POST /api/agent/thumbnails/upload`
 - `POST /api/agent/scan/finish`
-- `POST /api/agent/audit/errors`
+- `POST /api/agent/errors/batch`
 
 Web:
 
