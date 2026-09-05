@@ -95,6 +95,7 @@ Funciones principales:
 - Abre videos con el reproductor por defecto.
 - Abre la carpeta local del archivo.
 - Reporta estado a la web para mostrar si el companion está sincronizado.
+- Genera una identidad UUID persistente por instalación y la reporta al servidor para distinguir companions durante la transición de seguridad.
 - Ejecuta borrados solo cuando el disco correcto está conectado y la ruta es segura.
 - Valida la ruta canónica antes de abrir, copiar o borrar para impedir escapes mediante enlaces o junctions.
 - Evita sobrescribir por accidente un archivo existente en la carpeta de descarga.
@@ -247,6 +248,7 @@ AGENT_STATE_DIR=
 FFMPEG_PATH=
 FFPROBE_PATH=
 COMPANION_PORT=29429
+COMPANION_NAME=
 COMPANION_ALLOWED_ORIGINS=https://cat.example.com,http://localhost:5173,http://127.0.0.1:5173
 COMPANION_DISK_POLL_MS=5000
 COMPANION_SCAN_POLL_MS=900000
@@ -339,6 +341,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 
 - La web requiere login.
 - Las rutas del agente están protegidas por `AGENT_TOKEN`.
+- Cada instalación del Companion mantiene además una identidad UUID persistente en su directorio de estado; esta entrega la registra y permite revocarla sin rotar todavía el token compartido.
 - El companion local puede protegerse con `COMPANION_TOKEN`.
 - Las sesiones JWT restringen explícitamente el algoritmo de firma y caducan a las 12 horas.
 - Las operaciones web que modifican datos validan su origen contra `WEB_ORIGIN`.

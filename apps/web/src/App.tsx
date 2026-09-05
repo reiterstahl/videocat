@@ -223,6 +223,13 @@ type CompanionStatusResponse = {
   version?: number;
   mountedDiskCount?: number;
   mountedDiskIds?: string[];
+  agents?: Array<{
+    installationId: string;
+    name: string | null;
+    version: number;
+    lastSeenAt: string;
+    revokedAt: string | null;
+  }>;
 };
 
 type MountedCompanionDisk = {

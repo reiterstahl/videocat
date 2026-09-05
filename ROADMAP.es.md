@@ -43,13 +43,15 @@ Criterio de finalización: autenticación, folders protegidos, transiciones de c
 
 Prioridad: alta. Resuelve el token local opcional y el `AGENT_TOKEN` compartido.
 
-- [ ] Generar una identidad criptográficamente aleatoria para cada instalación del companion.
+- [x] Generar y persistir una identidad criptográficamente aleatoria para cada instalación del companion.
 - [ ] Mostrar desde el companion un código de emparejamiento temporal y de un solo uso.
 - [ ] Guardar únicamente hashes de credenciales en el servidor y proteger los secretos locales con Windows Credential Manager o DPAPI.
 - [ ] Dar a cada agente nombre, última conexión, capacidades permitidas y controles de revocación.
 - [ ] Sustituir `AGENT_TOKEN` por credenciales por agente, aceptando el token anterior durante una versión de transición.
 - [ ] Exigir autenticación en todos los endpoints locales salvo el mínimo necesario para descubrir el estado.
 - [ ] Evaluar una cola de acciones firmadas en el servidor para órdenes iniciadas desde otro dispositivo.
+
+Entrega incremental actual: el companion guarda un UUID de instalación en su directorio de estado, lo envía en cada llamada al servidor y registra nombre opcional, versión, discos montados y última conexión. El servidor puede revocar esa identidad sin invalidar todavía el `AGENT_TOKEN` legado. El código de emparejamiento temporal, las credenciales por agente y el almacenamiento protegido de secretos siguen pendientes para la siguiente entrega.
 
 Criterio de finalización: un administrador puede emparejar, inspeccionar y revocar un companion sin rotar las credenciales de los demás, y ningún endpoint destructivo depende únicamente del origen del navegador.
 

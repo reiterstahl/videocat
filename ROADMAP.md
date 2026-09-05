@@ -43,13 +43,15 @@ Definition of done: authentication, protected folders, queue transitions and des
 
 Priority: high. Resolves the optional local token and shared `AGENT_TOKEN` risks.
 
-- [ ] Generate a cryptographically random identity for each companion installation.
+- [x] Generate and persist a cryptographically random identity for each companion installation.
 - [ ] Add a short-lived, one-time pairing code displayed by the companion.
 - [ ] Store only hashed agent credentials on the server and protect local secrets with Windows Credential Manager or DPAPI.
 - [ ] Give every agent a name, last-seen timestamp, allowed capabilities and revocation controls.
 - [ ] Replace the shared `AGENT_TOKEN` with per-agent credentials while accepting the legacy token for one transition release.
 - [ ] Require authentication for every companion endpoint other than minimal health discovery.
 - [ ] Evaluate server-mediated, signed action queues for commands initiated from another device.
+
+Current incremental delivery: the companion stores an installation UUID in its state directory, sends it with every server call, and reports an optional name, version, mounted disks and last-seen timestamp. The server can revoke that identity without invalidating the legacy `AGENT_TOKEN` yet. Temporary pairing codes, per-agent credentials and protected secret storage remain for the next delivery.
 
 Definition of done: an administrator can pair, inspect and revoke one companion without rotating credentials for every other agent, and no destructive local endpoint relies only on browser origin.
 

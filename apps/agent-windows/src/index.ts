@@ -19,6 +19,7 @@ import {
   isVideoExtension
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
+import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 
 const execFileAsync = promisify(execFile);
@@ -156,6 +157,7 @@ const companionAppName = "videocat-companion";
 const companionVersion = 10;
 let downloadProcessingRunning = false;
 let companionScanRunning = false;
+let companionInstallationId: string | null = null;
 
 class AgentAuthError extends Error {
   constructor(message: string) {
@@ -490,6 +492,16 @@ function companionHeartbeatMs(): number {
   return Number.isFinite(value) ? Math.max(5000, value) : 15000;
 }
 
+function companionName(): string | undefined {
+  const value = process.env.COMPANION_NAME?.trim();
+  return value || undefined;
+}
+
+async function ensureCompanionIdentity(): Promise<string> {
+  if (!companionInstallationId) companionInstallationId = await loadOrCreateCompanionIdentity(agentStateRoot());
+  return companionInstallationId;
+}
+
 function companionScanPollMs(): number {
   const value = Number(process.env.COMPANION_SCAN_POLL_MS ?? 900000);
   return Number.isFinite(value) ? Math.max(60000, value) : 900000;
@@ -608,6 +620,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
         method: "POST",
         body: JSON.stringify({
           version: companionVersion,
+          companionId: await ensureCompanionIdentity(),
+          companionName: companionName(),
           mountedDiskCount: mounted.length,
           mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))]
         })
@@ -833,6 +847,7 @@ async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promis
 
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${process.env.AGENT_TOKEN}`);
+  if (companionInstallationId) headers.set("X-VideoCat-Companion-Id", companionInstallationId);
   if (!headers.has("Content-Type") && init.body) headers.set("Content-Type", "application/json");
 
   const response = await fetch(`${process.env.SERVER_URL}${url}`, {
@@ -1435,10 +1450,12 @@ function requiredEnv(name: string): string {
 }
 
 function authHeaders(): HeadersInit {
-  return {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${requiredEnv("AGENT_TOKEN")}`,
     "Content-Type": "application/json"
   };
+  if (companionInstallationId) headers["X-VideoCat-Companion-Id"] = companionInstallationId;
+  return headers;
 }
 
 async function api<T>(url: string, init: RequestInit): Promise<T> {
@@ -2212,6 +2229,7 @@ async function runScan(args: Args): Promise<void> {
 
 async function main() {
   await loadEnvFile();
+  await ensureCompanionIdentity();
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "init-disk") {
     if (!args.path || !args.diskName) {

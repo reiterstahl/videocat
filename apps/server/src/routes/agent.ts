@@ -136,7 +136,9 @@ const downloadStatusSchema = z.object({
 const companionHeartbeatSchema = z.object({
   version: z.number().int().nonnegative().optional(),
   mountedDiskCount: z.number().int().nonnegative().optional(),
-  mountedDiskIds: z.array(z.string().uuid()).max(100).optional()
+  mountedDiskIds: z.array(z.string().uuid()).max(100).optional(),
+  companionId: z.string().uuid().optional(),
+  companionName: z.string().trim().min(1).max(120).optional()
 });
 const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
 const expectedThumbnailKinds = Array.from({ length: 15 }, (_value, index) => `frame_${String(index + 1).padStart(2, "0")}`);
@@ -188,15 +190,40 @@ async function ensureDownloadMonthCategory(key: string, label: string): Promise<
 }
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/api/agent/companion/heartbeat", { preHandler: requireAgentAuth }, async (request) => {
+  app.post("/api/agent/companion/heartbeat", { preHandler: requireAgentAuth }, async (request, reply) => {
     const body = companionHeartbeatSchema.parse(request.body ?? {});
+    const headerValue = request.headers["x-videocat-companion-id"];
+    const headerCompanionId = typeof headerValue === "string" ? headerValue : undefined;
+    if (Boolean(body.companionId) !== Boolean(headerCompanionId) || body.companionId !== headerCompanionId) {
+      return reply.code(400).send({ message: "Companion identity header and body must match" });
+    }
     const mountedDiskIds = [...new Set(body.mountedDiskIds ?? [])];
-    await Promise.all([
+    const metrics: Promise<unknown>[] = [
       setAppMetricValue("companion_last_seen_at", BigInt(Date.now())),
       setAppMetricValue("companion_version", BigInt(body.version ?? 0)),
       setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? mountedDiskIds.length)),
       setAppSettingValue(companionMountedDiskIdsKey, JSON.stringify(mountedDiskIds))
-    ]);
+    ];
+    if (body.companionId) {
+      metrics.push(prisma.companionAgent.upsert({
+        where: { installationId: body.companionId },
+        create: {
+          installationId: body.companionId,
+          name: body.companionName,
+          version: body.version ?? 0,
+          mountedDiskCount: body.mountedDiskCount ?? mountedDiskIds.length,
+          mountedDiskIds
+        },
+        update: {
+          name: body.companionName,
+          version: body.version ?? 0,
+          mountedDiskCount: body.mountedDiskCount ?? mountedDiskIds.length,
+          mountedDiskIds,
+          lastSeenAt: new Date(),
+        }
+      }));
+    }
+    await Promise.all(metrics);
     return { ok: true };
   });
 

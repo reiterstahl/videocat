@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { env } from "./env.js";
+import { prisma } from "./prisma.js";
 import { clearRateLimit, rateLimit } from "./security.js";
 
 const cookieName = "videocat_session";
@@ -9,6 +10,7 @@ const protectedFolderCookieName = "videocat_protected_folder";
 const jwtIssuer = "videocat";
 const webAudience = "videocat-web";
 const protectedAudience = "videocat-protected-folder";
+const companionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function constantTimeEqual(a: string, b: string): boolean {
   const aBuffer = crypto.createHash("sha256").update(a).digest();
@@ -101,6 +103,25 @@ export async function requireAgentAuth(request: FastifyRequest, reply: FastifyRe
     await reply.code(401).send({ message: "Invalid agent token" });
     return;
   }
+
+  const headerValue = request.headers["x-videocat-companion-id"];
+  const companionId = typeof headerValue === "string" ? headerValue : undefined;
+  if (companionId && !companionIdPattern.test(companionId)) {
+    await reply.code(400).send({ message: "Invalid companion identity" });
+    return;
+  }
+
+  if (companionId) {
+    const companion = await prisma.companionAgent.findUnique({
+      where: { installationId: companionId },
+      select: { revokedAt: true }
+    });
+    if (companion?.revokedAt) {
+      await reply.code(403).send({ message: "Companion identity revoked" });
+      return;
+    }
+  }
+
   clearRateLimit(limitKey);
 }
 

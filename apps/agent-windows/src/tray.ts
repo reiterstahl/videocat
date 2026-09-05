@@ -52,6 +52,7 @@ const configKeys = [
   "COMPANION_PORT",
   "COMPANION_ALLOWED_ORIGINS",
   "COMPANION_TOKEN",
+  "COMPANION_NAME",
   "COMPANION_DISK_POLL_MS",
   "COMPANION_SCAN_POLL_MS",
   "COMPANION_HEARTBEAT_MS",
@@ -493,6 +494,7 @@ function configHtml(): string {
       <label>FFPROBE_PATH<input name="FFPROBE_PATH" placeholder="ffprobe o C:\\ffmpeg\\bin\\ffprobe.exe" /></label>
       <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
       <label>COMPANION_TOKEN<input name="COMPANION_TOKEN" type="password" /></label>
+      <label>COMPANION_NAME<input name="COMPANION_NAME" placeholder="Nombre opcional de este equipo" /></label>
       <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>
       <label>COMPANION_DISK_POLL_MS<input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
       <label>COMPANION_SCAN_POLL_MS<input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>

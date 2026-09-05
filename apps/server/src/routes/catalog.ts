@@ -144,12 +144,25 @@ async function companionPresence(): Promise<{
   version: number;
   mountedDiskCount: number;
   mountedDiskIds: string[];
+  agents: Array<{
+    installationId: string;
+    name: string | null;
+    version: number;
+    lastSeenAt: string;
+    revokedAt: string | null;
+  }>;
 }> {
-  const [lastSeenAt, version, mountedDiskCount, mountedSetting] = await Promise.all([
+  const [lastSeenAt, version, mountedDiskCount, mountedSetting, agents] = await Promise.all([
     appMetricValue("companion_last_seen_at"),
     appMetricValue("companion_version"),
     appMetricValue("companion_mounted_disk_count"),
-    appSettingValue(companionMountedDiskIdsKey)
+    appSettingValue(companionMountedDiskIdsKey),
+    prisma.companionAgent.findMany({
+      where: { revokedAt: null },
+      select: { installationId: true, name: true, version: true, lastSeenAt: true, revokedAt: true },
+      orderBy: { lastSeenAt: "desc" },
+      take: 20
+    })
   ]);
   const online = lastSeenAt > 0 && Date.now() - lastSeenAt <= companionStaleAfterMs;
   let mountedIdentifiers: string[] = [];
@@ -182,7 +195,14 @@ async function companionPresence(): Promise<{
     staleAfterMs: companionStaleAfterMs,
     version,
     mountedDiskCount: online ? mountedDiskCount : 0,
-    mountedDiskIds: online ? mountedDisks.map((disk) => disk.id) : []
+    mountedDiskIds: online ? mountedDisks.map((disk) => disk.id) : [],
+    agents: agents.map((agent) => ({
+      installationId: agent.installationId,
+      name: agent.name,
+      version: agent.version,
+      lastSeenAt: agent.lastSeenAt.toISOString(),
+      revokedAt: agent.revokedAt?.toISOString() ?? null
+    }))
   };
 }
 
@@ -1782,7 +1802,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       staleAfterMs: presence.staleAfterMs,
       version: presence.version,
       mountedDiskCount: presence.mountedDiskCount,
-      mountedDiskIds: presence.mountedDiskIds
+      mountedDiskIds: presence.mountedDiskIds,
+      agents: presence.agents
     };
   });
 }

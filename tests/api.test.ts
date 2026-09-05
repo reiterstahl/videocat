@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 
 process.env.NODE_ENV ??= "test";
@@ -78,14 +79,29 @@ test("agent routes require the agent token before reaching the database", async 
 });
 
 test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
   const response = await app.inject({
     method: "POST",
     url: "/api/agent/companion/heartbeat",
-    headers: agentHeaders,
-    payload: { version: 1, mountedDiskCount: 0, mountedDiskIds: [] }
+    headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+    payload: { version: 1, companionId, companionName: "CI Companion", mountedDiskCount: 0, mountedDiskIds: [] }
   });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), { ok: true });
+
+  const companion = await prisma.companionAgent.findUnique({ where: { installationId: companionId } });
+  assert.equal(companion?.name, "CI Companion");
+  assert.equal(companion?.version, 1);
+
+  await prisma.companionAgent.update({ where: { installationId: companionId }, data: { revokedAt: new Date() } });
+  const revoked = await app.inject({
+    method: "POST",
+    url: "/api/agent/companion/heartbeat",
+    headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+    payload: { companionId, mountedDiskIds: [] }
+  });
+  assert.equal(revoked.statusCode, 403);
+  await prisma.companionAgent.delete({ where: { installationId: companionId } });
 });
 
 test("categories, download queue and scan reconciliation work together", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
