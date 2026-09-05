@@ -352,7 +352,7 @@ If you use `Mostrar conectados`, Review picks random videos only from the select
 - Original videos are not uploaded to the server.
 - Metadata, relative paths, thumbnails and audit errors are uploaded.
 - Physical deletion happens only on Windows, through the companion, when the drive is connected.
-- CI runs a clean install, dependency audit, typecheck and build for every change to `main` and every pull request.
+- CI runs a clean install, dependency audit, unit/API tests with temporary PostgreSQL, typecheck and build for every change to `main` and every pull request.
 - Dependabot checks npm dependencies, base images and GitHub Actions every week.
 
 `PROTECTED_FOLDER_PATTERNS` is a comma-separated list. For a public or generic installation, use values such as `Private,Protected`. For a private deployment, set it to the real folder-name fragments you want to protect without changing the code.
@@ -402,6 +402,14 @@ npm run prisma:generate
 npm run dev:server
 npm run dev:web
 ```
+
+Run the local safety net with:
+
+```bash
+npm test
+```
+
+API tests that write to PostgreSQL are enabled with `RUN_DB_TESTS=true` and require a running database; CI enables them automatically.
 
 The Vite web app runs at:
 

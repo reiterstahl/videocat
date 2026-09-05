@@ -18,6 +18,8 @@ import {
   formatBytes,
   isVideoExtension
 } from "@videocat/shared";
+import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
+import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -761,13 +763,6 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function cleanRelativePath(value: string | undefined): string | null {
-  if (!value) return null;
-  const normalized = path.posix.normalize(value.replace(/\\/g, "/").replace(/^\/+/, ""));
-  if (!normalized || normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return null;
-  return normalized;
-}
-
 async function existingPath(value: string): Promise<"file" | "directory" | null> {
   try {
     const stat = await fs.stat(value);
@@ -851,30 +846,6 @@ async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promis
   return (await response.json()) as T;
 }
 
-function safePathInsideRoot(root: string, relativePathValue: string): string | null {
-  const relative = cleanRelativePath(relativePathValue);
-  if (!relative) return null;
-  const rootResolved = path.resolve(root);
-  const target = path.resolve(root, ...relative.split("/"));
-  const fromRoot = path.relative(rootResolved, target);
-  if (!fromRoot || fromRoot.startsWith("..") || path.isAbsolute(fromRoot)) return null;
-  return target;
-}
-
-async function canonicalPathInsideRoot(root: string, relativePathValue: string): Promise<string | null> {
-  const target = safePathInsideRoot(root, relativePathValue);
-  if (!target) return null;
-
-  try {
-    const [canonicalRoot, canonicalTarget] = await Promise.all([fs.realpath(root), fs.realpath(target)]);
-    const fromRoot = path.relative(canonicalRoot, canonicalTarget);
-    if (!fromRoot || fromRoot.startsWith("..") || path.isAbsolute(fromRoot)) return null;
-    return canonicalTarget;
-  } catch {
-    return null;
-  }
-}
-
 async function removeDeletedFileFromCatalog(fileId: string): Promise<void> {
   await companionAgentApi(`/api/agent/files/${fileId}/catalog`, { method: "DELETE" });
 }
@@ -944,25 +915,6 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
   console.log(`Borrado automatico terminado en ${marker.diskName}: borrados ${deleted}, ya ausentes ${missing}, fallos ${failed}.`);
 }
 
-function safeName(value: string): string {
-  return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/\s+/g, " ").trim().slice(0, 120) || "VideoCAT";
-}
-
-async function uniqueDestinationPath(baseDir: string, diskName: string, filename: string): Promise<string> {
-  const diskDir = path.join(baseDir, safeName(diskName));
-  await fs.mkdir(diskDir, { recursive: true });
-  const parsed = path.parse(filename);
-  const baseName = safeName(parsed.name).slice(0, 90) || "video";
-  const ext = parsed.ext || "";
-
-  for (let index = 0; index < 1000; index += 1) {
-    const candidate = path.join(diskDir, index === 0 ? `${baseName}${ext}` : `${baseName}-${index + 1}${ext}`);
-    if (!await existingPath(candidate)) return candidate;
-  }
-
-  return path.join(diskDir, `${baseName}-${Date.now()}${ext}`);
-}
-
 async function updateDownloadStatus(
   queueId: string,
   status: "downloading" | "done" | "failed",
@@ -1012,7 +964,7 @@ async function copyFileWithProgress(source: string, destination: string, file: D
 
   const watchdog = setInterval(() => {
     if (finished) return;
-    if (Date.now() - lastProgressAt < stallMs) return;
+    if (!copyHasStalled(lastProgressAt, Date.now(), stallMs)) return;
     const error = new Error(`Descarga sin progreso durante ${Math.round(stallMs / 1000)}s; archivo cancelado para continuar con la cola.`);
     sourceStream.destroy(error);
     progress.destroy(error);

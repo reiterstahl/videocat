@@ -31,9 +31,11 @@ Prioridad: alta. Debe completarse antes de los cambios arquitectónicos de segur
 
 - [ ] Añadir pruebas unitarias para orígenes, JWT, hashes del PIN, rutas protegidas y esquemas compartidos.
 - [ ] Añadir pruebas de integración API para login, autenticación del agente, categorías, colas y conciliación.
-- [ ] Probar en el companion la contención de rutas canónicas, roots monitoreados, colisiones y copias estancadas.
-- [ ] Incorporar PostgreSQL temporal en CI y ejecutar las migraciones de Prisma en las pruebas.
+- [x] Probar en el companion la contención de rutas canónicas, roots monitoreados, colisiones y copias estancadas.
+- [x] Incorporar PostgreSQL temporal en CI y ejecutar las migraciones de Prisma en las pruebas.
 - [ ] Definir cobertura mínima para módulos sensibles y bloquear regresiones desde CI.
+
+Entrega inicial realizada: la suite local incluye pruebas de seguridad, autenticación, rutas y transferencias; CI ejecuta `npm test` con PostgreSQL temporal. La cobertura de PIN persistido, categorías/colas, conciliación y umbral mínimo de cobertura queda para completar esta fase.
 
 Criterio de finalización: autenticación, folders protegidos, transiciones de cola y rutas destructivas tienen pruebas reproducibles en cada pull request.
 

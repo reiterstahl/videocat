@@ -352,7 +352,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 - Los videos originales no se suben al servidor.
 - Se suben metadatos, rutas relativas, miniaturas y errores de auditoría.
 - El borrado físico ocurre solo en Windows, por el companion, cuando el disco está conectado.
-- CI ejecuta instalación limpia, auditoría de dependencias, typecheck y build en cada cambio a `main` y en cada pull request.
+- CI ejecuta instalación limpia, auditoría de dependencias, pruebas unitarias/API con PostgreSQL temporal, typecheck y build en cada cambio a `main` y en cada pull request.
 - Dependabot revisa semanalmente dependencias npm, imágenes base y GitHub Actions.
 
 `PROTECTED_FOLDER_PATTERNS` es una lista separada por comas. Para una instalación pública o genérica puedes usar valores como `Private,Protected`. Para una instalación privada, define ahí los fragmentos reales de nombre de carpeta que quieres proteger sin modificar el código.
@@ -402,6 +402,14 @@ npm run prisma:generate
 npm run dev:server
 npm run dev:web
 ```
+
+Para ejecutar la red de seguridad local:
+
+```bash
+npm test
+```
+
+Las pruebas de API que escriben en PostgreSQL se activan con `RUN_DB_TESTS=true` y requieren una base disponible; CI las ejecuta automáticamente.
 
 La web de Vite corre en:
 

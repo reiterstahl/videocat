@@ -12,6 +12,32 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: videocat
+          POSTGRES_USER: videocat
+          POSTGRES_PASSWORD: videocat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U videocat -d videocat"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://videocat:videocat@localhost:5432/videocat
+      JWT_SECRET: 0123456789abcdef0123456789abcdef
+      AGENT_TOKEN: 0123456789abcdef0123456789abcdef
+      PROTECTED_FOLDER_PIN: "5678"
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: test-password-12345
+      WEB_ORIGIN: http://localhost:5173
+      TRUST_PROXY: "false"
+      COOKIE_SECURE: "false"
+      THUMBNAILS_DIR: /tmp/videocat-thumbnails
+      RUN_DB_TESTS: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -24,6 +50,10 @@ jobs:
         run: npm ci
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Apply database migrations
+        run: npm run prisma:migrate
+      - name: Run tests
+        run: npm test
       - name: Type-check workspaces
         run: npm run typecheck
       - name: Build application

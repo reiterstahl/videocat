@@ -31,9 +31,11 @@ Priority: high. This phase should land before architectural security changes.
 
 - [ ] Add unit tests for origin validation, JWT verification, PIN hashes, protected paths and shared schemas.
 - [ ] Add API integration tests for login, agent authentication, categories, queues and scan reconciliation.
-- [ ] Add companion tests for canonical path containment, monitored roots, download collisions and stalled copies.
-- [ ] Add a temporary PostgreSQL service to CI and run Prisma migrations in tests.
+- [x] Add companion tests for canonical path containment, monitored roots, download collisions and stalled copies.
+- [x] Add a temporary PostgreSQL service to CI and run Prisma migrations in tests.
 - [ ] Define minimum coverage for security-sensitive modules and block regressions in CI.
+
+Initial delivery completed: the local suite now covers security, authentication, path and transfer helpers, while CI runs `npm test` against a temporary PostgreSQL service. Persisted PIN hashing, categories/queues, reconciliation and minimum coverage thresholds remain to complete this phase.
 
 Definition of done: authentication, protected folders, queue transitions and destructive path checks have reproducible automated tests on every pull request.
 
