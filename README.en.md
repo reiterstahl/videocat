@@ -73,6 +73,23 @@ The system has two parts:
 - System folders such as `$RECYCLE.BIN` and `System Volume Information` are skipped.
 - Bilingual Spanish/English interface, with a language selector and optional support links in the official distribution.
 
+## Section URLs
+
+Each section has its own URL, so you can refresh the page or share a link without being sent back to the catalog:
+
+| Section | URL |
+| --- | --- |
+| Catalog | `/catalogo` |
+| Review | `/review` |
+| Downloads | `/a-descargar` |
+| Duplicates | `/duplicados` |
+| Usage scheme | `/esquema-de-uso` |
+| Audit | `/auditoria` |
+| Administration | `/administracion` |
+| Profile | `/perfil` |
+
+Equivalent English paths are also accepted for shared links. The root path automatically redirects to `/catalogo`.
+
 ## Windows Companion
 
 The companion turns the agent into a Windows tray app. It lets you use VideoCAT without opening a terminal.

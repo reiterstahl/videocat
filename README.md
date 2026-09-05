@@ -73,6 +73,23 @@ El sistema tiene dos partes:
 - Omisión de carpetas de sistema como `$RECYCLE.BIN` y `System Volume Information`.
 - Interfaz bilingüe español/inglés, con selector de idioma y enlaces opcionales de apoyo en la distribución oficial.
 
+## URLs de las secciones
+
+Cada sección tiene una URL propia, por lo que puedes recargar la página o compartir el enlace sin volver al catálogo:
+
+| Sección | URL |
+| --- | --- |
+| Catálogo | `/catalogo` |
+| Review | `/review` |
+| A descargar | `/a-descargar` |
+| Duplicados | `/duplicados` |
+| Esquema de uso | `/esquema-de-uso` |
+| Auditoría | `/auditoria` |
+| Administración | `/administracion` |
+| Perfil | `/perfil` |
+
+También se aceptan las rutas equivalentes en inglés para facilitar enlaces compartidos. La ruta raíz redirige automáticamente a `/catalogo`.
+
 ## Companion de Windows
 
 El companion convierte el agente en una app de bandeja. Permite usar VideoCAT sin abrir una terminal.

@@ -41,6 +41,41 @@ type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "cre
 type SortDirection = "asc" | "desc";
 type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "audit" | "admin" | "profile";
 
+const viewPaths: Record<ViewMode, string> = {
+  catalog: "/catalogo",
+  review: "/review",
+  downloads: "/a-descargar",
+  duplicates: "/duplicados",
+  usage: "/esquema-de-uso",
+  audit: "/auditoria",
+  admin: "/administracion",
+  profile: "/perfil"
+};
+
+const pathViews: Record<string, ViewMode> = {
+  "/": "catalog",
+  "/catalogo": "catalog",
+  "/catalog": "catalog",
+  "/review": "review",
+  "/a-descargar": "downloads",
+  "/downloads": "downloads",
+  "/duplicados": "duplicates",
+  "/duplicates": "duplicates",
+  "/esquema-de-uso": "usage",
+  "/usage": "usage",
+  "/auditoria": "audit",
+  "/audit": "audit",
+  "/administracion": "admin",
+  "/admin": "admin",
+  "/perfil": "profile",
+  "/profile": "profile"
+};
+
+function viewModeFromPath(pathname = window.location.pathname): ViewMode {
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  return pathViews[normalizedPath] ?? "catalog";
+}
+
 function localCompanionPortCandidates(storedPort: string | null): string[] {
   const parsedStoredPort = storedPort ? Number(storedPort) : undefined;
   return companionPortCandidates(parsedStoredPort).map(String);
@@ -666,7 +701,7 @@ export function App() {
   const [duplicates, setDuplicates] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [catalogVersion, setCatalogVersion] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>("catalog");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => viewModeFromPath());
   const [reviewRecent, setReviewRecent] = useState<VideoFile[]>([]);
   const [reviewPending, setReviewPending] = useState<VideoFile[]>([]);
   const [reviewCurrent, setReviewCurrent] = useState<VideoFile | null>(null);
@@ -741,6 +776,35 @@ export function App() {
   const [companionOnline, setCompanionOnline] = useState(false);
   const [companionVersion, setCompanionVersion] = useState(0);
   const locale = language === "en" ? "en-US" : "es-CR";
+
+  function navigateToView(mode: ViewMode, replace = false): void {
+    const nextPath = viewPaths[mode];
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const nextUrl = nextPath;
+    if (currentUrl !== nextUrl) {
+      window.history[replace ? "replaceState" : "pushState"]({}, "", nextUrl);
+    }
+    setViewMode(mode);
+    setMobileMenuOpen(false);
+    setDesktopMenuOpen(false);
+  }
+
+  useEffect(() => {
+    const initialMode = viewModeFromPath();
+    const canonicalPath = viewPaths[initialMode];
+    if (window.location.pathname !== canonicalPath) {
+      window.history.replaceState({}, "", `${canonicalPath}${window.location.search}${window.location.hash}`);
+    }
+
+    function handlePopState(): void {
+      setViewMode(viewModeFromPath());
+      setMobileMenuOpen(false);
+      setDesktopMenuOpen(false);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const activeLogo = theme === "dark" ? logoWhiteUrl : logoUrl;
@@ -1948,9 +2012,7 @@ export function App() {
 
   function showFullCatalog() {
     clearFilters();
-    setViewMode("catalog");
-    setMobileMenuOpen(false);
-    setDesktopMenuOpen(false);
+    navigateToView("catalog");
     setSelected(null);
     setReviewCurrent(null);
     setReviewMessage("");
@@ -1971,9 +2033,7 @@ export function App() {
   const secondaryNavigationItems = navigationItems.filter((item) => item.mode === "admin" || item.mode === "profile");
 
   function switchView(mode: ViewMode): void {
-    setViewMode(mode);
-    setMobileMenuOpen(false);
-    setDesktopMenuOpen(false);
+    navigateToView(mode);
   }
 
   async function toggleFileCategory(file: VideoFile, categoryKey: string, enabled: boolean) {
