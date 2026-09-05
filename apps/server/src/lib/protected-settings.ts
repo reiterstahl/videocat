@@ -1,24 +1,16 @@
-import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { env } from "./env.js";
+import { constantTimeStringEqual, hashPin, verifyHashedPin } from "./pin-security.js";
 import { prisma } from "./prisma.js";
 
 const pinHashKey = "protected_folder_pin_hash";
 const patternsKey = "protected_folder_patterns";
-const hashIterations = 120_000;
 
 type SettingRow = {
   value: string;
 };
 
 let patternsCache: { value: string[]; expiresAt: number } | null = null;
-
-function constantTimeEqual(a: string, b: string): boolean {
-  const aBuffer = Buffer.from(a, "hex");
-  const bBuffer = Buffer.from(b, "hex");
-  if (aBuffer.length !== bBuffer.length) return false;
-  return crypto.timingSafeEqual(aBuffer, bBuffer);
-}
 
 function envPatterns(): string[] {
   return normalizeProtectedPatterns(env.PROTECTED_FOLDER_PATTERNS.split(","));
@@ -42,27 +34,6 @@ async function setSetting(key: string, value: string): Promise<void> {
     SET "value" = EXCLUDED."value",
         "updatedAt" = CURRENT_TIMESTAMP
   `);
-}
-
-function hashPin(pin: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(pin, salt, hashIterations, 32, "sha256").toString("hex");
-  return `pbkdf2-sha256$${hashIterations}$${salt}$${hash}`;
-}
-
-function verifyHashedPin(pin: string, storedHash: string): boolean {
-  const [algorithm, iterationText, salt, expected] = storedHash.split("$");
-  const iterations = Number(iterationText);
-  if (
-    algorithm !== "pbkdf2-sha256"
-    || !Number.isInteger(iterations)
-    || iterations < 100_000
-    || iterations > 1_000_000
-    || !/^[a-f0-9]{32}$/i.test(salt ?? "")
-    || !/^[a-f0-9]{64}$/i.test(expected ?? "")
-  ) return false;
-  const actual = crypto.pbkdf2Sync(pin, salt, iterations, 32, "sha256").toString("hex");
-  return constantTimeEqual(actual, expected);
 }
 
 export function normalizeProtectedPatterns(values: string[]): string[] {
@@ -102,9 +73,7 @@ export async function protectedFolderPatterns(): Promise<string[]> {
 export async function isValidProtectedFolderPin(pin: string): Promise<boolean> {
   const storedHash = await getSetting(pinHashKey);
   if (storedHash) return verifyHashedPin(pin, storedHash);
-  const expected = crypto.createHash("sha256").update(env.PROTECTED_FOLDER_PIN).digest("hex");
-  const actual = crypto.createHash("sha256").update(pin).digest("hex");
-  return constantTimeEqual(actual, expected);
+  return constantTimeStringEqual(pin, env.PROTECTED_FOLDER_PIN);
 }
 
 export async function protectedSecurityProfile(): Promise<{ hasPin: boolean; protectedFolderPatterns: string[] }> {

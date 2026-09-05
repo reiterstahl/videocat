@@ -544,11 +544,13 @@ select:focus {
 
 .view-switcher {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   margin: 0;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .view-switcher button {
@@ -568,6 +570,41 @@ select:focus {
   border-color: var(--matrix-primary);
   background: var(--matrix-primary-soft);
   color: var(--matrix-primary-ink);
+}
+
+.topbar-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.topbar-more > button[aria-expanded="true"] .topbar-more-chevron {
+  transform: rotate(180deg);
+}
+
+.topbar-more-chevron {
+  transition: transform 180ms ease;
+}
+
+.topbar-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 60;
+  width: 220px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(199, 208, 213, 0.88);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(13, 22, 28, 0.22);
+  padding: 8px;
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.topbar-more-menu button {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .mobile-topnav {
@@ -652,6 +689,29 @@ select:focus {
   .view-header.downloads-header .download-header-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 1500px) {
+  .topbar {
+    gap: 12px;
+  }
+
+  .view-switcher {
+    gap: 6px;
+  }
+
+  .view-switcher button {
+    gap: 6px;
+    padding: 0 10px;
+  }
+
+  .view-switcher > button span {
+    display: none;
+  }
+
+  .view-switcher > button.is-active span {
+    display: inline;
   }
 }
 
@@ -3597,16 +3657,10 @@ tbody tr.curation-row {
   }
 }
 
-@media (max-width: 640px) {
-  .app-shell {
-    padding: 16px;
-  }
-
+@media (max-width: 1040px) {
   .topbar {
-    align-items: center;
     grid-template-columns: minmax(0, 1fr) auto;
-    margin: -8px -8px 16px;
-    padding: 8px;
+    align-items: center;
     gap: 10px;
   }
 
@@ -3615,26 +3669,8 @@ tbody tr.curation-row {
     grid-row: 1;
   }
 
-  .topbar .brand-lockup {
-    gap: 9px;
-  }
-
-  .topbar .brand-logo {
-    width: 42px;
-    height: 42px;
-  }
-
-  .topbar .brand-word {
-    gap: 5px;
-    font-size: 1.18rem;
-  }
-
-  .topbar .agent-status-dot {
-    width: 8px;
-    height: 8px;
-  }
-
-  .topbar-actions {
+  .topbar-actions,
+  .view-switcher {
     display: none;
   }
 
@@ -3645,13 +3681,8 @@ tbody tr.curation-row {
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    margin-left: 0;
     gap: 6px;
     min-width: 0;
-  }
-
-  .view-switcher {
-    display: none;
   }
 
   .mobile-current-view,
@@ -3669,7 +3700,7 @@ tbody tr.curation-row {
   }
 
   .mobile-current-view {
-    max-width: 126px;
+    max-width: 170px;
     gap: 7px;
     border-color: var(--matrix-primary);
     background: var(--matrix-primary-soft);
@@ -3722,6 +3753,48 @@ tbody tr.curation-row {
     border-color: var(--matrix-primary);
     background: var(--matrix-primary-soft);
     color: var(--matrix-primary-ink);
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .topbar {
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: -8px -8px 16px;
+    padding: 8px;
+    gap: 10px;
+  }
+
+  .brand-button {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar .brand-lockup {
+    gap: 9px;
+  }
+
+  .topbar .brand-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  .topbar .brand-word {
+    gap: 5px;
+    font-size: 1.18rem;
+  }
+
+  .topbar .agent-status-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .mobile-current-view {
+    max-width: 126px;
   }
 
   .logout-button {
@@ -4013,6 +4086,12 @@ tbody tr.curation-row {
 }
 
 :root[data-theme="dark"] .mobile-menu-panel {
+  background: rgba(15, 20, 24, 0.96);
+  border-color: rgba(61, 80, 90, 0.82);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="dark"] .topbar-more-menu {
   background: rgba(15, 20, 24, 0.96);
   border-color: rgba(61, 80, 90, 0.82);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);

@@ -31,6 +31,7 @@ jobs:
       JWT_SECRET: 0123456789abcdef0123456789abcdef
       AGENT_TOKEN: 0123456789abcdef0123456789abcdef
       PROTECTED_FOLDER_PIN: "5678"
+      PROTECTED_FOLDER_PATTERNS: Private,Protected
       ADMIN_USER: admin
       ADMIN_PASSWORD: test-password-12345
       WEB_ORIGIN: http://localhost:5173

@@ -9,7 +9,7 @@ This roadmap turns the remaining audit findings into incremental work. It intent
 Completed in September 2026:
 
 - Dependency audit reports no known npm vulnerabilities.
-- CI performs a clean install, production dependency audit, typecheck and build.
+- CI performs a clean install, migrations and tests with temporary PostgreSQL, production dependency audit, typecheck and build.
 - Dependabot monitors npm, Docker base images and GitHub Actions.
 - Web mutations enforce configured origins and secure response headers.
 - JWT algorithms, input sizes, upload types and request times are bounded.
@@ -29,13 +29,13 @@ Completed in September 2026:
 
 Priority: high. This phase should land before architectural security changes.
 
-- [ ] Add unit tests for origin validation, JWT verification, PIN hashes, protected paths and shared schemas.
-- [ ] Add API integration tests for login, agent authentication, categories, queues and scan reconciliation.
+- [x] Add unit tests for origin validation, JWT verification, PIN hashes, protected paths and shared schemas.
+- [x] Add API integration tests for login, agent authentication, categories, queues and scan reconciliation.
 - [x] Add companion tests for canonical path containment, monitored roots, download collisions and stalled copies.
 - [x] Add a temporary PostgreSQL service to CI and run Prisma migrations in tests.
-- [ ] Define minimum coverage for security-sensitive modules and block regressions in CI.
+- [x] Define minimum coverage for security-sensitive modules and block regressions in CI.
 
-Initial delivery completed: the local suite now covers security, authentication, path and transfer helpers, while CI runs `npm test` against a temporary PostgreSQL service. Persisted PIN hashing, categories/queues, reconciliation and minimum coverage thresholds remain to complete this phase.
+Phase completed: the suite covers security, authentication, persisted PIN hashing, paths, transfers, categories, queues and reconciliation. CI runs `npm test` against temporary PostgreSQL and requires at least 90% line, 70% branch and 95% function coverage in the selected sensitive helpers.
 
 Definition of done: authentication, protected folders, queue transitions and destructive path checks have reproducible automated tests on every pull request.
 

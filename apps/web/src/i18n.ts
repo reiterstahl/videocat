@@ -35,6 +35,7 @@ const en: Record<string, string> = {
   "Auditoria": "Audit",
   "Administracion": "Administration",
   "Perfil": "Profile",
+  "Más": "More",
   "Perfil y seguridad": "Profile and security",
   "PIN y patrones protegidos para carpetas privadas.": "PIN and protected patterns for private folders.",
   "PIN configurado": "PIN configured",

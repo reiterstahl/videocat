@@ -612,6 +612,7 @@ export function App() {
   });
   const [language, setLanguage] = useState<Language>(storedLanguage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState("admin");
@@ -708,6 +709,7 @@ export function App() {
     timestamp: number;
   } | null>(null);
   const previousMountedDiskIdsRef = useRef<Set<string>>(new Set());
+  const desktopMenuRef = useRef<HTMLDivElement | null>(null);
   const [folderUsage, setFolderUsage] = useState<FolderUsageItem[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
@@ -855,6 +857,23 @@ export function App() {
     localStorage.setItem("videocat-theme", theme);
     document.querySelector<HTMLLinkElement>("link[rel='icon']")?.setAttribute("href", theme === "dark" ? logoWhiteUrl : logoUrl);
   }, [theme]);
+
+  useEffect(() => {
+    if (!desktopMenuOpen) return;
+
+    function closeDesktopMenu(event: MouseEvent | KeyboardEvent): void {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (event instanceof MouseEvent && desktopMenuRef.current?.contains(event.target as Node)) return;
+      setDesktopMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeDesktopMenu);
+    document.addEventListener("keydown", closeDesktopMenu);
+    return () => {
+      document.removeEventListener("mousedown", closeDesktopMenu);
+      document.removeEventListener("keydown", closeDesktopMenu);
+    };
+  }, [desktopMenuOpen]);
 
   useEffect(() => {
     localStorage.setItem("videocat-connected-panel-collapsed", String(connectedPanelCollapsed));
@@ -1924,6 +1943,7 @@ export function App() {
     clearFilters();
     setViewMode("catalog");
     setMobileMenuOpen(false);
+    setDesktopMenuOpen(false);
     setSelected(null);
     setReviewCurrent(null);
     setReviewMessage("");
@@ -1940,10 +1960,13 @@ export function App() {
     { mode: "profile", label: "Perfil", icon: <User size={17} /> }
   ];
   const activeNavigationItem = navigationItems.find((item) => item.mode === viewMode) ?? navigationItems[0];
+  const primaryNavigationItems = navigationItems.filter((item) => item.mode !== "admin" && item.mode !== "profile");
+  const secondaryNavigationItems = navigationItems.filter((item) => item.mode === "admin" || item.mode === "profile");
 
   function switchView(mode: ViewMode): void {
     setViewMode(mode);
     setMobileMenuOpen(false);
+    setDesktopMenuOpen(false);
   }
 
   async function toggleFileCategory(file: VideoFile, categoryKey: string, enabled: boolean) {
@@ -2260,7 +2283,7 @@ export function App() {
           </div>
         </button>
         <section className="view-switcher" aria-label="Secciones principales">
-          {navigationItems.map((item) => (
+          {primaryNavigationItems.map((item) => (
             <button
               key={item.mode}
               className={viewMode === item.mode ? "is-active" : ""}
@@ -2268,9 +2291,38 @@ export function App() {
               type="button"
             >
               {item.icon}
-              {item.label}
+              <span>{item.label}</span>
             </button>
           ))}
+          <div className="topbar-more" ref={desktopMenuRef}>
+            <button
+              className={secondaryNavigationItems.some((item) => item.mode === viewMode) ? "is-active" : ""}
+              type="button"
+              onClick={() => setDesktopMenuOpen((open) => !open)}
+              aria-expanded={desktopMenuOpen}
+              aria-haspopup="menu"
+            >
+              <Menu size={17} />
+              <span>Más</span>
+              <ChevronDown className="topbar-more-chevron" size={14} />
+            </button>
+            {desktopMenuOpen ? (
+              <div className="topbar-more-menu" role="menu">
+                {secondaryNavigationItems.map((item) => (
+                  <button
+                    key={item.mode}
+                    className={viewMode === item.mode ? "is-active" : ""}
+                    onClick={() => switchView(item.mode)}
+                    type="button"
+                    role="menuitem"
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </section>
         <div className="mobile-topnav">
           <button className="mobile-current-view" type="button" onClick={() => setMobileMenuOpen((open) => !open)}>

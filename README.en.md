@@ -409,7 +409,7 @@ Run the local safety net with:
 npm test
 ```
 
-API tests that write to PostgreSQL are enabled with `RUN_DB_TESTS=true` and require a running database; CI enables them automatically.
+API tests that write to PostgreSQL are enabled with `RUN_DB_TESTS=true` and require a running database; CI enables them automatically. Selected sensitive helpers also have minimum coverage thresholds that block regressions.
 
 The Vite web app runs at:
 

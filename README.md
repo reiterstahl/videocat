@@ -409,7 +409,7 @@ Para ejecutar la red de seguridad local:
 npm test
 ```
 
-Las pruebas de API que escriben en PostgreSQL se activan con `RUN_DB_TESTS=true` y requieren una base disponible; CI las ejecuta automáticamente.
+Las pruebas de API que escriben en PostgreSQL se activan con `RUN_DB_TESTS=true` y requieren una base disponible; CI las ejecuta automáticamente. Los helpers sensibles seleccionados tienen umbrales mínimos de cobertura que también bloquean regresiones.
 
 La web de Vite corre en:
 

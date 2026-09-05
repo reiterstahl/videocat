@@ -9,7 +9,7 @@ Esta hoja de ruta convierte los hallazgos pendientes de la auditoría en trabajo
 Completado en septiembre de 2026:
 
 - La auditoría de dependencias no reporta vulnerabilidades npm conocidas.
-- CI realiza instalación limpia, auditoría de dependencias de producción, typecheck y build.
+- CI realiza instalación limpia, migraciones y pruebas con PostgreSQL temporal, auditoría de dependencias de producción, typecheck y build.
 - Dependabot supervisa npm, imágenes base de Docker y GitHub Actions.
 - Las operaciones web validan el origen configurado y utilizan cabeceras seguras.
 - Algoritmos JWT, tamaños de entrada, tipos de subida y tiempos de solicitud tienen límites explícitos.
@@ -29,13 +29,13 @@ Completado en septiembre de 2026:
 
 Prioridad: alta. Debe completarse antes de los cambios arquitectónicos de seguridad.
 
-- [ ] Añadir pruebas unitarias para orígenes, JWT, hashes del PIN, rutas protegidas y esquemas compartidos.
-- [ ] Añadir pruebas de integración API para login, autenticación del agente, categorías, colas y conciliación.
+- [x] Añadir pruebas unitarias para orígenes, JWT, hashes del PIN, rutas protegidas y esquemas compartidos.
+- [x] Añadir pruebas de integración API para login, autenticación del agente, categorías, colas y conciliación.
 - [x] Probar en el companion la contención de rutas canónicas, roots monitoreados, colisiones y copias estancadas.
 - [x] Incorporar PostgreSQL temporal en CI y ejecutar las migraciones de Prisma en las pruebas.
-- [ ] Definir cobertura mínima para módulos sensibles y bloquear regresiones desde CI.
+- [x] Definir cobertura mínima para módulos sensibles y bloquear regresiones desde CI.
 
-Entrega inicial realizada: la suite local incluye pruebas de seguridad, autenticación, rutas y transferencias; CI ejecuta `npm test` con PostgreSQL temporal. La cobertura de PIN persistido, categorías/colas, conciliación y umbral mínimo de cobertura queda para completar esta fase.
+Fase completada: la suite cubre seguridad, autenticación, PIN persistido, rutas, transferencias, categorías, colas y conciliación. CI ejecuta `npm test` con PostgreSQL temporal y exige al menos 90% de líneas, 70% de ramas y 95% de funciones en los helpers sensibles seleccionados.
 
 Criterio de finalización: autenticación, folders protegidos, transiciones de cola y rutas destructivas tienen pruebas reproducibles en cada pull request.
 

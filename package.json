@@ -18,7 +18,8 @@
     "prisma:migrate": "npm run prisma:migrate -w @videocat/server",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:api": "tsx --test tests/api.test.ts",
-    "test": "npm run build -w @videocat/shared && npm run prisma:generate && npm run test:unit && npm run test:api"
+    "test:coverage": "tsx --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=70 --test-coverage-functions=95 tests/unit/pin-security.test.ts tests/unit/path-security.test.ts tests/unit/file-transfer.test.ts",
+    "test": "npm run build -w @videocat/shared && npm run prisma:generate && npm run test:unit && npm run test:api && npm run test:coverage"
   },
   "devDependencies": {
     "tsx": "^4.22.4"
