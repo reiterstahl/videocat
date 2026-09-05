@@ -67,6 +67,11 @@ type ReviewNextResponse = {
   remaining: number;
 };
 
+type ReviewPrefetch = {
+  currentFileId: string;
+  promise: Promise<ReviewNextResponse | null>;
+};
+
 type ReviewSummaryResponse = {
   pendingTotal: number;
   markedToday: number;
@@ -664,6 +669,9 @@ export function App() {
   const [reviewPendingTotal, setReviewPendingTotal] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewMessage, setReviewMessage] = useState("");
+  const reviewPrefetchRef = useRef<ReviewPrefetch | null>(null);
+  const reviewPreloadImagesRef = useRef<HTMLImageElement[]>([]);
+  const reviewCatalogDirtyRef = useRef(false);
   const [recoverableSpaceOpen, setRecoverableSpaceOpen] = useState(false);
   const [recoverableSpaceLoading, setRecoverableSpaceLoading] = useState(false);
   const [recoverableSpaceError, setRecoverableSpaceError] = useState("");
@@ -773,6 +781,14 @@ export function App() {
     const params = new URLSearchParams();
     params.set("diskIds", diskQuery);
     return `?${params.toString()}`;
+  }
+
+  function reviewNextQuerySuffix(excludeId?: string): string {
+    const params = new URLSearchParams();
+    if (disks.length > 0) params.set("diskIds", diskQuery);
+    if (excludeId) params.set("excludeId", excludeId);
+    const query = params.toString();
+    return query ? `?${query}` : "";
   }
 
   const extensions = useMemo(() => facets.extensions.map((item) => item.extension), [facets.extensions]);
@@ -1157,6 +1173,39 @@ export function App() {
   }, [authenticated, connectedDiskIds.length, diskQuery, disks.length, protectedUnlockVersion, viewMode]);
 
   useEffect(() => {
+    const currentFileId = reviewCurrent?.id;
+    if (!authenticated || viewMode !== "review" || !currentFileId) {
+      reviewPrefetchRef.current = null;
+      reviewPreloadImagesRef.current = [];
+      return;
+    }
+
+    let active = true;
+    const promise = api<ReviewNextResponse>(`/api/review/next${reviewNextQuerySuffix(currentFileId)}`)
+      .then((response) => {
+        if (!active || !response.file) return response;
+        reviewPreloadImagesRef.current = response.file.thumbnails.map((thumbnail) => {
+          const image = new window.Image();
+          image.decoding = "async";
+          image.fetchPriority = "low";
+          image.src = thumbnailSrc(thumbnail.url) ?? thumbnail.url;
+          return image;
+        });
+        return response;
+      })
+      .catch(() => null);
+
+    reviewPrefetchRef.current = { currentFileId, promise };
+
+    return () => {
+      active = false;
+      if (reviewPrefetchRef.current?.currentFileId === currentFileId) {
+        reviewPrefetchRef.current = null;
+      }
+    };
+  }, [authenticated, connectedDiskIds.length, diskQuery, disks.length, protectedUnlockVersion, reviewCurrent?.id, viewMode]);
+
+  useEffect(() => {
     if (!authenticated || viewMode !== "downloads") return;
     void loadDownloadSummary();
     const interval = window.setInterval(() => {
@@ -1264,8 +1313,9 @@ export function App() {
 
     setReviewLoading(true);
     setReviewMessage("");
+    reviewCatalogDirtyRef.current = false;
     try {
-      const response = await api<ReviewNextResponse>(`/api/review/next${reviewQuerySuffix()}`);
+      const response = await api<ReviewNextResponse>(`/api/review/next${reviewNextQuerySuffix()}`);
       setReviewCurrent(response.file);
       setReviewRemaining(response.remaining);
       if (!response.file) {
@@ -1275,6 +1325,13 @@ export function App() {
     } finally {
       setReviewLoading(false);
     }
+  }
+
+  function closeReview(): void {
+    setReviewCurrent(null);
+    if (!reviewCatalogDirtyRef.current) return;
+    reviewCatalogDirtyRef.current = false;
+    setCatalogVersion((value) => value + 1);
   }
 
   async function openRecoverableSpace() {
@@ -1552,6 +1609,9 @@ export function App() {
 
   async function decideReview(file: VideoFile, status: "keep" | "delete") {
     setReviewLoading(true);
+    const prefetchedNext = reviewPrefetchRef.current?.currentFileId === file.id
+      ? reviewPrefetchRef.current.promise
+      : null;
     try {
       const response = await api<{ file: VideoFile }>(`/api/files/${file.id}/curation`, {
         method: "PATCH",
@@ -1564,12 +1624,16 @@ export function App() {
       setReviewMarkedToday((value) => value + 1);
       setReviewMarkedLast7Days((value) => value + 1);
       setReviewPendingTotal((value) => Math.max(0, value - 1));
-      setCatalogVersion((value) => value + 1);
-      const next = await api<ReviewNextResponse>(`/api/review/next${reviewQuerySuffix()}`);
+      reviewCatalogDirtyRef.current = true;
+      const next = await prefetchedNext
+        ?? await api<ReviewNextResponse>(`/api/review/next${reviewNextQuerySuffix(file.id)}`);
       setReviewCurrent(next.file);
       setReviewRemaining(next.remaining);
-      if (!next.file) setReviewMessage("No quedan videos pendientes por revisar en los discos seleccionados.");
-      void loadReviewSummary();
+      if (!next.file) {
+        setReviewMessage("No quedan videos pendientes por revisar en los discos seleccionados.");
+        reviewCatalogDirtyRef.current = false;
+        setCatalogVersion((value) => value + 1);
+      }
     } finally {
       setReviewLoading(false);
     }
@@ -1892,7 +1956,11 @@ export function App() {
     setSelected((current) => (current?.id === response.file.id ? response.file : current));
     setReviewCurrent((current) => (current?.id === response.file.id ? response.file : current));
     setReviewRecent((current) => current.map((item) => (item.id === response.file.id ? response.file : item)));
-    setCatalogVersion((value) => value + 1);
+    if (viewMode === "review" && reviewCurrent?.id === response.file.id) {
+      reviewCatalogDirtyRef.current = true;
+    } else {
+      setCatalogVersion((value) => value + 1);
+    }
     if (viewMode === "review" && (categoryKey === "keep" || categoryKey === "delete")) {
       void loadReviewSummary();
     }
@@ -3511,7 +3579,7 @@ export function App() {
           locale={locale}
           loading={reviewLoading}
           remaining={reviewRemaining}
-          onClose={() => setReviewCurrent(null)}
+          onClose={closeReview}
           onDecision={(status) => void decideReview(reviewCurrent, status)}
           onToggleCategory={(categoryKey, enabled) => void toggleFileCategory(reviewCurrent, categoryKey, enabled)}
         />
@@ -3921,7 +3989,13 @@ function ReviewDecisionModal({
                 type="button"
                 title="Ver captura"
               >
-                <img src={thumb.url} alt="" />
+                <img
+                  src={thumbnailSrc(thumb.url)}
+                  alt=""
+                  decoding="async"
+                  fetchPriority={index < 5 ? "high" : "auto"}
+                  loading="eager"
+                />
               </button>
             ))
           ) : (

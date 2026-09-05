@@ -20,6 +20,9 @@ const facetsQuerySchema = z.object({
 const diskIdsQuerySchema = z.object({
   diskIds: z.string().max(4000).optional()
 });
+const reviewNextQuerySchema = diskIdsQuerySchema.extend({
+  excludeId: z.string().uuid().optional()
+});
 const categoryKeySchema = z.string().min(1).max(40).regex(/^[a-z0-9_-]+$/);
 const curationStatusSchema = z.union([z.literal("none"), categoryKeySchema]);
 const fileCategoryToggleSchema = z.object({
@@ -1403,13 +1406,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/review/next", { preHandler: requireWebAuth }, async (request) => {
-    const query = diskIdsQuerySchema.parse(request.query);
+    const query = reviewNextQuerySchema.parse(request.query);
     const diskFilterRequested = query.diskIds !== undefined;
     const diskIds = commaList(query.diskIds);
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const where: Prisma.VideoFileWhereInput = {
       curationStatus: { notIn: ["keep", "delete"] }
     };
+    if (query.excludeId) where.id = { not: query.excludeId };
     if (diskFilterRequested) where.diskId = { in: diskIds };
     applyHiddenPathFilter(where);
     if (!protectedUnlocked) applyProtectedPathFilter(where);
