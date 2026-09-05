@@ -1053,7 +1053,7 @@ select:focus {
 .review-score-card {
   min-width: 0;
   border: 1px solid #d7dee2;
-  border-radius: 8px;
+  border-radius: 0 8px 8px 0;
   background: #ffffff;
   padding: 14px;
   box-shadow: inset 4px 0 0 #78909c;
@@ -1124,7 +1124,7 @@ select:focus {
   align-items: center;
   position: relative;
   border: 1px solid #d7dee2;
-  border-radius: 8px;
+  border-radius: 0 8px 8px 0;
   background: #ffffff;
   color: #172026;
   padding: 10px;
@@ -3457,7 +3457,7 @@ tbody tr.curation-row {
 .duplicate-group {
   overflow: hidden;
   border: 1px solid #d7dee2;
-  border-radius: 8px;
+  border-radius: 0 8px 8px 0;
   background: #ffffff;
 }
 
