@@ -9,7 +9,7 @@ updates:
       timezone: America/Costa_Rica
     open-pull-requests-limit: 3
     allow:
-      - dependency-name: "*"
+      - dependency-type: direct
         update-types:
           - version-update:semver-minor
           - version-update:semver-patch
@@ -19,6 +19,8 @@ updates:
         dependency-type: production
         patterns:
           - "*"
+        exclude-patterns:
+          - "@prisma/client"
         update-types:
           - minor
           - patch
@@ -27,21 +29,34 @@ updates:
         dependency-type: development
         patterns:
           - "*"
+        exclude-patterns:
+          - prisma
         update-types:
           - minor
           - patch
   - package-ecosystem: docker
     directory: /apps/server
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: docker
     directory: /apps/web
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
+      - dependency-name: nginx
+        update-types:
+          - version-update:semver-minor
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
