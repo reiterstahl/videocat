@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "@videocat/shared": "0.1.0",
-    "zod": "^3.23.8"
+    "zod": "^4.5.4"
   },
   "build": {
     "appId": "app.videocat.companion",
@@ -82,10 +82,10 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^20.14.12",
-    "electron": "^42.11.2",
+    "@types/node": "^26.5.0",
+    "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
-    "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }
