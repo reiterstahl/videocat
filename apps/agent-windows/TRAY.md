@@ -36,15 +36,17 @@ En el menú usa `Configuración...` para guardar el token del agente y la URL de
 En Windows:
 
 ```powershell
-npm install
-npm run package:tray -w @videocat/agent-windows
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 ```
 
-El portable queda en:
+El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable y genera los archivos SHA-256 y MD5. Los assets quedan en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.0.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.10.exe
+companion\VideoCAT-Companion-0.1.10.exe
 ```
+
+Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para subir los tres assets a un release de GitHub ya creado.
 
 ## Configuración
 

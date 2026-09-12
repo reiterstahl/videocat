@@ -319,7 +319,27 @@ npm run discover -w @videocat/agent-windows
 
 ## Portable Windows Companion
 
-Build the executable:
+Build the executable, validate TypeScript and generate its checksums automatically:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
+```
+
+The script installs the exact dependencies from `package-lock.json`, builds the runtime and tray app, generates SHA-256 and MD5 files, and stages all three release assets in both `apps\agent-windows\release` and `companion`.
+
+To bump the patch version first and open the resulting folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -Bump patch -OpenOutput
+```
+
+To upload the assets to an existing `vX.Y.Z` GitHub release using `gh`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
+```
+
+Manual build alternative:
 
 ```powershell
 npm install
