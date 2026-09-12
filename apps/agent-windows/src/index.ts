@@ -77,7 +77,7 @@ type ProcessedFile = {
 type PendingAgentError = AgentErrorInput;
 
 type State = {
-  completed: Record<string, number>;
+  completed: Record<string, number | { modifiedAtMs: number; sizeBytes: number }>;
 };
 
 type CountResult = {
@@ -89,6 +89,16 @@ type CountResult = {
 type ScanCompleteness = {
   complete: boolean;
 };
+
+function completedStateMatches(state: State, relativePathValue: string, modifiedAtMs: number, sizeBytes: number): boolean {
+  const entry = state.completed[relativePathValue];
+  if (typeof entry === "number") return entry === modifiedAtMs;
+  return Boolean(entry && entry.modifiedAtMs === modifiedAtMs && entry.sizeBytes === sizeBytes);
+}
+
+function setCompletedState(state: State, relativePathValue: string, modifiedAtMs: number, sizeBytes: number): void {
+  state.completed[relativePathValue] = { modifiedAtMs, sizeBytes };
+}
 
 type CompanionOpenRequest = {
   diskId?: string;
@@ -144,6 +154,21 @@ type ThumbnailRepairQueueResponse = {
   }>;
 };
 
+type ScanIndexResponse = {
+  files: Array<{
+    relativePath: string;
+    sizeBytes: number;
+    modifiedAt?: string | null;
+  }>;
+};
+
+type CompanionHeartbeatResponse = {
+  ok: boolean;
+  commands?: {
+    processDeletesRequestedAt?: number;
+  };
+};
+
 const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
   const frame = String(index + 1).padStart(2, "0");
   return [`frame_${frame}`, (index + 1) / 16] as const;
@@ -154,8 +179,9 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 10;
+const companionVersion = 11;
 let downloadProcessingRunning = false;
+let deleteProcessingRunning = false;
 let companionScanRunning = false;
 let companionInstallationId: string | null = null;
 
@@ -518,6 +544,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   let deleteReviewRunning = false;
   let downloadReviewRunning = false;
   let heartbeatRunning = false;
+  let lastHandledDeleteRequestAt = 0;
 
   async function scanTarget(root: string, marker: DiskMarker, repairThumbnails: boolean): Promise<void> {
     await runScan({
@@ -616,7 +643,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
     heartbeatRunning = true;
     try {
       const mounted = await discoverCompanionTargets();
-      await companionAgentApi("/api/agent/companion/heartbeat", {
+      const response = await companionAgentApi<CompanionHeartbeatResponse>("/api/agent/companion/heartbeat", {
         method: "POST",
         body: JSON.stringify({
           version: companionVersion,
@@ -626,6 +653,14 @@ async function startCompanionDiskWatcher(): Promise<void> {
           mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))]
         })
       });
+      const requestedAt = response.commands?.processDeletesRequestedAt ?? 0;
+      if (requestedAt > lastHandledDeleteRequestAt) {
+        lastHandledDeleteRequestAt = requestedAt;
+        if (Date.now() - requestedAt <= 10 * 60 * 1000) {
+          console.log("Orden web recibida: procesando borrados pendientes ahora.");
+          await reviewPendingDeletes();
+        }
+      }
     } catch (error) {
       console.warn(`Fallo enviando heartbeat del companion: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -861,11 +896,31 @@ async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promis
   return (await response.json()) as T;
 }
 
-async function removeDeletedFileFromCatalog(fileId: string): Promise<void> {
-  await companionAgentApi(`/api/agent/files/${fileId}/catalog`, { method: "DELETE" });
+async function reportDeletionResult(
+  fileId: string,
+  status: "deleted" | "missing" | "failed",
+  errorMessage?: string
+): Promise<void> {
+  await companionAgentApi(`/api/agent/files/${fileId}/deletion-result`, {
+    method: "POST",
+    body: JSON.stringify({ status, ...(status === "failed" ? { errorMessage: errorMessage ?? "Deletion failed" } : {}) })
+  });
 }
 
 async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
+  if (deleteProcessingRunning) {
+    if (!options.quietWhenEmpty) console.log("Borrados pendientes omitidos: ya hay otra revision en proceso.");
+    return;
+  }
+  deleteProcessingRunning = true;
+  try {
+    await processMarkedDeletesForDiskUnlocked(root, marker, options);
+  } finally {
+    deleteProcessingRunning = false;
+  }
+}
+
+async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
   if (process.env.COMPANION_AUTO_DELETE_MARKED === "false") return;
   if (!companionAgentApiEnabled()) {
     console.log("Revision automatica sin borrar: faltan SERVER_URL o AGENT_TOKEN en el .env del agente.");
@@ -896,6 +951,7 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
     const target = safePathInsideRoot(root, file.relativePath);
     if (!target) {
       failed += 1;
+      await reportDeletionResult(file.id, "failed", `Ruta insegura omitida: ${file.relativePath}`).catch(() => undefined);
       console.warn(`Ruta insegura omitida: ${file.relativePath}`);
       continue;
     }
@@ -906,28 +962,40 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
         const canonicalTarget = await canonicalPathInsideRoot(root, file.relativePath);
         if (!canonicalTarget) {
           failed += 1;
+          await reportDeletionResult(file.id, "failed", `Ruta fuera de la unidad omitida: ${file.relativePath}`).catch(() => undefined);
           console.warn(`Ruta fuera de la unidad omitida: ${file.relativePath}`);
           continue;
         }
         await deleteLocalFile(canonicalTarget);
-        await removeDeletedFileFromCatalog(file.id);
+        await reportDeletionResult(file.id, "deleted");
         deleted += 1;
         console.log(`Borrado automatico: ${file.relativePath}`);
       } else if (!kind) {
-        await removeDeletedFileFromCatalog(file.id);
+        await reportDeletionResult(file.id, "missing");
         missing += 1;
         console.log(`Archivo ya no existe; catalogo limpiado: ${file.relativePath}`);
       } else {
         failed += 1;
+        await reportDeletionResult(file.id, "failed", `No es un archivo: ${file.relativePath}`).catch(() => undefined);
         console.warn(`No borro porque no es archivo: ${file.relativePath}`);
       }
     } catch (error) {
       failed += 1;
-      console.warn(`Fallo borrando ${file.relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      await reportDeletionResult(file.id, "failed", message).catch(() => undefined);
+      console.warn(`Fallo borrando ${file.relativePath}: ${message}`);
     }
   }
 
   console.log(`Borrado automatico terminado en ${marker.diskName}: borrados ${deleted}, ya ausentes ${missing}, fallos ${failed}.`);
+}
+
+async function processMarkedDeletesForMountedDisks(): Promise<{ processedDisks: number }> {
+  const mounted = await discoverCompanionTargets();
+  for (const { root, marker } of mounted) {
+    await processMarkedDeletesForDisk(root, marker);
+  }
+  return { processedDisks: mounted.length };
 }
 
 async function updateDownloadStatus(
@@ -1276,6 +1344,12 @@ async function runCompanion(): Promise<void> {
         return;
       }
 
+      if (request.url === "/process-deletes" && request.method === "POST") {
+        const result = await processMarkedDeletesForMountedDisks();
+        jsonResponse(response, 200, { ok: true, ...result }, responseOrigin);
+        return;
+      }
+
       if (request.url === "/process-downloads" && request.method === "POST") {
         const result = await processDownloadQueueForMountedDisks();
         jsonResponse(response, 200, { ok: true, ...result }, responseOrigin);
@@ -1377,15 +1451,9 @@ async function runCompanion(): Promise<void> {
 }
 
 async function runProcessDeletes(): Promise<void> {
-  const mounted = await discoverCompanionTargets();
-  if (mounted.length === 0) {
+  const result = await processMarkedDeletesForMountedDisks();
+  if (result.processedDisks === 0) {
     console.log(`No encontre discos o rutas monitoreadas disponibles.`);
-    return;
-  }
-
-  for (const { root, marker } of mounted) {
-    console.log(`Procesando borrados pendientes en ${root} (${marker.diskName})`);
-    await processMarkedDeletesForDisk(root, marker);
   }
 }
 
@@ -1705,7 +1773,7 @@ async function countVideos(
       try {
         const stat = await fs.stat(filePath);
         const rel = relativePath(diskRoot, filePath);
-        if (state.completed[rel] === stat.mtime.getTime() && !thumbnailRepairPaths.has(rel)) {
+        if (completedStateMatches(state, rel, stat.mtime.getTime(), stat.size) && !thumbnailRepairPaths.has(rel)) {
           skipped += 1;
         } else {
           pending += 1;
@@ -1963,6 +2031,31 @@ async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
   }
 }
 
+async function hydrateStateFromServer(diskId: string, state: State): Promise<number> {
+  try {
+    const response = await api<ScanIndexResponse>(`/api/agent/disks/${diskId}/scan-index`, {
+      method: "GET",
+      headers: authHeaders()
+    });
+    let restored = 0;
+    for (const file of response.files) {
+      if (!file.modifiedAt) continue;
+      const modifiedAt = new Date(file.modifiedAt).getTime();
+      const current = state.completed[file.relativePath];
+      if (
+        !Number.isFinite(modifiedAt)
+        || (typeof current === "object" && current.modifiedAtMs === modifiedAt && current.sizeBytes === file.sizeBytes)
+      ) continue;
+      setCompletedState(state, file.relativePath, modifiedAt, file.sizeBytes);
+      restored += 1;
+    }
+    return restored;
+  } catch (error) {
+    console.warn(`No se pudo reconstruir el estado desde el servidor; se usara el estado local: ${error instanceof Error ? error.message : String(error)}`);
+    return 0;
+  }
+}
+
 async function uploadThumbnail(diskId: string, relativePathValue: string, thumb: ThumbResult): Promise<void> {
   const form = new FormData();
   form.set("diskId", diskId);
@@ -2099,6 +2192,11 @@ async function runScan(args: Args): Promise<void> {
   const state = await loadState(statePath, [
     path.join(process.cwd(), ".videocat-agent-state", stateIdentifier, "scan-state.json")
   ]);
+  const restoredStateEntries = await hydrateStateFromServer(disk.id, state);
+  if (restoredStateEntries > 0) {
+    await saveState(statePath, state);
+    console.log(`Estado de escaneo reconstruido desde el servidor: ${restoredStateEntries} archivo(s).`);
+  }
   const repairPaths = args.thumbnails && args.repairThumbnails !== false
     ? await thumbnailRepairPaths(disk.id)
     : new Set<string>();
@@ -2149,7 +2247,12 @@ async function runScan(args: Args): Promise<void> {
     if (batch.length >= args.batchSize) {
       failed += await uploadBatch(scan.id, disk.id, batch, auditErrors);
       for (const item of batch) {
-        state.completed[item.record.relativePath] = new Date(item.record.modifiedAt ?? 0).getTime();
+        setCompletedState(
+          state,
+          item.record.relativePath,
+          new Date(item.record.modifiedAt ?? 0).getTime(),
+          item.record.sizeBytes
+        );
       }
       uploaded += batch.length;
       console.log(`Subidos ${uploaded} archivos. Fallos acumulados: ${failed}. Ultimo lote: ${formatBytes(processed.reduce((sum, item) => sum + item.record.sizeBytes, 0))}.`);
@@ -2180,7 +2283,7 @@ async function runScan(args: Args): Promise<void> {
       }
       const rel = relativePath(resolved.diskRoot, filePath);
       seenRelativePaths.add(rel);
-      if (state.completed[rel] === stat.mtime.getTime() && !repairPaths.has(rel)) {
+      if (completedStateMatches(state, rel, stat.mtime.getTime(), stat.size) && !repairPaths.has(rel)) {
         skipped += 1;
         continue;
       }
@@ -2197,7 +2300,12 @@ async function runScan(args: Args): Promise<void> {
   if (batch.length > 0) {
     failed += await uploadBatch(scan.id, disk.id, batch, auditErrors);
     for (const item of batch) {
-      state.completed[item.record.relativePath] = new Date(item.record.modifiedAt ?? 0).getTime();
+      setCompletedState(
+        state,
+        item.record.relativePath,
+        new Date(item.record.modifiedAt ?? 0).getTime(),
+        item.record.sizeBytes
+      );
     }
     uploaded += batch.length;
     await saveState(statePath, state);

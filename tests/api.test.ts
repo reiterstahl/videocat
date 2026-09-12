@@ -87,7 +87,8 @@ test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TEST
     payload: { version: 1, companionId, companionName: "CI Companion", mountedDiskCount: 0, mountedDiskIds: [] }
   });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { ok: true });
+  assert.equal(response.json().ok, true);
+  assert.equal(typeof response.json().commands.processDeletesRequestedAt, "number");
 
   const companion = await prisma.companionAgent.findUnique({ where: { installationId: companionId } });
   assert.equal(companion?.name, "CI Companion");
@@ -110,6 +111,8 @@ test("categories, download queue and scan reconciliation work together", { skip:
   const categoryLabel = `P1 ${suffix.slice(-12)}`;
   let diskId = "";
   let categoryKey = "";
+  const deletionVideoIds: string[] = [];
+  let companionId = "";
 
   try {
     const cookie = await authenticatedCookie();
@@ -163,6 +166,7 @@ test("categories, download queue and scan reconciliation work together", { skip:
             absolutePath: "T:\\Videos\\keep.mp4",
             relativePath: "Videos/keep.mp4",
             sizeBytes: 2048,
+            modifiedAt: "2026-09-12T12:00:00.000Z",
             status: "scanned"
           },
           {
@@ -171,6 +175,7 @@ test("categories, download queue and scan reconciliation work together", { skip:
             absolutePath: "T:\\Videos\\missing.mp4",
             relativePath: "Videos/missing.mp4",
             sizeBytes: 4096,
+            modifiedAt: "2026-09-12T12:01:00.000Z",
             status: "scanned"
           }
         ]
@@ -195,7 +200,21 @@ test("categories, download queue and scan reconciliation work together", { skip:
     assert.equal(catalogResponse.statusCode, 200);
     assert.equal(catalogResponse.json().total, 2);
     const keepFile = catalogResponse.json().files.find((file: { filename: string }) => file.filename === "keep.mp4");
+    const missingFile = catalogResponse.json().files.find((file: { filename: string }) => file.filename === "missing.mp4");
     assert.ok(keepFile);
+    assert.ok(missingFile);
+    deletionVideoIds.push(keepFile.id, missingFile.id);
+
+    const scanIndex = await app.inject({
+      method: "GET",
+      url: `/api/agent/disks/${diskId}/scan-index`,
+      headers: agentHeaders
+    });
+    assert.equal(scanIndex.statusCode, 200);
+    assert.deepEqual(scanIndex.json().files, [
+      { relativePath: "Videos/keep.mp4", sizeBytes: 2048, modifiedAt: "2026-09-12T12:00:00.000Z" },
+      { relativePath: "Videos/missing.mp4", sizeBytes: 4096, modifiedAt: "2026-09-12T12:01:00.000Z" }
+    ]);
 
     const categoryToggle = await app.inject({
       method: "PATCH",
@@ -214,6 +233,14 @@ test("categories, download queue and scan reconciliation work together", { skip:
     });
     assert.equal(queueResponse.statusCode, 200);
     assert.equal(queueResponse.json().queued, 1);
+
+    const markMissingForDeletion = await app.inject({
+      method: "PATCH",
+      url: `/api/files/${missingFile.id}/curation`,
+      headers: webMutationHeaders(cookie),
+      payload: { curationStatus: "delete" }
+    });
+    assert.equal(markMissingForDeletion.statusCode, 200);
 
     const agentQueue = await app.inject({
       method: "GET",
@@ -267,7 +294,91 @@ test("categories, download queue and scan reconciliation work together", { skip:
     assert.equal(reconciledCatalog.statusCode, 200);
     assert.equal(reconciledCatalog.json().total, 1);
     assert.equal(reconciledCatalog.json().files[0].filename, "keep.mp4");
+
+    const deleteQueueWithAbsentFile = await app.inject({
+      method: "GET",
+      url: `/api/agent/disks/${diskId}/delete-queue`,
+      headers: agentHeaders
+    });
+    assert.equal(deleteQueueWithAbsentFile.statusCode, 200);
+    assert.ok(deleteQueueWithAbsentFile.json().files.some((file: { id: string }) => file.id === missingFile.id));
+
+    const missingDeletionResult = await app.inject({
+      method: "POST",
+      url: `/api/agent/files/${missingFile.id}/deletion-result`,
+      headers: agentHeaders,
+      payload: { status: "missing" }
+    });
+    assert.equal(missingDeletionResult.statusCode, 200, missingDeletionResult.body);
+
+    const markForDeletion = await app.inject({
+      method: "PATCH",
+      url: `/api/files/${keepFile.id}/curation`,
+      headers: webMutationHeaders(cookie),
+      payload: { curationStatus: "delete" }
+    });
+    assert.equal(markForDeletion.statusCode, 200);
+
+    companionId = crypto.randomUUID();
+    const connectedHeartbeat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { version: 11, companionId, companionName: "Delete Test", mountedDiskCount: 1, mountedDiskIds: [diskId] }
+    });
+    assert.equal(connectedHeartbeat.statusCode, 200);
+
+    const processDeletions = await app.inject({
+      method: "POST",
+      url: "/api/review/deletions/process",
+      headers: webMutationHeaders(cookie)
+    });
+    assert.equal(processDeletions.statusCode, 200);
+    assert.equal(processDeletions.json().connectedDiskCount, 1);
+
+    const heartbeatCommand = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { version: 11, companionId, companionName: "Delete Test", mountedDiskCount: 1, mountedDiskIds: [diskId] }
+    });
+    assert.equal(heartbeatCommand.statusCode, 200);
+    assert.ok(heartbeatCommand.json().commands.processDeletesRequestedAt > 0);
+
+    const pendingHistory = await app.inject({
+      method: "GET",
+      url: "/api/review/deletions",
+      headers: { cookie }
+    });
+    assert.equal(pendingHistory.statusCode, 200);
+    assert.ok(pendingHistory.json().entries.some((entry: { videoFileId: string; status: string }) => (
+      entry.videoFileId === keepFile.id && entry.status === "pending"
+    )));
+
+    const deletionResult = await app.inject({
+      method: "POST",
+      url: `/api/agent/files/${keepFile.id}/deletion-result`,
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { status: "deleted" }
+    });
+    assert.equal(deletionResult.statusCode, 200, deletionResult.body);
+    assert.equal(deletionResult.json().removedFromCatalog, true);
+
+    const completedHistory = await app.inject({
+      method: "GET",
+      url: "/api/review/deletions",
+      headers: { cookie }
+    });
+    assert.equal(completedHistory.statusCode, 200);
+    assert.ok(completedHistory.json().entries.some((entry: { videoFileId: string; status: string }) => (
+      entry.videoFileId === keepFile.id && entry.status === "deleted"
+    )));
+    assert.equal(await prisma.videoFile.count({ where: { id: keepFile.id } }), 0);
   } finally {
+    if (deletionVideoIds.length > 0) {
+      await prisma.deletionRecord.deleteMany({ where: { videoFileId: { in: deletionVideoIds } } });
+    }
+    if (companionId) await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
     if (diskId) await prisma.disk.deleteMany({ where: { id: diskId } });
     if (categoryKey) await prisma.curationCategory.deleteMany({ where: { key: categoryKey } });
   }

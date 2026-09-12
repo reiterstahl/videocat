@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -16,6 +16,7 @@ import {
   Github,
   HardDrive,
   Heart,
+  History,
   Image,
   LayoutGrid,
   Lock,
@@ -35,7 +36,7 @@ import {
 import { companionPortCandidates, formatBytes, formatDuration } from "@videocat/shared";
 import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, type Language } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
-import type { Disk, Stats, VideoFile } from "./types";
+import type { Disk, Stats, Thumbnail, VideoFile } from "./types";
 
 type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "createdAt";
 type SortDirection = "asc" | "desc";
@@ -120,7 +121,7 @@ type DownloadQueueEntry = {
   id: string;
   status: "queued" | "downloading" | "done" | "failed";
   source: string;
-  requestedAt: string;
+  requestedAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
   destinationPath?: string | null;
@@ -162,6 +163,36 @@ type RecoverableSpaceDisk = {
 type RecoverableSpaceResponse = {
   totalRecoverableBytes: number;
   disks: RecoverableSpaceDisk[];
+};
+
+type DeletionHistoryEntry = {
+  id: string;
+  videoFileId: string;
+  diskId?: string | null;
+  diskName: string;
+  driveLetter?: string | null;
+  filename: string;
+  relativePath: string;
+  sizeBytes: number;
+  status: "pending" | "deleted" | "missing" | "failed";
+  requestedAt: string;
+  attemptedAt?: string | null;
+  completedAt?: string | null;
+  errorMessage?: string | null;
+  connected: boolean;
+};
+
+type DeletionHistoryResponse = {
+  companionOnline: boolean;
+  connectedDiskCount: number;
+  summary: {
+    pending: number;
+    deleted: number;
+    missing: number;
+    failed: number;
+    deletedBytes: number;
+  };
+  entries: DeletionHistoryEntry[];
 };
 
 type FolderUsageItem = {
@@ -276,7 +307,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.9";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.10";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -719,6 +750,12 @@ export function App() {
   const [recoverableSpaceLoading, setRecoverableSpaceLoading] = useState(false);
   const [recoverableSpaceError, setRecoverableSpaceError] = useState("");
   const [recoverableSpace, setRecoverableSpace] = useState<RecoverableSpaceResponse | null>(null);
+  const [deletionHistoryOpen, setDeletionHistoryOpen] = useState(false);
+  const [deletionHistoryLoading, setDeletionHistoryLoading] = useState(false);
+  const [deletionHistoryProcessing, setDeletionHistoryProcessing] = useState(false);
+  const [deletionHistoryError, setDeletionHistoryError] = useState("");
+  const [deletionHistoryMessage, setDeletionHistoryMessage] = useState("");
+  const [deletionHistory, setDeletionHistory] = useState<DeletionHistoryResponse | null>(null);
   const [downloadSummary, setDownloadSummary] = useState<DownloadSummaryResponse | null>(null);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadActionBusy, setDownloadActionBusy] = useState(false);
@@ -1263,6 +1300,14 @@ export function App() {
   }, [authenticated, connectedDiskIds.length, diskQuery, disks.length, protectedUnlockVersion, viewMode]);
 
   useEffect(() => {
+    if (!authenticated || !deletionHistoryOpen) return;
+    const interval = window.setInterval(() => {
+      void loadDeletionHistory(true);
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [authenticated, deletionHistoryOpen]);
+
+  useEffect(() => {
     const currentFileId = reviewCurrent?.id;
     if (!authenticated || viewMode !== "review" || !currentFileId) {
       reviewPrefetchRef.current = null;
@@ -1435,6 +1480,45 @@ export function App() {
       setRecoverableSpaceError(error instanceof Error ? error.message : "No se pudo calcular el espacio a recuperar");
     } finally {
       setRecoverableSpaceLoading(false);
+    }
+  }
+
+  async function loadDeletionHistory(silent = false) {
+    if (!silent) setDeletionHistoryLoading(true);
+    setDeletionHistoryError("");
+    try {
+      const response = await api<DeletionHistoryResponse>("/api/review/deletions?limit=200");
+      setDeletionHistory(response);
+    } catch (error) {
+      setDeletionHistoryError(error instanceof Error ? error.message : "No se pudo cargar el historial de borrados.");
+    } finally {
+      if (!silent) setDeletionHistoryLoading(false);
+    }
+  }
+
+  async function openDeletionHistory() {
+    setDeletionHistoryOpen(true);
+    setDeletionHistoryMessage("");
+    await loadDeletionHistory();
+  }
+
+  async function processPendingDeletionsNow() {
+    if (deletionHistoryProcessing) return;
+    setDeletionHistoryProcessing(true);
+    setDeletionHistoryError("");
+    setDeletionHistoryMessage("");
+    try {
+      const response = await api<{ ok: boolean; connectedDiskCount: number }>("/api/review/deletions/process", {
+        method: "POST"
+      });
+      setDeletionHistoryMessage(
+        `Orden enviada al companion para ${response.connectedDiskCount} disco(s). Los resultados aparecerán aquí.`
+      );
+      window.setTimeout(() => void loadDeletionHistory(true), 2500);
+    } catch (error) {
+      setDeletionHistoryError(error instanceof Error ? error.message : "No se pudo solicitar el borrado inmediato.");
+    } finally {
+      setDeletionHistoryProcessing(false);
     }
   }
 
@@ -2940,6 +3024,10 @@ export function App() {
               <span>Revision aleatoria de videos pendientes de decision.</span>
             </div>
             <div className="review-header-actions">
+              <button className="secondary-button review-history-button" onClick={() => void openDeletionHistory()} type="button">
+                <History size={17} />
+                Últimos borrados
+              </button>
               <button className="secondary-button review-space-button" onClick={() => void openRecoverableSpace()} type="button">
                 <HardDrive size={17} />
                 Espacio a recuperar
@@ -3691,6 +3779,20 @@ export function App() {
         />
       ) : null}
 
+      {deletionHistoryOpen ? (
+        <DeletionHistoryModal
+          data={deletionHistory}
+          locale={locale}
+          loading={deletionHistoryLoading}
+          processing={deletionHistoryProcessing}
+          error={deletionHistoryError}
+          message={deletionHistoryMessage}
+          onClose={() => setDeletionHistoryOpen(false)}
+          onRefresh={() => void loadDeletionHistory()}
+          onProcess={() => void processPendingDeletionsNow()}
+        />
+      ) : null}
+
       {reviewCurrent ? (
         <ReviewDecisionModal
           file={reviewCurrent}
@@ -3881,6 +3983,150 @@ function ClearDownloadHistoryConfirmModal({
   );
 }
 
+function DeletionHistoryModal({
+  data,
+  locale,
+  loading,
+  processing,
+  error,
+  message,
+  onClose,
+  onRefresh,
+  onProcess
+}: {
+  data: DeletionHistoryResponse | null;
+  locale: string;
+  loading: boolean;
+  processing: boolean;
+  error: string;
+  message: string;
+  onClose: () => void;
+  onRefresh: () => void;
+  onProcess: () => void;
+}) {
+  const entries = data?.entries ?? [];
+  const canProcess = Boolean(
+    data?.companionOnline
+    && data.connectedDiskCount > 0
+    && data.summary.pending > 0
+    && !processing
+  );
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  function statusLabel(status: DeletionHistoryEntry["status"]): string {
+    if (status === "deleted") return "Borrado";
+    if (status === "missing") return "Ya ausente";
+    if (status === "failed") return "Fallido";
+    return "Pendiente";
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deletion-history-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="deletion-history-panel">
+        <header className="deletion-history-header">
+          <div>
+            <span>Review y companion</span>
+            <h2 id="deletion-history-title">Últimos borrados</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" title="Cerrar">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="deletion-history-toolbar">
+          <div className="deletion-history-summary">
+            <div><span>Pendientes</span><strong>{(data?.summary.pending ?? 0).toLocaleString(locale)}</strong></div>
+            <div><span>Borrados</span><strong>{(data?.summary.deleted ?? 0).toLocaleString(locale)}</strong></div>
+            <div><span>Fallidos</span><strong>{(data?.summary.failed ?? 0).toLocaleString(locale)}</strong></div>
+            <div><span>Espacio liberado</span><strong>{formatBytes(data?.summary.deletedBytes ?? 0)}</strong></div>
+          </div>
+          <div className="deletion-history-actions">
+            <button className="secondary-button" onClick={onRefresh} disabled={loading} type="button">
+              {loading ? "Actualizando..." : "Actualizar"}
+            </button>
+            <button className="danger-button" onClick={onProcess} disabled={!canProcess} type="button">
+              <Trash2 size={17} />
+              {processing ? "Enviando..." : "Procesar pendientes"}
+            </button>
+          </div>
+        </div>
+
+        {!data?.companionOnline ? (
+          <div className="deletion-history-notice is-warning">El companion no está conectado. Los borrados pendientes se conservarán hasta que vuelva a estar activo.</div>
+        ) : data.connectedDiskCount === 0 ? (
+          <div className="deletion-history-notice is-warning">El companion está activo, pero no reporta discos conectados.</div>
+        ) : null}
+        {message ? <div className="deletion-history-notice is-success">{message}</div> : null}
+        {error ? <div className="form-error deletion-history-error">{error}</div> : null}
+
+        <div className="deletion-history-table-wrap">
+          {loading && !data ? (
+            <div className="empty">Cargando historial de borrados...</div>
+          ) : entries.length === 0 ? (
+            <div className="empty">Aún no hay borrados ni archivos pendientes registrados.</div>
+          ) : (
+            <table className="deletion-history-table">
+              <thead>
+                <tr>
+                  <th>Estado</th>
+                  <th>Fecha</th>
+                  <th>Disco</th>
+                  <th>Archivo</th>
+                  <th>Tamaño</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => {
+                  const eventDate = entry.completedAt ?? entry.attemptedAt ?? entry.requestedAt;
+                  return (
+                    <tr key={entry.id}>
+                      <td data-label="Estado">
+                        <span className={`deletion-status is-${entry.status}`}>{statusLabel(entry.status)}</span>
+                      </td>
+                      <td data-label="Fecha">{dateLabel(eventDate, locale)}</td>
+                      <td data-label="Disco">
+                        <strong>{entry.diskName}</strong>
+                        <span className={`deletion-disk-state ${entry.connected ? "is-connected" : ""}`}>
+                          {entry.connected ? `Conectado${entry.driveLetter ? ` · ${entry.driveLetter}` : ""}` : "No conectado"}
+                        </span>
+                      </td>
+                      <td data-label="Archivo" className="deletion-file-cell" title={entry.relativePath}>
+                        <strong>{entry.filename}</strong>
+                        <span>{entry.relativePath}</span>
+                        {entry.errorMessage ? <em>{entry.errorMessage}</em> : null}
+                      </td>
+                      <td data-label="Tamaño">{formatBytes(entry.sizeBytes)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <footer className="deletion-history-footer">
+          El historial detallado se conserva para los borrados realizados a partir de esta actualización.
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function RecoverableSpaceModal({
   data,
   locale,
@@ -3990,6 +4236,90 @@ function RecoverableSpaceModal({
   );
 }
 
+function FullscreenGallery({
+  thumbnail,
+  index,
+  total,
+  canOpenPrevious,
+  canOpenNext,
+  onMove,
+  onClose
+}: {
+  thumbnail: Thumbnail;
+  index: number;
+  total: number;
+  canOpenPrevious: boolean;
+  canOpenNext: boolean;
+  onMove: (offset: -1 | 1) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onClose();
+      } else if (event.key === "ArrowLeft" && canOpenPrevious) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onMove(-1);
+      } else if (event.key === "ArrowRight" && canOpenNext) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onMove(1);
+      }
+    }
+
+    window.addEventListener("keydown", handleKey, true);
+    return () => window.removeEventListener("keydown", handleKey, true);
+  }, [canOpenNext, canOpenPrevious, onClose, onMove]);
+
+  function closeFromSurface(event: ReactMouseEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  }
+
+  return (
+    <div
+      className="gallery-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Galería de capturas"
+      onMouseDown={closeFromSurface}
+    >
+      <button className="icon-button gallery-close" onClick={onClose} type="button" title="Cerrar">
+        <X size={22} />
+      </button>
+      <button
+        className="gallery-nav gallery-nav-prev"
+        onClick={() => onMove(-1)}
+        disabled={!canOpenPrevious}
+        type="button"
+        title="Captura anterior"
+      >
+        <ChevronLeft size={30} />
+      </button>
+      <div className="gallery-stage" onMouseDown={closeFromSurface}>
+        <img src={thumbnailSrc(thumbnail.url)} alt="" />
+      </div>
+      <button
+        className="gallery-nav gallery-nav-next"
+        onClick={() => onMove(1)}
+        disabled={!canOpenNext}
+        type="button"
+        title="Captura siguiente"
+      >
+        <ChevronRight size={30} />
+      </button>
+      <div className="gallery-count">
+        {index + 1} / {total}
+      </div>
+    </div>
+  );
+}
+
 function ReviewDecisionModal({
   file,
   categories,
@@ -4037,21 +4367,7 @@ function ReviewDecisionModal({
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
-      if (galleryIndex != null) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setGalleryIndex(null);
-        }
-        if (event.key === "ArrowLeft" && canOpenPreviousImage) {
-          event.preventDefault();
-          moveGallery(-1);
-        }
-        if (event.key === "ArrowRight" && canOpenNextImage) {
-          event.preventDefault();
-          moveGallery(1);
-        }
-        return;
-      }
+      if (galleryIndex != null) return;
 
       if (event.key === "Escape") onClose();
     }
@@ -4166,42 +4482,15 @@ function ReviewDecisionModal({
       </section>
 
       {galleryThumb ? (
-        <div
-          className="gallery-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setGalleryIndex(null);
-          }}
-        >
-          <button className="icon-button gallery-close" onClick={() => setGalleryIndex(null)} type="button" title="Cerrar">
-            <X size={22} />
-          </button>
-          <button
-            className="gallery-nav gallery-nav-prev"
-            onClick={() => moveGallery(-1)}
-            disabled={!canOpenPreviousImage}
-            type="button"
-            title="Captura anterior"
-          >
-            <ChevronLeft size={30} />
-          </button>
-          <div className="gallery-stage">
-            <img src={galleryThumb.url} alt="" />
-          </div>
-          <button
-            className="gallery-nav gallery-nav-next"
-            onClick={() => moveGallery(1)}
-            disabled={!canOpenNextImage}
-            type="button"
-            title="Captura siguiente"
-          >
-            <ChevronRight size={30} />
-          </button>
-          <div className="gallery-count">
-            {(galleryIndex ?? 0) + 1} / {file.thumbnails.length}
-          </div>
-        </div>
+        <FullscreenGallery
+          thumbnail={galleryThumb}
+          index={galleryIndex ?? 0}
+          total={file.thumbnails.length}
+          canOpenPrevious={canOpenPreviousImage}
+          canOpenNext={canOpenNextImage}
+          onMove={moveGallery}
+          onClose={() => setGalleryIndex(null)}
+        />
       ) : null}
     </div>
   );
@@ -4313,21 +4602,7 @@ function FileDetail({
         return;
       }
 
-      if (galleryIndex != null) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setGalleryIndex(null);
-        }
-        if (event.key === "ArrowLeft" && canOpenPreviousImage) {
-          event.preventDefault();
-          moveGallery(-1);
-        }
-        if (event.key === "ArrowRight" && canOpenNextImage) {
-          event.preventDefault();
-          moveGallery(1);
-        }
-        return;
-      }
+      if (galleryIndex != null) return;
 
       if (event.key === "Escape") onClose();
       if (event.key === "ArrowLeft" && canOpenPrevious) {
@@ -4516,42 +4791,15 @@ function FileDetail({
         <ChevronRight size={26} />
       </button>
       {galleryThumb ? (
-        <div
-          className="gallery-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setGalleryIndex(null);
-          }}
-        >
-          <button className="icon-button gallery-close" onClick={() => setGalleryIndex(null)} type="button" title="Cerrar">
-            <X size={22} />
-          </button>
-          <button
-            className="gallery-nav gallery-nav-prev"
-            onClick={() => moveGallery(-1)}
-            disabled={!canOpenPreviousImage}
-            type="button"
-            title="Captura anterior"
-          >
-            <ChevronLeft size={30} />
-          </button>
-          <div className="gallery-stage">
-            <img src={galleryThumb.url} alt="" />
-          </div>
-          <button
-            className="gallery-nav gallery-nav-next"
-            onClick={() => moveGallery(1)}
-            disabled={!canOpenNextImage}
-            type="button"
-            title="Captura siguiente"
-          >
-            <ChevronRight size={30} />
-          </button>
-          <div className="gallery-count">
-            {(galleryIndex ?? 0) + 1} / {file.thumbnails.length}
-          </div>
-        </div>
+        <FullscreenGallery
+          thumbnail={galleryThumb}
+          index={galleryIndex ?? 0}
+          total={file.thumbnails.length}
+          canOpenPrevious={canOpenPreviousImage}
+          canOpenNext={canOpenNextImage}
+          onMove={moveGallery}
+          onClose={() => setGalleryIndex(null)}
+        />
       ) : null}
       {deletePromptOpen ? (
         <DeleteFileConfirmModal

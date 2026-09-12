@@ -105,9 +105,11 @@ Main features:
 - Lets you stop monitoring manual paths and ignore detected VideoCAT drives without deleting their marker.
 - Periodically checks for newly connected drives.
 - Periodically rescans monitored paths to detect new content.
+- Rebuilds each drive's lightweight scan state from the server, avoiding repeated metadata and thumbnail work for unchanged files even if the companion's local state was lost.
 - Reconciles missing files after complete scans: hides them without losing tags, metadata or history and reactivates them if they return.
 - Scans drives or paths on demand.
 - Processes pending deletes automatically.
+- Keeps deletion and failure history with date, drive, path and size; the web UI can also request immediate processing on connected drives.
 - Processes the `A descargar` queue, copying files into the configured local folder.
 - Opens videos with the default video player.
 - Opens the local folder for a file.
@@ -118,12 +120,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.9`.
+The current release is `v0.1.10`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.9.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.10.exe`
 
 Recommended companion verification:
 
@@ -134,7 +136,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.9.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.10.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -327,7 +329,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.9.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.10.exe
 ```
 
 Usage:
@@ -461,8 +463,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.9
-reiterstahl/videocat-web:0.1.9
+reiterstahl/videocat-server:0.1.10
+reiterstahl/videocat-web:0.1.10
 ```
 
 `latest` tags are also published:
@@ -509,8 +511,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.9 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.9 -t reiterstahl/videocat-web:0.1.9 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.10 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.10 -t reiterstahl/videocat-web:0.1.10 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -523,10 +525,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.9
+  image: reiterstahl/videocat-server:0.1.10
 
 web:
-  image: reiterstahl/videocat-web:0.1.9
+  image: reiterstahl/videocat-web:0.1.10
 ```
 
 ## Main Endpoints

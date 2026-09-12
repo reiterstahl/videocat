@@ -13,21 +13,11 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { requireAgentAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
+import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history.js";
 import { serializeDisk } from "../lib/serialize.js";
 
 function toDate(value?: string | null): Date | null {
   return value ? new Date(value) : null;
-}
-
-async function incrementAppMetric(key: string, incrementBy: bigint): Promise<void> {
-  if (incrementBy <= 0n) return;
-  await prisma.$executeRaw(Prisma.sql`
-    INSERT INTO "AppMetric" ("key", "valueBigInt", "updatedAt")
-    VALUES (${key}, ${incrementBy}, CURRENT_TIMESTAMP)
-    ON CONFLICT ("key") DO UPDATE
-    SET "valueBigInt" = "AppMetric"."valueBigInt" + EXCLUDED."valueBigInt",
-        "updatedAt" = CURRENT_TIMESTAMP
-  `);
 }
 
 async function appMetricValue(key: string): Promise<number> {
@@ -140,6 +130,10 @@ const companionHeartbeatSchema = z.object({
   companionId: z.string().uuid().optional(),
   companionName: z.string().trim().min(1).max(120).optional()
 });
+const deletionResultSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.enum(["deleted", "missing"]) }),
+  z.object({ status: z.literal("failed"), errorMessage: z.string().trim().min(1).max(4000) })
+]);
 const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
 const expectedThumbnailKinds = Array.from({ length: 15 }, (_value, index) => `frame_${String(index + 1).padStart(2, "0")}`);
 const thumbnailRepairConcurrency = 32;
@@ -224,7 +218,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
     await Promise.all(metrics);
-    return { ok: true };
+    const processDeletesRequestedAt = await appMetricValue("delete_process_requested_at");
+    return { ok: true, commands: { processDeletesRequestedAt } };
   });
 
   app.post("/api/agent/register-disk", { preHandler: requireAgentAuth }, async (request) => {
@@ -271,6 +266,31 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }
     });
     return { scan };
+  });
+
+  app.get("/api/agent/disks/:id/scan-index", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const disk = await diskByAgentIdentifier(id);
+    if (!disk) return reply.code(404).send({ message: "Disk not found" });
+
+    const files = await prisma.videoFile.findMany({
+      where: { diskId: disk.id, isPresent: true },
+      select: {
+        relativePath: true,
+        sizeBytes: true,
+        modifiedAt: true
+      },
+      orderBy: { relativePath: "asc" }
+    });
+
+    return {
+      disk: { id: disk.id, name: disk.name },
+      files: files.map((file) => ({
+        relativePath: file.relativePath,
+        sizeBytes: Number(file.sizeBytes),
+        modifiedAt: file.modifiedAt?.toISOString() ?? null
+      }))
+    };
   });
 
   app.get("/api/agent/disks/:id/thumbnail-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
@@ -459,8 +479,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const files = await prisma.videoFile.findMany({
       where: {
         diskId: disk.id,
-        curationStatus: "delete",
-        isPresent: true
+        curationStatus: "delete"
       },
       select: {
         id: true,
@@ -614,27 +633,30 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  app.post("/api/agent/files/:id/deletion-result", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = deletionResultSchema.parse(request.body);
+    const headerValue = request.headers["x-videocat-companion-id"];
+    const companionId = typeof headerValue === "string" ? headerValue : null;
+
+    if (body.status === "failed") {
+      const recorded = await recordDeletionFailure(id, body.errorMessage, { companionId });
+      if (!recorded) return reply.code(404).send({ message: "File not found" });
+      return { ok: true, removedFromCatalog: false };
+    }
+
+    const result = await finalizeDeletion(id, body.status, { companionId });
+    if (!result) return reply.code(404).send({ message: "File not found" });
+    return { ok: true, removedFromCatalog: true, ...result };
+  });
+
   app.delete("/api/agent/files/:id/catalog", { preHandler: requireAgentAuth }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    const file = await prisma.videoFile.findUnique({
-      where: { id },
-      include: { thumbnails: true }
-    });
-    if (!file) return reply.code(404).send({ message: "File not found" });
-
-    await prisma.videoFile.delete({ where: { id } });
-    if (file.curationStatus === "delete") {
-      await incrementAppMetric("review_freed_bytes", file.sizeBytes);
-    }
-
-    const baseDir = path.resolve(env.THUMBNAILS_DIR);
-    for (const thumbnail of file.thumbnails) {
-      const filePath = path.resolve(baseDir, ...thumbnail.relativePath.split("/"));
-      if (!filePath.startsWith(`${baseDir}${path.sep}`)) continue;
-      await fs.rm(filePath, { force: true }).catch(() => undefined);
-    }
-
-    return { ok: true };
+    const headerValue = request.headers["x-videocat-companion-id"];
+    const companionId = typeof headerValue === "string" ? headerValue : null;
+    const result = await finalizeDeletion(id, "deleted", { companionId });
+    if (!result) return reply.code(404).send({ message: "File not found" });
+    return { ok: true, ...result };
   });
 
   app.post("/api/agent/thumbnails/upload", { preHandler: requireAgentAuth }, async (request, reply) => {

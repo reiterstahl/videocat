@@ -7,6 +7,7 @@ import { filesQuerySchema, tagsFromFilename } from "@videocat/shared";
 import { isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
+import { finalizeDeletion } from "../lib/deletion-history.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
 
@@ -48,6 +49,9 @@ const randomDownloadSchema = z.object({
 });
 const downloadPauseSchema = z.object({
   paused: z.boolean()
+});
+const deletionHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(20).max(500).default(200)
 });
 
 function startOfToday(): Date {
@@ -935,36 +939,19 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.delete("/api/files/:id/catalog", { preHandler: requireWebAuth }, async (request, reply) => {
     const { id } = uuidParamsSchema.parse(request.params);
     const protectedUnlocked = isProtectedFolderUnlocked(request);
-    const file = await prisma.videoFile.findUnique({
-      where: { id },
-      include: { thumbnails: true }
-    });
+    const file = await prisma.videoFile.findUnique({ where: { id } });
     if (!file || !file.isPresent) return reply.code(404).send({ message: "File not found" });
     if (isHiddenSystemPath(file.relativePath)) return reply.code(404).send({ message: "File not found" });
     if (isProtectedPath(file.relativePath) && !protectedUnlocked) {
       return reply.code(403).send({ message: "PIN required" });
     }
 
-    await prisma.videoFile.delete({ where: { id } });
-
-    const baseDir = path.resolve(env.THUMBNAILS_DIR);
-    const removedThumbnails: string[] = [];
-    const thumbnailWarnings: string[] = [];
-    for (const thumbnail of file.thumbnails) {
-      const filePath = path.resolve(baseDir, ...thumbnail.relativePath.split("/"));
-      if (!filePath.startsWith(`${baseDir}${path.sep}`)) continue;
-      try {
-        await fs.rm(filePath, { force: true });
-        removedThumbnails.push(thumbnail.relativePath);
-      } catch (error) {
-        thumbnailWarnings.push(error instanceof Error ? error.message : "Could not remove thumbnail");
-      }
-    }
+    const result = await finalizeDeletion(id, "deleted", { source: "manual" });
+    if (!result) return reply.code(404).send({ message: "File not found" });
 
     return {
       ok: true,
-      removedThumbnails: removedThumbnails.length,
-      thumbnailWarnings
+      ...result
     };
   });
 
@@ -1405,6 +1392,137 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const totalRecoverableBytes = disks.reduce((sum, disk) => sum + disk.recoverableBytes, 0);
 
     return { totalRecoverableBytes, disks };
+  });
+
+  app.get("/api/review/deletions", { preHandler: requireWebAuth }, async (request) => {
+    const { limit } = deletionHistoryQuerySchema.parse(request.query);
+    const protectedUnlocked = isProtectedFolderUnlocked(request);
+    const pendingWhere: Prisma.VideoFileWhereInput = { curationStatus: "delete" };
+    applyHiddenPathFilter(pendingWhere);
+    if (!protectedUnlocked) applyProtectedPathFilter(pendingWhere);
+
+    const [presence, pendingTotal, pendingFiles, recentRecords, recordSummary] = await Promise.all([
+      companionPresence(),
+      prisma.videoFile.count({ where: pendingWhere }),
+      prisma.videoFile.findMany({
+        where: pendingWhere,
+        select: {
+          id: true,
+          diskId: true,
+          filename: true,
+          relativePath: true,
+          sizeBytes: true,
+          reviewedAt: true,
+          updatedAt: true,
+          disk: { select: { name: true, driveLetter: true } }
+        },
+        orderBy: [{ reviewedAt: "desc" }, { updatedAt: "desc" }],
+        take: limit
+      }),
+      prisma.deletionRecord.findMany({
+        where: protectedUnlocked || protectedFolderPatterns.length === 0
+          ? undefined
+          : { NOT: { OR: protectedFolderPatterns.map((pattern) => ({ relativePath: { contains: pattern, mode: "insensitive" } })) } },
+        orderBy: { attemptedAt: "desc" },
+        take: limit
+      }),
+      prisma.$queryRaw<Array<{ status: string; count: bigint; sizeBytes: bigint }>>(Prisma.sql`
+        SELECT "status", COUNT(*)::bigint AS "count", COALESCE(SUM("sizeBytes"), 0)::bigint AS "sizeBytes"
+        FROM "DeletionRecord"
+        WHERE NOT (
+          "relativePath" ILIKE '$RECYCLE.BIN'
+          OR "relativePath" ILIKE '$RECYCLE.BIN/%'
+          OR "relativePath" ILIKE '$RECYCLE.BIN\\%'
+          OR "relativePath" ILIKE 'System Volume Information'
+          OR "relativePath" ILIKE 'System Volume Information/%'
+          OR "relativePath" ILIKE 'System Volume Information\\%'
+        )
+        ${protectedPathSql(Prisma.sql`"relativePath"`, protectedUnlocked)}
+        GROUP BY "status"
+      `)
+    ]);
+
+    const pendingIds = pendingFiles.map((file) => file.id);
+    const failedForPending = pendingIds.length > 0
+      ? await prisma.deletionRecord.findMany({
+          where: { videoFileId: { in: pendingIds }, status: "failed" }
+        })
+      : [];
+    const recordsByVideoId = new Map(
+      [...recentRecords, ...failedForPending].map((record) => [record.videoFileId, record])
+    );
+    const connectedDiskIds = new Set(presence.mountedDiskIds);
+
+    const pendingEntries = pendingFiles.map((file) => {
+      const failed = recordsByVideoId.get(file.id);
+      return {
+        id: failed?.id ?? `pending-${file.id}`,
+        videoFileId: file.id,
+        diskId: file.diskId,
+        diskName: file.disk.name,
+        driveLetter: file.disk.driveLetter,
+        filename: file.filename,
+        relativePath: file.relativePath,
+        sizeBytes: Number(file.sizeBytes),
+        status: failed ? "failed" : "pending",
+        requestedAt: file.reviewedAt ?? file.updatedAt,
+        attemptedAt: failed?.attemptedAt ?? null,
+        completedAt: null,
+        errorMessage: failed?.errorMessage ?? null,
+        connected: connectedDiskIds.has(file.diskId)
+      };
+    });
+    const pendingIdSet = new Set(pendingIds);
+    const historicalEntries = recentRecords
+      .filter((record) => !pendingIdSet.has(record.videoFileId))
+      .filter((record) => !isHiddenSystemPath(record.relativePath))
+      .map((record) => ({
+        id: record.id,
+        videoFileId: record.videoFileId,
+        diskId: record.diskId,
+        diskName: record.diskName,
+        driveLetter: null,
+        filename: record.filename,
+        relativePath: record.relativePath,
+        sizeBytes: Number(record.sizeBytes),
+        status: record.status,
+        requestedAt: record.requestedAt,
+        attemptedAt: record.attemptedAt,
+        completedAt: record.completedAt,
+        errorMessage: record.errorMessage,
+        connected: record.diskId ? connectedDiskIds.has(record.diskId) : false
+      }));
+    const entries = [...pendingEntries, ...historicalEntries]
+      .sort((a, b) => {
+        const aDate = a.completedAt ?? a.attemptedAt ?? a.requestedAt;
+        const bDate = b.completedAt ?? b.attemptedAt ?? b.requestedAt;
+        return (bDate?.getTime() ?? 0) - (aDate?.getTime() ?? 0);
+      })
+      .slice(0, limit);
+    const summaryByStatus = new Map(recordSummary.map((item) => [item.status, item]));
+
+    return {
+      companionOnline: presence.online,
+      connectedDiskCount: presence.mountedDiskCount,
+      summary: {
+        pending: pendingTotal,
+        deleted: Number(summaryByStatus.get("deleted")?.count ?? 0n),
+        missing: Number(summaryByStatus.get("missing")?.count ?? 0n),
+        failed: Number(summaryByStatus.get("failed")?.count ?? 0n),
+        deletedBytes: Number(summaryByStatus.get("deleted")?.sizeBytes ?? 0n)
+      },
+      entries
+    };
+  });
+
+  app.post("/api/review/deletions/process", { preHandler: requireWebAuth }, async (_request, reply) => {
+    const presence = await companionPresence();
+    if (!presence.online) return reply.code(409).send({ message: "Companion is offline" });
+    if (presence.mountedDiskCount === 0) return reply.code(409).send({ message: "No connected disks" });
+
+    const requestedAt = Date.now();
+    await setAppMetricValue("delete_process_requested_at", BigInt(requestedAt));
+    return { ok: true, requestedAt, connectedDiskCount: presence.mountedDiskCount };
   });
 
   app.get("/api/review/recent", { preHandler: requireWebAuth }, async (request) => {

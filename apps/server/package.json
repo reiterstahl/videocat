@@ -16,7 +16,7 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^10.0.0",
-    "@prisma/client": "^5.17.0",
+    "@prisma/client": "6.12.0",
     "@videocat/shared": "0.1.0",
     "fastify": "^5.12.3",
     "jsonwebtoken": "^9.0.2",
@@ -25,7 +25,7 @@
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.12",
-    "prisma": "^5.17.0",
+    "prisma": "6.12.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   }

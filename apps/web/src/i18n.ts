@@ -92,6 +92,7 @@ const en: Record<string, string> = {
   "Quitar": "Remove",
   "Marcar para borrar": "Mark for deletion",
   "Regenerar miniaturas": "Regenerate thumbnails",
+  "Galería de capturas": "Screenshot gallery",
   "Limpiar": "Clear",
   "Seleccionar página": "Select page",
   "Archivo": "File",
@@ -110,6 +111,23 @@ const en: Record<string, string> = {
   "Siguiente": "Next",
   "Revision aleatoria de videos pendientes de decision.": "Random review of videos waiting for a decision.",
   "Espacio a recuperar": "Recoverable space",
+  "Últimos borrados": "Recent deletions",
+  "Review y companion": "Review and companion",
+  "Borrados": "Deleted",
+  "Espacio liberado": "Freed space",
+  "Procesar pendientes": "Process pending",
+  "Enviando...": "Sending...",
+  "Actualizando...": "Refreshing...",
+  "El companion no está conectado. Los borrados pendientes se conservarán hasta que vuelva a estar activo.": "The companion is offline. Pending deletions will be kept until it is active again.",
+  "El companion está activo, pero no reporta discos conectados.": "The companion is active, but it reports no connected drives.",
+  "Cargando historial de borrados...": "Loading deletion history...",
+  "Aún no hay borrados ni archivos pendientes registrados.": "There are no recorded deletions or pending files yet.",
+  "Borrado": "Deleted",
+  "Ya ausente": "Already missing",
+  "Fallido": "Failed",
+  "Conectado": "Connected",
+  "No conectado": "Not connected",
+  "El historial detallado se conserva para los borrados realizados a partir de esta actualización.": "Detailed history is retained for deletions completed after this update.",
   "Iniciar Review": "Start Review",
   "Pendientes": "Pending",
   "Marcados hoy": "Marked today",
@@ -308,6 +326,12 @@ function translateDynamicText(text: string, language: Language): string | null {
   match = text.match(/^(\d+) disco\(s\) conectado\(s\) disponible\(s\) para descargar\.$/);
   if (match) return `${match[1]} connected drive(s) available for download.`;
 
+  match = text.match(/^Conectado · (.+)$/);
+  if (match) return `Connected · ${match[1]}`;
+
+  match = text.match(/^Orden enviada al companion para (\d+) disco\(s\)\. Los resultados aparecerán aquí\.$/);
+  if (match) return `Command sent to the companion for ${match[1]} drive(s). Results will appear here.`;
+
   match = text.match(/^(\d+) carpeta\(s\) seleccionada\(s\)\.$/);
   if (match) return `${match[1]} selected folder(s).`;
 
@@ -333,7 +357,7 @@ export function translateText(value: string, language: Language): string {
 }
 
 const textOriginals = new WeakMap<Text, string>();
-const attributeNames = ["title", "aria-label", "placeholder"] as const;
+const attributeNames = ["title", "aria-label", "placeholder", "data-label"] as const;
 
 function shouldIgnoreElement(element: Element): boolean {
   return ["SCRIPT", "STYLE", "NOSCRIPT", "CODE", "PRE", "SVG"].includes(element.tagName);

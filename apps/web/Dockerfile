@@ -11,7 +11,7 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ARG VITE_VIDEOCAT_VERSION=0.1.9
+ARG VITE_VIDEOCAT_VERSION=0.1.10
 ENV VITE_VIDEOCAT_VERSION=$VITE_VIDEOCAT_VERSION
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/web
 

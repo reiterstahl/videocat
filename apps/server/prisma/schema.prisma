@@ -8,36 +8,37 @@ datasource db {
 }
 
 model Disk {
-  id             String      @id @default(uuid()) @db.Uuid
-  name           String
-  volumeLabel    String?
-  volumeId       String?
-  driveLetter    String?
-  totalBytes     BigInt?
-  fileSystem     String?
-  firstScannedAt DateTime    @default(now())
-  lastScannedAt  DateTime    @default(now())
-  notes          String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  scans          Scan[]
-  files          VideoFile[]
-  agentErrors    AgentError[]
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String
+  volumeLabel     String?
+  volumeId        String?
+  driveLetter     String?
+  totalBytes      BigInt?
+  fileSystem      String?
+  firstScannedAt  DateTime         @default(now())
+  lastScannedAt   DateTime         @default(now())
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  scans           Scan[]
+  files           VideoFile[]
+  agentErrors     AgentError[]
+  deletionRecords DeletionRecord[]
 
   @@index([name])
   @@index([volumeId])
 }
 
 model Scan {
-  id         String    @id @default(uuid()) @db.Uuid
-  diskId     String    @db.Uuid
-  rootPath   String
-  status     String    @default("running")
-  startedAt  DateTime  @default(now())
-  finishedAt DateTime?
-  fileCount  Int       @default(0)
-  errorCount Int       @default(0)
-  disk       Disk      @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  id          String       @id @default(uuid()) @db.Uuid
+  diskId      String       @db.Uuid
+  rootPath    String
+  status      String       @default("running")
+  startedAt   DateTime     @default(now())
+  finishedAt  DateTime?
+  fileCount   Int          @default(0)
+  errorCount  Int          @default(0)
+  disk        Disk         @relation(fields: [diskId], references: [id], onDelete: Cascade)
   agentErrors AgentError[]
 
   @@index([diskId])
@@ -45,8 +46,8 @@ model Scan {
 }
 
 model VideoFile {
-  id              String      @id @default(uuid()) @db.Uuid
-  diskId          String      @db.Uuid
+  id              String              @id @default(uuid()) @db.Uuid
+  diskId          String              @db.Uuid
   filename        String
   extension       String
   absolutePath    String
@@ -55,7 +56,7 @@ model VideoFile {
   folderSizeBytes BigInt?
   fileCreatedAt   DateTime?
   modifiedAt      DateTime?
-  scanStatus      String      @default("pending")
+  scanStatus      String              @default("pending")
   errorMessage    String?
   durationSeconds Float?
   width           Int?
@@ -68,14 +69,14 @@ model VideoFile {
   containerFormat String?
   streamCount     Int?
   ffprobeJson     Json?
-  curationStatus  String      @default("none")
+  curationStatus  String              @default("none")
   reviewedAt      DateTime?
-  isPresent       Boolean     @default(true)
+  isPresent       Boolean             @default(true)
   missingSince    DateTime?
-  lastSeenScanId  String?     @db.Uuid
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  disk            Disk        @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  lastSeenScanId  String?             @db.Uuid
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  disk            Disk                @relation(fields: [diskId], references: [id], onDelete: Cascade)
   thumbnails      Thumbnail[]
   categories      VideoFileCategory[]
   downloadQueue   DownloadQueue?
@@ -97,25 +98,50 @@ model VideoFile {
 }
 
 model DownloadQueue {
-  id              String    @id @default(uuid()) @db.Uuid
-  videoFileId     String    @unique @db.Uuid
-  status          String    @default("queued")
-  source          String    @default("manual")
-  requestedAt     DateTime  @default(now())
-  startedAt       DateTime?
-  completedAt     DateTime?
-  destinationPath String?
-  downloadedTag   String?
-  errorMessage    String?
-  progressBytes   BigInt    @default(0)
+  id                String    @id @default(uuid()) @db.Uuid
+  videoFileId       String    @unique @db.Uuid
+  status            String    @default("queued")
+  source            String    @default("manual")
+  requestedAt       DateTime  @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  destinationPath   String?
+  downloadedTag     String?
+  errorMessage      String?
+  progressBytes     BigInt    @default(0)
   progressUpdatedAt DateTime?
-  updatedAt       DateTime  @updatedAt
-  videoFile       VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+  updatedAt         DateTime  @updatedAt
+  videoFile         VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([requestedAt])
   @@index([completedAt])
   @@index([source])
+}
+
+model DeletionRecord {
+  id           String    @id @default(uuid()) @db.Uuid
+  videoFileId  String    @unique @db.Uuid
+  diskId       String?   @db.Uuid
+  diskName     String
+  filename     String
+  relativePath String
+  sizeBytes    BigInt
+  status       String
+  source       String    @default("review")
+  requestedAt  DateTime?
+  attemptedAt  DateTime  @default(now())
+  completedAt  DateTime?
+  errorMessage String?
+  companionId  String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  disk         Disk?     @relation(fields: [diskId], references: [id], onDelete: SetNull)
+
+  @@index([diskId])
+  @@index([status])
+  @@index([attemptedAt])
+  @@index([completedAt])
 }
 
 model AgentError {
@@ -140,12 +166,12 @@ model AgentError {
 }
 
 model CurationCategory {
-  key       String   @id
+  key       String              @id
   label     String
   color     String
-  builtIn   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  builtIn   Boolean             @default(false)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
   files     VideoFileCategory[]
 
   @@index([builtIn])
