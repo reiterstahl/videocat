@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@videocat/shared": path.resolve(__dirname, "../../packages/shared/src/index.ts")
+      "@videocat/shared": path.resolve(import.meta.dirname, "../../packages/shared/src/index.ts")
     }
   },
   server: {

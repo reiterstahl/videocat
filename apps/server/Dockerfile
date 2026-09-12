@@ -8,7 +8,7 @@ FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY apps/server/package.json apps/server/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN npm install
+RUN npm ci
 
 FROM deps AS build
 COPY tsconfig.base.json ./
