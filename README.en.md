@@ -51,8 +51,9 @@ The system has two parts:
 - Last indexed timestamp per video.
 - Folder-size value for the folder containing each video.
 - Folder usage screen to understand space distribution.
-- Probable duplicate detection by file size, visually grouped.
-- Dedicated duplicate review section.
+- Duplicate detection using file size and perceptual fingerprints sampled at 15 points in each video.
+- Recognition of likely copies with different resolution, codec, bitrate or compression level.
+- Dedicated duplicate review section with confidence, match reasons and potentially recoverable space.
 - Automatic tags based on filenames.
 - Custom multi-category labels with colors.
 - Built-in review categories: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` and user-defined categories.
@@ -107,6 +108,7 @@ Main features:
 - Periodically rescans monitored paths to detect new content.
 - Rebuilds each drive's lightweight scan state from the server, avoiding repeated metadata and thumbnail work for unchanged files even if the companion's local state was lost.
 - Reconciles missing files after complete scans: hides them without losing tags, metadata or history and reactivates them if they return.
+- Builds visual fingerprints incrementally for new and existing videos to improve cross-resolution duplicate detection.
 - Scans drives or paths on demand.
 - Processes pending deletes automatically.
 - Keeps deletion and failure history with date, drive, path and size; the web UI can also request immediate processing on connected drives.
@@ -120,12 +122,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.10`.
+The current release is `v0.1.11`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.10.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.11.exe`
 
 Recommended companion verification:
 
@@ -136,7 +138,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.10.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.11.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -349,7 +351,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.10.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
 ```
 
 Usage:
@@ -483,8 +485,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.10
-reiterstahl/videocat-web:0.1.10
+reiterstahl/videocat-server:0.1.11
+reiterstahl/videocat-web:0.1.11
 ```
 
 `latest` tags are also published:
@@ -531,8 +533,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.10 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.10 -t reiterstahl/videocat-web:0.1.10 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.11 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.11 -t reiterstahl/videocat-web:0.1.11 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -545,10 +547,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.10
+  image: reiterstahl/videocat-server:0.1.11
 
 web:
-  image: reiterstahl/videocat-web:0.1.10
+  image: reiterstahl/videocat-web:0.1.11
 ```
 
 ## Main Endpoints

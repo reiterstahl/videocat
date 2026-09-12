@@ -46,40 +46,43 @@ model Scan {
 }
 
 model VideoFile {
-  id              String              @id @default(uuid()) @db.Uuid
-  diskId          String              @db.Uuid
-  filename        String
-  extension       String
-  absolutePath    String
-  relativePath    String
-  sizeBytes       BigInt
-  folderSizeBytes BigInt?
-  fileCreatedAt   DateTime?
-  modifiedAt      DateTime?
-  scanStatus      String              @default("pending")
-  errorMessage    String?
-  durationSeconds Float?
-  width           Int?
-  height          Int?
-  fps             Float?
-  videoCodec      String?
-  audioCodec      String?
-  audioChannels   Int?
-  bitrate         BigInt?
-  containerFormat String?
-  streamCount     Int?
-  ffprobeJson     Json?
-  curationStatus  String              @default("none")
-  reviewedAt      DateTime?
-  isPresent       Boolean             @default(true)
-  missingSince    DateTime?
-  lastSeenScanId  String?             @db.Uuid
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  disk            Disk                @relation(fields: [diskId], references: [id], onDelete: Cascade)
-  thumbnails      Thumbnail[]
-  categories      VideoFileCategory[]
-  downloadQueue   DownloadQueue?
+  id                 String              @id @default(uuid()) @db.Uuid
+  diskId             String              @db.Uuid
+  filename           String
+  extension          String
+  absolutePath       String
+  relativePath       String
+  sizeBytes          BigInt
+  folderSizeBytes    BigInt?
+  fileCreatedAt      DateTime?
+  modifiedAt         DateTime?
+  scanStatus         String              @default("pending")
+  errorMessage       String?
+  durationSeconds    Float?
+  width              Int?
+  height             Int?
+  fps                Float?
+  videoCodec         String?
+  audioCodec         String?
+  audioChannels      Int?
+  bitrate            BigInt?
+  containerFormat    String?
+  streamCount        Int?
+  ffprobeJson        Json?
+  visualFingerprint  String?
+  fingerprintVersion Int?
+  fingerprintedAt    DateTime?
+  curationStatus     String              @default("none")
+  reviewedAt         DateTime?
+  isPresent          Boolean             @default(true)
+  missingSince       DateTime?
+  lastSeenScanId     String?             @db.Uuid
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  disk               Disk                @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  thumbnails         Thumbnail[]
+  categories         VideoFileCategory[]
+  downloadQueue      DownloadQueue?
 
   @@unique([diskId, relativePath])
   @@index([diskId])
@@ -90,6 +93,7 @@ model VideoFile {
   @@index([width])
   @@index([height])
   @@index([videoCodec])
+  @@index([fingerprintVersion])
   @@index([modifiedAt])
   @@index([curationStatus])
   @@index([reviewedAt])

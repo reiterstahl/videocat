@@ -7,6 +7,7 @@ import {
   companionPortCandidates,
   filesBatchSchema,
   filesQuerySchema,
+  encodeVisualFingerprint,
   tagsFromFilename,
   thumbnailKindSchema
 } from "../../packages/shared/src/index.ts";
@@ -33,6 +34,16 @@ test("accepts bounded agent file batches and rejects oversized batches", () => {
     diskId: "22222222-2222-4222-8222-222222222222",
     files: Array.from({ length: 201 }, () => validFile)
   }).success, false);
+});
+
+test("accepts versioned visual fingerprints and rejects malformed values", () => {
+  const visualFingerprint = encodeVisualFingerprint(Array.from({ length: 8 }, (_value, index) => ({
+    index: index + 1,
+    hash: "0123456789abcdef"
+  })));
+  assert.ok(visualFingerprint);
+  assert.equal(agentFileSchema.safeParse({ ...validFile, visualFingerprint, fingerprintVersion: 1 }).success, true);
+  assert.equal(agentFileSchema.safeParse({ ...validFile, visualFingerprint: "v1:not-a-hash", fingerprintVersion: 1 }).success, false);
 });
 
 test("bounds catalog queries and thumbnail kinds", () => {

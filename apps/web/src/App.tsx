@@ -34,7 +34,7 @@ import {
   X
 } from "lucide-react";
 import { companionPortCandidates, formatBytes, formatDuration } from "@videocat/shared";
-import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, type Language } from "./i18n";
+import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, translateText, type Language } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
 import type { Disk, Stats, Thumbnail, VideoFile } from "./types";
 
@@ -224,8 +224,12 @@ type AuditSummaryItem = {
 };
 
 type DuplicateGroup = {
-  sizeBytes: number;
+  key: string;
   count: number;
+  confidence: number;
+  matchType: "same_size" | "visual" | "mixed";
+  reasons: string[];
+  recoverableBytes: number;
   files: VideoFile[];
 };
 
@@ -307,7 +311,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.10";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.11";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -3475,7 +3479,7 @@ export function App() {
           <div className="view-header">
             <div>
               <strong>Potenciales duplicados</strong>
-              <span>Grupos por tamano exacto dentro de los discos conectados seleccionados.</span>
+              <span>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</span>
             </div>
           </div>
           {auxLoading ? <div className="loading">Cargando...</div> : null}
@@ -3484,11 +3488,16 @@ export function App() {
           ) : null}
           <div className="duplicate-groups">
             {duplicateGroups.map((group) => (
-              <article className="duplicate-group" key={group.sizeBytes}>
+              <article className="duplicate-group" key={group.key}>
                 <header className="duplicate-group-header">
                   <div>
                     <strong>{group.count} archivos posibles</strong>
-                    <span>{formatBytes(group.sizeBytes)} cada uno</span>
+                    <span>{group.reasons.map((reason) => translateText(reason, language)).join(" · ")}</span>
+                  </div>
+                  <div className={`duplicate-confidence is-${group.matchType}`}>
+                    <strong>{group.confidence}%</strong>
+                    <span>{translateText(group.matchType === "visual" ? "Coincidencia visual" : group.matchType === "mixed" ? "Coincidencia mixta" : "Mismo tamaño", language)}</span>
+                    <small>{formatBytes(group.recoverableBytes)} {translateText("recuperables", language)}</small>
                   </div>
                 </header>
                 <div className="duplicate-file-list">
@@ -3513,6 +3522,7 @@ export function App() {
                       <div className="duplicate-file-meta">
                         <span>{formatDuration(file.durationSeconds)}</span>
                         <span>{resolution(file)}</span>
+                        <span>{formatBytes(file.sizeBytes)}</span>
                         <CategoryBadges file={file} categories={facets.curationStatuses} />
                       </div>
                     </button>
@@ -4770,7 +4780,12 @@ function FileDetail({
             {duplicates.map((duplicate) => (
               <button key={duplicate.id} className="duplicate-row">
                 <span>{duplicate.filename}</span>
-                <small>{duplicate.disk?.name} · {duplicate.relativePath}</small>
+                <small>
+                  {duplicate.disk?.name} · {duplicate.relativePath}
+                  {duplicate.duplicateConfidence != null
+                    ? ` · ${duplicate.duplicateConfidence}% ${translateText("de confianza", locale.toLowerCase().startsWith("en") ? "en" : "es")}`
+                    : ""}
+                </small>
               </button>
             ))}
           </section>

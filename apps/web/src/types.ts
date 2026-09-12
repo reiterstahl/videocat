@@ -55,6 +55,9 @@ export type VideoFile = {
   tags: string[];
   duplicateCount: number;
   isProbableDuplicate: boolean;
+  duplicateConfidence?: number;
+  duplicateMatchType?: "same_size" | "visual" | "mixed";
+  duplicateReasons?: string[];
 };
 
 export type Stats = {

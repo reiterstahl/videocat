@@ -3753,6 +3753,30 @@ tbody tr.curation-row {
   box-shadow: inset 4px 0 0 #d9862f;
 }
 
+.duplicate-confidence {
+  flex: 0 0 auto;
+  min-width: 150px;
+  text-align: right;
+}
+
+.duplicate-confidence strong,
+.duplicate-confidence span,
+.duplicate-confidence small {
+  display: block;
+}
+
+.duplicate-confidence strong {
+  color: #172026;
+  font-size: 1.2rem;
+}
+
+.duplicate-confidence small {
+  color: #66747d;
+  font-size: 0.75rem;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
 .duplicate-group-header strong {
   display: block;
   color: #172026;
@@ -4300,6 +4324,14 @@ tbody tr.curation-row {
 
   .duplicate-file-row {
     grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .duplicate-group-header {
+    align-items: flex-start;
+  }
+
+  .duplicate-confidence {
+    min-width: 118px;
   }
 
   .duplicate-file-meta {

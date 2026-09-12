@@ -1,4 +1,5 @@
 import { z } from "zod";
+export * from "./perceptual-fingerprint.js";
 
 export const companionDefaultPort = 29429;
 const companionFallbackPorts = [18431, 23447, 31469, 37483, 43517, 49627, 55733, 60149, 15319, 26891] as const;
@@ -71,6 +72,8 @@ export const agentFileSchema = z.object({
   modifiedAt: z.string().datetime().nullable().optional(),
   status: fileScanStatusSchema,
   errorMessage: z.string().max(4000).nullable().optional(),
+  visualFingerprint: z.string().max(400).regex(/^v1:(?:\d{2}=[0-9a-f]{16})(?:;\d{2}=[0-9a-f]{16})*$/).nullable().optional(),
+  fingerprintVersion: z.number().int().positive().max(100).nullable().optional(),
   metadata: ffprobeVideoMetadataSchema.nullable().optional()
 });
 

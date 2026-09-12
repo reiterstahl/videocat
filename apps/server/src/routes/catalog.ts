@@ -8,6 +8,7 @@ import { isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
+import { findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
 
@@ -415,6 +416,27 @@ function duplicateEligibleWhere(extra: Prisma.VideoFileWhereInput = {}): Prisma.
   return where;
 }
 
+const duplicateCandidateSelect = {
+  id: true,
+  filename: true,
+  sizeBytes: true,
+  durationSeconds: true,
+  width: true,
+  height: true,
+  visualFingerprint: true
+} satisfies Prisma.VideoFileSelect;
+
+async function duplicateCandidates(where: Prisma.VideoFileWhereInput): Promise<DuplicateCandidate[]> {
+  const boundedWhere: Prisma.VideoFileWhereInput = {
+    ...where,
+    AND: [
+      ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
+      { sizeBytes: { gt: 0 } }
+    ]
+  };
+  return prisma.videoFile.findMany({ where: boundedWhere, select: duplicateCandidateSelect });
+}
+
 function fileIncludes() {
   return {
     disk: true,
@@ -816,17 +838,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
     applyFolderFilter(where, folders);
 
+    let detectedDuplicateCountById: Map<string, number> | null = null;
     if (query.duplicateOnly) {
-      const duplicateSizes = await prisma.videoFile.groupBy({
-        by: ["sizeBytes"],
-        where: duplicateEligibleWhere(),
-        having: { sizeBytes: { _count: { gt: 1 } } }
-      });
+      const detectedGroups = findDuplicateGroups(await duplicateCandidates(duplicateEligibleWhere()));
+      detectedDuplicateCountById = new Map(
+        detectedGroups.flatMap((group) => group.fileIds.map((id) => [id, group.count] as const))
+      );
       applyProtectedPathFilter(where);
-      where.sizeBytes = {
-        ...(typeof where.sizeBytes === "object" ? where.sizeBytes : {}),
-        in: duplicateSizes.map((group) => group.sizeBytes)
-      };
+      where.id = { in: [...detectedDuplicateCountById.keys()] };
     }
 
     const orderBy: Prisma.VideoFileOrderByWithRelationInput | Prisma.VideoFileOrderByWithRelationInput[] =
@@ -889,7 +908,12 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       files: filesWithCategories.map((file) =>
-        serializeFile(file, isProtectedPath(file.relativePath) ? 0 : (duplicateCountBySize.get(file.sizeBytes.toString()) ?? 0))
+        serializeFile(
+          file,
+          isProtectedPath(file.relativePath)
+            ? 0
+            : (detectedDuplicateCountById?.get(file.id) ?? duplicateCountBySize.get(file.sizeBytes.toString()) ?? 0)
+        )
       ),
       page: query.page,
       pageSize: query.pageSize,
@@ -918,21 +942,39 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       };
     }
 
-    const duplicateCount = await prisma.videoFile.count({
-      where: duplicateEligibleWhere({ sizeBytes: file.sizeBytes })
-    });
+    const durationWindow = file.durationSeconds
+      ? Math.max(2.5, file.durationSeconds * 0.016)
+      : null;
+    const candidates = await duplicateCandidates(duplicateEligibleWhere({
+      OR: [
+        { sizeBytes: file.sizeBytes },
+        ...(durationWindow != null
+          ? [{
+              visualFingerprint: { not: null },
+              durationSeconds: { gte: file.durationSeconds! - durationWindow, lte: file.durationSeconds! + durationWindow }
+            }]
+          : [])
+      ]
+    }));
+    const duplicateGroup = findDuplicateGroups(candidates).find((group) => group.fileIds.includes(file.id));
+    const duplicateIds = duplicateGroup?.fileIds.filter((candidateId) => candidateId !== file.id).slice(0, 20) ?? [];
     const duplicates = await prisma.videoFile.findMany({
-      where: duplicateEligibleWhere({ sizeBytes: file.sizeBytes, NOT: { id: file.id } }),
+      where: duplicateEligibleWhere({ id: { in: duplicateIds } }),
       include: fileIncludes(),
-      take: 20,
       orderBy: { filename: "asc" }
     });
+    const duplicateCount = duplicateGroup?.count ?? 1;
     const [fileWithCategories] = await attachCategoryKeys([file]);
     const duplicatesWithCategories = await attachCategoryKeys(duplicates);
 
     return {
       file: serializeFile(fileWithCategories, duplicateCount),
-      duplicates: duplicatesWithCategories.map((duplicate) => serializeFile(duplicate, duplicateCount))
+      duplicates: duplicatesWithCategories.map((duplicate) => ({
+        ...serializeFile(duplicate, duplicateCount),
+        duplicateConfidence: duplicateGroup?.confidence,
+        duplicateMatchType: duplicateGroup?.matchType,
+        duplicateReasons: duplicateGroup?.reasons ?? []
+      }))
     };
   });
 
@@ -1851,38 +1893,30 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const query = diskIdsQuerySchema.parse(request.query);
     const diskIds = commaList(query.diskIds);
     const where = duplicateEligibleWhere(diskIds.length > 0 ? { diskId: { in: diskIds } } : {});
-    const groups = await prisma.videoFile.groupBy({
-      by: ["sizeBytes"],
-      where,
-      _count: { _all: true },
-      having: { sizeBytes: { _count: { gt: 1 } },
-      },
-      orderBy: { _count: { sizeBytes: "desc" } },
-      take: 80
-    });
-    const sizes = groups.map((group) => group.sizeBytes);
-    const files = sizes.length > 0
+    const groups = findDuplicateGroups(await duplicateCandidates(where)).slice(0, 80);
+    const fileIds = [...new Set(groups.flatMap((group) => group.fileIds))];
+    const files = fileIds.length > 0
       ? await prisma.videoFile.findMany({
-          where: duplicateEligibleWhere({
-            ...(diskIds.length > 0 ? { diskId: { in: diskIds } } : {}),
-            sizeBytes: { in: sizes }
-          }),
+          where: duplicateEligibleWhere({ id: { in: fileIds } }),
           include: fileIncludes(),
-          orderBy: [{ sizeBytes: "desc" }, { filename: "asc" }]
+          orderBy: { filename: "asc" }
         })
       : [];
-    const filesBySize = new Map<string, typeof files>();
     const filesWithCategories = await attachCategoryKeys(files);
-    for (const file of filesWithCategories) {
-      const key = file.sizeBytes.toString();
-      filesBySize.set(key, [...(filesBySize.get(key) ?? []), file]);
-    }
+    const filesById = new Map(filesWithCategories.map((file) => [file.id, file]));
 
     return {
       groups: groups.map((group) => ({
-        sizeBytes: Number(group.sizeBytes),
-        count: group._count._all,
-        files: (filesBySize.get(group.sizeBytes.toString()) ?? []).map((file) => serializeFile(file, group._count._all))
+        key: group.key,
+        count: group.count,
+        confidence: group.confidence,
+        matchType: group.matchType,
+        reasons: group.reasons,
+        recoverableBytes: group.recoverableBytes,
+        files: group.fileIds.flatMap((id) => {
+          const file = filesById.get(id);
+          return file ? [serializeFile(file, group.count)] : [];
+        })
       }))
     };
   });
@@ -1892,16 +1926,13 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     applyHiddenPathFilter(visibleWhere);
     if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(visibleWhere);
 
-    const [diskCount, fileCount, totalSize, duplicateGroups] = await Promise.all([
+    const [diskCount, fileCount, totalSize, duplicateCandidatesForStats] = await Promise.all([
       prisma.disk.count(),
       prisma.videoFile.count({ where: visibleWhere }),
       prisma.videoFile.aggregate({ where: visibleWhere, _sum: { sizeBytes: true } }),
-      prisma.videoFile.groupBy({
-        by: ["sizeBytes"],
-        where: duplicateEligibleWhere(),
-        having: { sizeBytes: { _count: { gt: 1 } } }
-      })
+      duplicateCandidates(duplicateEligibleWhere())
     ]);
+    const duplicateGroups = findDuplicateGroups(duplicateCandidatesForStats);
 
     return {
       diskCount,

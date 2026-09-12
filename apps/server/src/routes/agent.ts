@@ -8,12 +8,14 @@ import {
   filesBatchSchema,
   registerDiskSchema,
   scanStartSchema,
-  thumbnailKindSchema
+  thumbnailKindSchema,
+  visualFingerprintVersion
 } from "@videocat/shared";
 import { prisma } from "../lib/prisma.js";
 import { requireAgentAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history.js";
+import { protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
 
 function toDate(value?: string | null): Date | null {
@@ -74,6 +76,9 @@ function videoFileData(diskId: string, scanId: string, file: ReturnType<typeof f
     containerFormat: file.metadata?.containerFormat ?? null,
     streamCount: file.metadata?.streamCount ?? null,
     ffprobeJson: file.metadata?.raw ?? undefined,
+    visualFingerprint: file.visualFingerprint,
+    fingerprintVersion: file.fingerprintVersion,
+    fingerprintedAt: file.visualFingerprint !== undefined ? new Date() : undefined,
     isPresent: true,
     missingSince: null,
     lastSeenScanId: scanId
@@ -291,6 +296,46 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         modifiedAt: file.modifiedAt?.toISOString() ?? null
       }))
     };
+  });
+
+  app.get("/api/agent/disks/:id/fingerprint-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const disk = await diskByAgentIdentifier(id);
+    if (!disk) return reply.code(404).send({ message: "Disk not found" });
+    const patterns = await protectedFolderPatterns();
+    const files = await prisma.videoFile.findMany({
+      where: {
+        diskId: disk.id,
+        isPresent: true,
+        durationSeconds: { not: null },
+        OR: [
+          { visualFingerprint: null },
+          { fingerprintVersion: null },
+          { fingerprintVersion: { lt: visualFingerprintVersion } }
+        ],
+        scanStatus: { in: ["scanned", "thumbnail_failed"] },
+        AND: [
+          {
+            NOT: [
+              { relativePath: { equals: "$RECYCLE.BIN", mode: "insensitive" } },
+              { relativePath: { startsWith: "$RECYCLE.BIN/", mode: "insensitive" } },
+              { relativePath: { equals: "System Volume Information", mode: "insensitive" } },
+              { relativePath: { startsWith: "System Volume Information/", mode: "insensitive" } }
+            ]
+          },
+          ...(patterns.length > 0
+            ? [{ NOT: { OR: patterns.map((pattern) => ({ relativePath: { contains: pattern, mode: "insensitive" as const } })) } }]
+            : [])
+        ]
+      },
+      select: { relativePath: true },
+      orderBy: [
+        { fingerprintedAt: { sort: "asc", nulls: "first" } },
+        { relativePath: "asc" }
+      ],
+      take: 100
+    });
+    return { disk: { id: disk.id, name: disk.name }, files };
   });
 
   app.get("/api/agent/disks/:id/thumbnail-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {

@@ -51,8 +51,9 @@ El sistema tiene dos partes:
 - Campo de última fecha de indexado por video.
 - Cálculo del tamaño del folder que contiene cada video.
 - Esquema de uso por folders para entender distribución de espacio.
-- Detección de duplicados probables por tamaño, agrupados visualmente.
-- Sección de duplicados para decidir acciones.
+- Detección de duplicados por tamaño y huellas visuales perceptuales tomadas en 15 puntos del video.
+- Reconocimiento de posibles copias con distinta resolución, códec, bitrate o nivel de compresión.
+- Sección de duplicados con nivel de confianza, motivos y espacio potencialmente recuperable.
 - Etiquetas automáticas basadas en nombres de archivo.
 - Categorías personalizadas con colores, asignables de forma múltiple por video.
 - Categorías incluidas para revisión: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` y otras definidas por el usuario.
@@ -107,6 +108,7 @@ Funciones principales:
 - Reescanea periódicamente las rutas monitoreadas para detectar contenido nuevo.
 - Reconstruye desde el servidor el estado ligero de cada disco, evitando repetir metadatos y miniaturas de archivos sin cambios aunque se haya perdido el estado local del companion.
 - Concilia archivos ausentes tras pasadas completas: los oculta sin perder etiquetas, metadatos ni historial y los reactiva si reaparecen.
+- Genera huellas visuales progresivamente para videos nuevos y existentes, mejorando la detección entre resoluciones diferentes.
 - Escanea discos o rutas bajo solicitud.
 - Procesa borrados pendientes automáticamente.
 - Conserva un historial de borrados y fallos con fecha, disco, ruta y tamaño; la web también puede solicitar su procesamiento inmediato en los discos conectados.
@@ -121,12 +123,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual es `v0.1.10`.
+La versión actual es `v0.1.11`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.10.exe`
+- Companion Windows: `VideoCAT-Companion-0.1.11.exe`
 
 Verificación recomendada del companion:
 
@@ -137,7 +139,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.10.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.11.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -351,7 +353,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.10.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
 ```
 
 Uso:
@@ -486,8 +488,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.10
-reiterstahl/videocat-web:0.1.10
+reiterstahl/videocat-server:0.1.11
+reiterstahl/videocat-web:0.1.11
 ```
 
 También se publican etiquetas `latest`:
@@ -534,8 +536,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.10 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.10 -t reiterstahl/videocat-web:0.1.10 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.11 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.11 -t reiterstahl/videocat-web:0.1.11 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -548,10 +550,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.10
+  image: reiterstahl/videocat-server:0.1.11
 
 web:
-  image: reiterstahl/videocat-web:0.1.10
+  image: reiterstahl/videocat-web:0.1.11
 ```
 
 ## Endpoints principales

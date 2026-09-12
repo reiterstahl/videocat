@@ -42,8 +42,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable y genera los archivos SHA-256 y MD5. Los assets quedan en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.10.exe
-companion\VideoCAT-Companion-0.1.10.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
+companion\VideoCAT-Companion-0.1.11.exe
 ```
 
 Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para subir los tres assets a un release de GitHub ya creado.
@@ -82,6 +82,7 @@ COMPANION_DISABLED_DISK_IDS=
 ## Notas
 
 - El Companion busca `ffmpeg` y `ffprobe` en el `PATH` y en ubicaciones comunes de WinGet, Scoop y Chocolatey. Si no los encuentra, configura `FFMPEG_PATH` y `FFPROBE_PATH`.
+- El Companion usa FFmpeg para generar huellas visuales de 15 fotogramas. Los videos antiguos se analizan progresivamente, hasta 100 por cada revisión del disco.
 - El estado persistente del agente se guarda por defecto en `%LOCALAPPDATA%\VideoCAT\agent-state`; `AGENT_STATE_DIR` permite cambiarlo.
 - El Companion crea `companion-identity.json` en ese directorio para mantener una identidad UUID estable por instalación. No copies ese archivo a otro equipo.
 - El escaneo sigue respetando `.videocat-disk.json` y sus `scanRoots`.

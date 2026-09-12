@@ -15,8 +15,12 @@ import {
   AgentFileInput,
   companionDefaultPort,
   companionPortCandidates,
+  encodeVisualFingerprint,
   formatBytes,
-  isVideoExtension
+  isVideoExtension,
+  perceptualHashFromGray9x8,
+  visualFingerprintVersion,
+  type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
@@ -72,6 +76,12 @@ type ThumbResult = {
 type ProcessedFile = {
   record: AgentFileInput;
   thumbnails: ThumbResult[];
+};
+
+type PendingScanFile = {
+  filePath: string;
+  createThumbnails: boolean;
+  createFingerprint: boolean;
 };
 
 type PendingAgentError = AgentErrorInput;
@@ -154,6 +164,10 @@ type ThumbnailRepairQueueResponse = {
   }>;
 };
 
+type FingerprintRepairQueueResponse = {
+  files: Array<{ relativePath: string }>;
+};
+
 type ScanIndexResponse = {
   files: Array<{
     relativePath: string;
@@ -179,7 +193,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 11;
+const companionVersion = 12;
 let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
@@ -1754,12 +1768,16 @@ function thumbnailTempName(relativePathValue: string, kind: string): string {
   return `${digest}-${kind}.jpg`;
 }
 
+function fingerprintTempName(relativePathValue: string, kind: string): string {
+  return thumbnailTempName(relativePathValue, kind).replace(/\.jpg$/, ".gray");
+}
+
 async function countVideos(
   targets: ScanTarget[],
   diskRoot: string,
   state: State,
   errors: PendingAgentError[],
-  thumbnailRepairPaths: Set<string>,
+  processingPaths: Set<string>,
   completeness: ScanCompleteness
 ): Promise<CountResult> {
   let total = 0;
@@ -1773,7 +1791,7 @@ async function countVideos(
       try {
         const stat = await fs.stat(filePath);
         const rel = relativePath(diskRoot, filePath);
-        if (completedStateMatches(state, rel, stat.mtime.getTime(), stat.size) && !thumbnailRepairPaths.has(rel)) {
+        if (completedStateMatches(state, rel, stat.mtime.getTime(), stat.size) && !processingPaths.has(rel)) {
           skipped += 1;
         } else {
           pending += 1;
@@ -1867,31 +1885,47 @@ async function ffprobe(filePath: string) {
   };
 }
 
-async function createThumbnail(source: string, destination: string, seconds: number): Promise<void> {
+async function extractVisualHash(
+  source: string,
+  rawDestination: string,
+  seconds: number,
+  thumbnailDestination?: string
+): Promise<string> {
+  await fs.mkdir(path.dirname(rawDestination), { recursive: true });
+  const args = ["-y", "-ss", String(Math.max(0, seconds)), "-i", source];
+  if (thumbnailDestination) {
+    args.push(
+      "-filter_complex",
+      "[0:v:0]split=2[thumbsrc][hashsrc];[thumbsrc]scale=640:-1[thumb];[hashsrc]scale=9:8,format=gray[hash]",
+      "-map", "[thumb]", "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnailDestination,
+      "-map", "[hash]", "-frames:v", "1", "-f", "rawvideo", rawDestination
+    );
+  } else {
+    args.push(
+      "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=9:8,format=gray", "-f", "rawvideo", rawDestination
+    );
+  }
+
+  try {
+    await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10 });
+    const pixels = await fs.readFile(rawDestination);
+    return perceptualHashFromGray9x8(pixels);
+  } finally {
+    await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+  }
+}
+
+async function createThumbnail(source: string, destination: string, rawDestination: string, seconds: number): Promise<string> {
   await fs.mkdir(path.dirname(destination), { recursive: true });
-  await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), [
-    "-y",
-    "-ss",
-    String(Math.max(0, seconds)),
-    "-i",
-    source,
-    "-frames:v",
-    "1",
-    "-vf",
-    "scale=640:-1",
-    "-update",
-    "1",
-    "-q:v",
-    "3",
-    destination
-  ], { maxBuffer: 1024 * 1024 * 10 });
+  return extractVisualHash(source, rawDestination, seconds, destination);
 }
 
 async function processFile(
   scanRoot: string,
   filePath: string,
   scanId: string,
-  thumbnailsEnabled: boolean,
+  createThumbnails: boolean,
+  createFingerprint: boolean,
   folderSizeCache: Map<string, number | null>,
   errors: PendingAgentError[]
 ): Promise<ProcessedFile> {
@@ -1913,11 +1947,13 @@ async function processFile(
   try {
     const metadata = await ffprobe(filePath);
     const thumbs: ThumbResult[] = [];
+    const fingerprintFrames: VisualFingerprintFrame[] = [];
     let status: AgentFileInput["status"] = "scanned";
     let errorMessage: string | null = null;
 
-    if (thumbnailsEnabled && metadata.durationSeconds) {
+    if ((createThumbnails || createFingerprint) && metadata.durationSeconds) {
       let thumbnailFailures = 0;
+      let fingerprintFailures = 0;
       for (const [kind, percent] of thumbnailPercents) {
         const timestampSeconds = Math.max(0.1, metadata.durationSeconds * percent);
         const destination = path.join(
@@ -1926,25 +1962,44 @@ async function processFile(
           scanId,
           thumbnailTempName(rel, kind)
         );
+        const rawDestination = path.join(
+          agentStateRoot(),
+          "temporary-thumbnails",
+          scanId,
+          fingerprintTempName(rel, kind)
+        );
         try {
-          await createThumbnail(filePath, destination, timestampSeconds);
-          thumbs.push({ kind, timestampSeconds, filePath: destination });
+          const hash = createThumbnails
+            ? await createThumbnail(filePath, destination, rawDestination, timestampSeconds)
+            : await extractVisualHash(filePath, rawDestination, timestampSeconds);
+          fingerprintFrames.push({ index: Number(kind.slice(-2)), hash });
+          if (createThumbnails) thumbs.push({ kind, timestampSeconds, filePath: destination });
         } catch (error) {
-          thumbnailFailures += 1;
-          status = "thumbnail_failed";
-          errorMessage = error instanceof Error ? error.message : "thumbnail_failed";
+          fingerprintFailures += 1;
+          if (createThumbnails) {
+            thumbnailFailures += 1;
+            status = "thumbnail_failed";
+            errorMessage = error instanceof Error ? error.message : "thumbnail_failed";
+          }
         }
       }
       if (thumbnailFailures > 0) {
         console.warn(`Miniaturas fallidas ${thumbnailFailures}/${thumbnailPercents.length} para ${compactFileLabel(filePath)}: ${compactToolError(errorMessage)}`);
       }
+      if (fingerprintFailures > 0 && !createThumbnails) {
+        console.warn(`Huella visual parcial ${fingerprintFrames.length}/${thumbnailPercents.length} para ${compactFileLabel(filePath)}.`);
+      }
     }
+
+    const visualFingerprint = createFingerprint ? encodeVisualFingerprint(fingerprintFrames) : undefined;
 
     return {
       record: {
         ...baseRecord,
         status,
         errorMessage,
+        visualFingerprint,
+        fingerprintVersion: visualFingerprint ? visualFingerprintVersion : createFingerprint ? null : undefined,
         metadata
       },
       thumbnails: thumbs
@@ -1956,6 +2011,8 @@ async function processFile(
         ...baseRecord,
         status: "metadata_failed",
         errorMessage: error instanceof Error ? error.message : "metadata_failed",
+        visualFingerprint: createFingerprint ? null : undefined,
+        fingerprintVersion: createFingerprint ? null : undefined,
         metadata: null
       },
       thumbnails: []
@@ -2027,6 +2084,19 @@ async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
     return new Set(response.files.map((file) => file.relativePath));
   } catch (error) {
     console.warn(`No se pudo consultar la reparacion de miniaturas; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
+    return new Set();
+  }
+}
+
+async function fingerprintRepairPaths(diskId: string): Promise<Set<string>> {
+  try {
+    const response = await api<FingerprintRepairQueueResponse>(`/api/agent/disks/${diskId}/fingerprint-repair-queue`, {
+      method: "GET",
+      headers: authHeaders()
+    });
+    return new Set(response.files.map((file) => file.relativePath));
+  } catch (error) {
+    console.warn(`No se pudo consultar la cola de huellas visuales; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
     return new Set();
   }
 }
@@ -2200,9 +2270,14 @@ async function runScan(args: Args): Promise<void> {
   const repairPaths = args.thumbnails && args.repairThumbnails !== false
     ? await thumbnailRepairPaths(disk.id)
     : new Set<string>();
+  const fingerprintPaths = await fingerprintRepairPaths(disk.id);
+  const processingPaths = new Set([...repairPaths, ...fingerprintPaths]);
 
   if (repairPaths.size > 0) {
     console.log(`Reparacion automatica: ${repairPaths.size} video(s) tienen miniaturas faltantes y se volveran a procesar.`);
+  }
+  if (fingerprintPaths.size > 0) {
+    console.log(`Analisis de duplicados: ${fingerprintPaths.size} video(s) necesitan una huella visual.`);
   }
 
   const { scan } = await api<{ scan: { id: string } }>("/api/agent/scan/start", {
@@ -2213,7 +2288,7 @@ async function runScan(args: Args): Promise<void> {
   const auditErrors: PendingAgentError[] = [];
   const completeness: ScanCompleteness = { complete: true };
   const folderSizeCache = new Map<string, number | null>();
-  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors, repairPaths, completeness);
+  const counts = await countVideos(scanTargets, resolved.diskRoot, state, auditErrors, processingPaths, completeness);
   if (auditErrors.length > 0) {
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
@@ -2226,7 +2301,7 @@ async function runScan(args: Args): Promise<void> {
   console.log(`Concurrencia: ${concurrency}`);
   console.log(`Videos encontrados: ${counts.total}. Pendientes: ${counts.pending}. Ya omitidos por estado local: ${counts.skipped}.`);
 
-  let pendingPaths: string[] = [];
+  let pendingPaths: PendingScanFile[] = [];
   let batch: ProcessedFile[] = [];
   let discovered = 0;
   let uploaded = 0;
@@ -2235,12 +2310,20 @@ async function runScan(args: Args): Promise<void> {
   let processedPending = 0;
   const seenRelativePaths = new Set<string>();
 
-  async function processGroup(paths: string[]) {
+  async function processGroup(paths: PendingScanFile[]) {
     const processed = await Promise.all(paths.map((item) => {
       processedPending += 1;
       const remaining = Math.max(counts.pending - processedPending, 0);
-      console.log(`Procesando ${processedPending}/${counts.pending} (faltan ${remaining}): ${compactFileLabel(item)}`);
-      return processFile(resolved.diskRoot, item, scan.id, args.thumbnails, folderSizeCache, auditErrors);
+      console.log(`Procesando ${processedPending}/${counts.pending} (faltan ${remaining}): ${compactFileLabel(item.filePath)}`);
+      return processFile(
+        resolved.diskRoot,
+        item.filePath,
+        scan.id,
+        item.createThumbnails,
+        item.createFingerprint,
+        folderSizeCache,
+        auditErrors
+      );
     }));
     batch.push(...processed);
     failed += processed.filter((item) => item.record.status !== "scanned").length;
@@ -2283,12 +2366,17 @@ async function runScan(args: Args): Promise<void> {
       }
       const rel = relativePath(resolved.diskRoot, filePath);
       seenRelativePaths.add(rel);
-      if (completedStateMatches(state, rel, stat.mtime.getTime(), stat.size) && !repairPaths.has(rel)) {
+      const unchanged = completedStateMatches(state, rel, stat.mtime.getTime(), stat.size);
+      if (unchanged && !processingPaths.has(rel)) {
         skipped += 1;
         continue;
       }
 
-      pendingPaths.push(filePath);
+      pendingPaths.push({
+        filePath,
+        createThumbnails: args.thumbnails && (!unchanged || repairPaths.has(rel)),
+        createFingerprint: !unchanged || fingerprintPaths.has(rel) || repairPaths.has(rel)
+      });
       if (pendingPaths.length >= concurrency) {
         await processGroup(pendingPaths);
         pendingPaths = [];
