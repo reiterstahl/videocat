@@ -26,14 +26,16 @@
     "pretray": "npm run ensure-tray-runtime",
     "tray": "electron dist/tray.js",
     "prepackage:tray": "npm run ensure-tray-runtime",
-    "package:tray": "electron-builder --win portable",
+    "package:tray": "electron-builder --win portable && npm run verify:package",
+    "verify:package": "node scripts/verify-package.mjs",
     "preinit-disk": "npm run ensure-runtime",
     "init-disk": "node dist/index.js init-disk",
     "preadd-root": "npm run ensure-runtime",
     "add-root": "node dist/index.js add-root",
     "prediscover": "npm run ensure-runtime",
     "discover": "node dist/index.js discover",
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "build:tray": "tsc -p tsconfig.tray.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tray": "tsc -p tsconfig.tray.json --noEmit"
@@ -51,9 +53,8 @@
       "output": "release"
     },
     "files": [
-      "dist/index.js",
-      "dist/tray.js",
-      "dist/tray-preload.cjs",
+      "dist/*.js",
+      "dist/*.cjs",
       "package.json",
       {
         "from": "../../packages/shared/dist",
@@ -82,6 +83,7 @@
     }
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@types/node": "^20.14.12",
     "electron": "42.11.3",
     "electron-builder": "^26.15.3",
