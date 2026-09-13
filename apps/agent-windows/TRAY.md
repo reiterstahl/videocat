@@ -42,8 +42,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable, comprueba que todos los módulos runtime estén dentro de `app.asar` y genera los archivos SHA-256 y MD5. Los assets quedan en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
-companion\VideoCAT-Companion-0.1.11.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
+companion\VideoCAT-Companion-0.1.12.exe
 ```
 
 Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para subir los tres assets a un release de GitHub ya creado.

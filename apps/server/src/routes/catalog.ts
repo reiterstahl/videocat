@@ -8,7 +8,7 @@ import { isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
-import { findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
+import { compareDuplicateCandidates, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
 
@@ -53,6 +53,18 @@ const downloadPauseSchema = z.object({
 });
 const deletionHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(20).max(500).default(200)
+});
+const maximumDuplicateGroups = 80;
+const maximumDuplicateFilesPerGroup = 100;
+const maximumDuplicateFilesPerResponse = 1_200;
+const assistedDuplicateDecisionSchema = z.object({
+  keepFileId: z.string().uuid(),
+  deleteFileId: z.string().uuid(),
+  groupFileIds: z.array(z.string().uuid()).min(2).max(100)
+}).refine((value) => value.keepFileId !== value.deleteFileId, {
+  message: "Files must be different"
+}).refine((value) => value.groupFileIds.includes(value.keepFileId) && value.groupFileIds.includes(value.deleteFileId), {
+  message: "Decision files must belong to the duplicate group"
 });
 
 function startOfToday(): Date {
@@ -651,6 +663,104 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       },
       thumbnailFilesRemoved,
       thumbnailFileWarning
+    };
+  });
+
+  app.get("/api/admin/disks/overview", { preHandler: requireWebAuth }, async () => {
+    const disks = await prisma.disk.findMany({
+      include: {
+        _count: { select: { scans: true, agentErrors: true, deletionRecords: true } }
+      },
+      orderBy: { name: "asc" }
+    });
+    const activityLimit = Math.max(40, Math.min(400, disks.length * 8));
+    const [fileStats, recentScans, recentDeletions] = await Promise.all([
+      prisma.videoFile.groupBy({
+        by: ["diskId", "isPresent"],
+        _count: { _all: true },
+        _sum: { sizeBytes: true }
+      }),
+      prisma.scan.findMany({
+        orderBy: { startedAt: "desc" },
+        take: activityLimit,
+        select: {
+          id: true,
+          diskId: true,
+          status: true,
+          startedAt: true,
+          finishedAt: true,
+          fileCount: true,
+          errorCount: true
+        }
+      }),
+      prisma.deletionRecord.findMany({
+        where: { diskId: { not: null } },
+        orderBy: { attemptedAt: "desc" },
+        take: activityLimit,
+        select: {
+          id: true,
+          diskId: true,
+          status: true,
+          attemptedAt: true,
+          completedAt: true,
+          filename: true,
+          sizeBytes: true
+        }
+      })
+    ]);
+
+    return {
+      disks: disks.map((disk) => {
+        const present = fileStats.find((item) => item.diskId === disk.id && item.isPresent);
+        const missing = fileStats.find((item) => item.diskId === disk.id && !item.isPresent);
+        const latestScan = recentScans.find((scan) => scan.diskId === disk.id) ?? null;
+        const actions = [
+          ...recentScans.filter((scan) => scan.diskId === disk.id).slice(0, 4).map((scan) => ({
+            id: scan.id,
+            type: "scan" as const,
+            status: scan.status,
+            occurredAt: scan.finishedAt ?? scan.startedAt,
+            fileCount: scan.fileCount,
+            errorCount: scan.errorCount,
+            filename: null,
+            sizeBytes: null
+          })),
+          ...recentDeletions.filter((record) => record.diskId === disk.id).slice(0, 4).map((record) => ({
+            id: record.id,
+            type: "deletion" as const,
+            status: record.status,
+            occurredAt: record.completedAt ?? record.attemptedAt,
+            fileCount: null,
+            errorCount: null,
+            filename: record.filename,
+            sizeBytes: Number(record.sizeBytes)
+          }))
+        ]
+          .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
+          .slice(0, 5);
+        const { _count, ...diskRecord } = disk;
+        const totalBytes = disk.totalBytes == null ? null : Number(disk.totalBytes);
+        const freeBytes = disk.freeBytes == null ? null : Number(disk.freeBytes);
+
+        return {
+          disk: serializeDisk(diskRecord),
+          storage: {
+            totalBytes,
+            freeBytes,
+            usedBytes: totalBytes == null || freeBytes == null ? null : Math.max(0, totalBytes - freeBytes),
+            catalogedBytes: Number(present?._sum.sizeBytes ?? 0n)
+          },
+          catalog: {
+            presentFiles: present?._count._all ?? 0,
+            missingFiles: missing?._count._all ?? 0,
+            scanCount: _count.scans,
+            errorCount: _count.agentErrors,
+            deletionCount: _count.deletionRecords
+          },
+          latestScan,
+          recentActions: actions
+        };
+      })
     };
   });
 
@@ -1893,12 +2003,21 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const query = diskIdsQuerySchema.parse(request.query);
     const diskIds = commaList(query.diskIds);
     const where = duplicateEligibleWhere(diskIds.length > 0 ? { diskId: { in: diskIds } } : {});
-    const groups = findDuplicateGroups(await duplicateCandidates(where)).slice(0, 80);
+    const detectedGroups = findDuplicateGroups(await duplicateCandidates(where)).slice(0, maximumDuplicateGroups);
+    let remainingFileBudget = maximumDuplicateFilesPerResponse;
+    const groups = detectedGroups.flatMap((group) => {
+      const fileIds = group.fileIds.slice(0, Math.min(maximumDuplicateFilesPerGroup, remainingFileBudget));
+      remainingFileBudget -= fileIds.length;
+      return fileIds.length > 1 ? [{ ...group, fileIds }] : [];
+    });
     const fileIds = [...new Set(groups.flatMap((group) => group.fileIds))];
     const files = fileIds.length > 0
       ? await prisma.videoFile.findMany({
           where: duplicateEligibleWhere({ id: { in: fileIds } }),
-          include: fileIncludes(),
+          include: {
+            disk: true,
+            thumbnails: { orderBy: { kind: "asc" }, take: 1 }
+          },
           orderBy: { filename: "asc" }
         })
       : [];
@@ -1921,24 +2040,88 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.post("/api/duplicates/assisted/decision", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = assistedDuplicateDecisionSchema.parse(request.body);
+    const groupFileIds = [...new Set(body.groupFileIds)];
+    const candidates = await duplicateCandidates(duplicateEligibleWhere({ id: { in: groupFileIds } }));
+    const keepCandidate = candidates.find((file) => file.id === body.keepFileId);
+    const deleteCandidate = candidates.find((file) => file.id === body.deleteFileId);
+    if (!keepCandidate || !deleteCandidate) {
+      return reply.code(404).send({ message: "One or more files were not found" });
+    }
+
+    const directlyRelated = compareDuplicateCandidates(keepCandidate, deleteCandidate) != null;
+    const transitivelyRelated = findDuplicateGroups(candidates).some((group) =>
+      group.fileIds.includes(body.keepFileId) && group.fileIds.includes(body.deleteFileId)
+    );
+    if (!directlyRelated && !transitivelyRelated) {
+      return reply.code(409).send({ message: "Files are no longer duplicate candidates" });
+    }
+
+    const categories = await prisma.curationCategory.findMany({
+      where: { key: { in: ["keep", "delete"] } },
+      select: { key: true }
+    });
+    if (categories.length !== 2) {
+      return reply.code(503).send({ message: "Built-in curation categories are unavailable" });
+    }
+
+    const reviewedAt = new Date();
+    await prisma.$transaction([
+      prisma.$executeRaw(Prisma.sql`
+        DELETE FROM "VideoFileCategory"
+        WHERE ("videoFileId" = ${body.keepFileId}::uuid AND "categoryKey" = 'delete')
+           OR ("videoFileId" = ${body.deleteFileId}::uuid AND "categoryKey" = 'keep')
+      `),
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "VideoFileCategory" ("videoFileId", "categoryKey")
+        VALUES (${body.keepFileId}::uuid, 'keep'), (${body.deleteFileId}::uuid, 'delete')
+        ON CONFLICT DO NOTHING
+      `),
+      prisma.videoFile.update({
+        where: { id: body.keepFileId },
+        data: { curationStatus: "keep", reviewedAt }
+      }),
+      prisma.videoFile.update({
+        where: { id: body.deleteFileId },
+        data: { curationStatus: "delete", reviewedAt }
+      })
+    ]);
+
+    const files = await prisma.videoFile.findMany({
+      where: { id: { in: [body.keepFileId, body.deleteFileId] } },
+      include: fileIncludes()
+    });
+    const filesWithCategories = await attachCategoryKeys(files);
+    const byId = new Map(filesWithCategories.map((file) => [file.id, file]));
+
+    return {
+      keepFile: serializeFile(byId.get(body.keepFileId)!, 2),
+      deleteFile: serializeFile(byId.get(body.deleteFileId)!, 2)
+    };
+  });
+
   app.get("/api/stats", { preHandler: requireWebAuth }, async (request) => {
     const visibleWhere: Prisma.VideoFileWhereInput = {};
     applyHiddenPathFilter(visibleWhere);
     if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(visibleWhere);
 
-    const [diskCount, fileCount, totalSize, duplicateCandidatesForStats] = await Promise.all([
+    const [diskCount, fileCount, totalSize, duplicateSizeGroups] = await Promise.all([
       prisma.disk.count(),
       prisma.videoFile.count({ where: visibleWhere }),
       prisma.videoFile.aggregate({ where: visibleWhere, _sum: { sizeBytes: true } }),
-      duplicateCandidates(duplicateEligibleWhere())
+      prisma.videoFile.groupBy({
+        by: ["sizeBytes"],
+        where: duplicateEligibleWhere(),
+        having: { sizeBytes: { _count: { gt: 1 } } }
+      })
     ]);
-    const duplicateGroups = findDuplicateGroups(duplicateCandidatesForStats);
 
     return {
       diskCount,
       fileCount,
       totalBytes: Number(totalSize._sum.sizeBytes ?? 0n),
-      duplicateGroupCount: duplicateGroups.length
+      duplicateGroupCount: duplicateSizeGroups.length
     };
   });
 

@@ -5,6 +5,7 @@ export type Disk = {
   volumeId?: string | null;
   driveLetter?: string | null;
   totalBytes?: number | null;
+  freeBytes?: number | null;
   fileSystem?: string | null;
   firstScannedAt: string;
   lastScannedAt: string;

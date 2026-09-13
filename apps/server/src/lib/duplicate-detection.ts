@@ -30,6 +30,22 @@ export type DetectedDuplicateGroup = {
   recoverableBytes: number;
 };
 
+const maximumVisualBandOccupancy = 64;
+const maximumVisualCandidatesPerFile = 192;
+const maximumStoredMatches = 100_000;
+
+function visualFingerprintIsInformative(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const hashes = value
+    .slice(value.indexOf(":") + 1)
+    .split(";")
+    .map((frame) => frame.split("=")[1])
+    .filter((hash): hash is string => /^[0-9a-f]{16}$/i.test(hash ?? ""));
+  if (hashes.length < 8) return false;
+  const informative = hashes.filter((hash) => hash !== "0000000000000000" && hash !== "ffffffffffffffff");
+  return informative.length >= 8 && new Set(hashes).size >= 3;
+}
+
 function durationTolerance(left: number, right: number): number {
   return Math.max(2.5, Math.max(left, right) * 0.015);
 }
@@ -120,14 +136,13 @@ export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedD
   const sizeBuckets = new Map<string, DuplicateCandidate[]>();
   for (const candidate of candidates) {
     const key = BigInt(candidate.sizeBytes).toString();
-    sizeBuckets.set(key, [...(sizeBuckets.get(key) ?? []), candidate]);
+    const bucket = sizeBuckets.get(key);
+    if (bucket) bucket.push(candidate);
+    else sizeBuckets.set(key, [candidate]);
   }
 
-  const comparedPairs = new Set<string>();
   function compare(left: DuplicateCandidate, right: DuplicateCandidate): void {
-    const pairKey = left.id < right.id ? `${left.id}:${right.id}` : `${right.id}:${left.id}`;
-    if (comparedPairs.has(pairKey)) return;
-    comparedPairs.add(pairKey);
+    if (matches.length >= maximumStoredMatches) return;
     const match = compareDuplicateCandidates(left, right);
     if (!match) return;
     matches.push(match);
@@ -136,6 +151,11 @@ export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedD
 
   for (const bucket of sizeBuckets.values()) {
     if (bucket.length < 2) continue;
+    if (bucket.length > maximumVisualBandOccupancy) {
+      const anchor = bucket[0];
+      for (let index = 1; index < bucket.length; index += 1) compare(anchor, bucket[index]);
+      continue;
+    }
     for (let leftIndex = 0; leftIndex < bucket.length - 1; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < bucket.length; rightIndex += 1) {
         compare(bucket[leftIndex], bucket[rightIndex]);
@@ -144,7 +164,7 @@ export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedD
   }
 
   const visualCandidates = candidates
-    .filter((candidate) => candidate.durationSeconds != null && candidate.visualFingerprint)
+    .filter((candidate) => candidate.durationSeconds != null && visualFingerprintIsInformative(candidate.visualFingerprint))
     .sort((left, right) => left.durationSeconds! - right.durationSeconds!);
   const activeByBand = new Map<string, Set<string>>();
   const bandsById = new Map<string, string[]>();
@@ -169,14 +189,22 @@ export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedD
     const bands = visualFingerprintBandKeys(candidate.visualFingerprint);
     const potentialIds = new Set<string>();
     for (const key of bands) {
-      for (const id of activeByBand.get(key) ?? []) potentialIds.add(id);
+      for (const id of activeByBand.get(key) ?? []) {
+        potentialIds.add(id);
+        if (potentialIds.size >= maximumVisualCandidatesPerFile) break;
+      }
+      if (potentialIds.size >= maximumVisualCandidatesPerFile) break;
     }
     for (const id of potentialIds) {
       const potential = byId.get(id);
-      if (potential) compare(potential, candidate);
+      if (potential && BigInt(potential.sizeBytes) !== BigInt(candidate.sizeBytes)) compare(potential, candidate);
     }
     for (const key of bands) {
       const bucket = activeByBand.get(key) ?? new Set<string>();
+      if (bucket.size >= maximumVisualBandOccupancy) {
+        const oldestId = bucket.values().next().value;
+        if (oldestId) bucket.delete(oldestId);
+      }
       bucket.add(candidate.id);
       activeByBand.set(key, bucket);
     }
@@ -186,14 +214,23 @@ export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedD
   const members = new Map<string, string[]>();
   for (const candidate of candidates) {
     const root = find(candidate.id);
-    members.set(root, [...(members.get(root) ?? []), candidate.id]);
+    const group = members.get(root);
+    if (group) group.push(candidate.id);
+    else members.set(root, [candidate.id]);
   }
 
-  return [...members.values()]
-    .filter((fileIds) => fileIds.length > 1)
-    .map((fileIds) => {
-      const memberSet = new Set(fileIds);
-      const groupMatches = matches.filter((match) => memberSet.has(match.leftId) && memberSet.has(match.rightId));
+  const matchesByRoot = new Map<string, DuplicateMatch[]>();
+  for (const match of matches) {
+    const root = find(match.leftId);
+    const group = matchesByRoot.get(root);
+    if (group) group.push(match);
+    else matchesByRoot.set(root, [match]);
+  }
+
+  return [...members.entries()]
+    .filter(([, fileIds]) => fileIds.length > 1)
+    .map(([root, fileIds]) => {
+      const groupMatches = matchesByRoot.get(root) ?? [];
       const matchTypes = new Set(groupMatches.map((match) => match.matchType));
       const files = fileIds.map((id) => byId.get(id)!).filter(Boolean);
       const sizes = files.map((file) => Number(file.sizeBytes));

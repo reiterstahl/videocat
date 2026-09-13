@@ -8,6 +8,7 @@ import {
   filesBatchSchema,
   filesQuerySchema,
   encodeVisualFingerprint,
+  registerDiskSchema,
   tagsFromFilename,
   thumbnailKindSchema
 } from "../../packages/shared/src/index.ts";
@@ -52,6 +53,15 @@ test("bounds catalog queries and thumbnail kinds", () => {
   assert.equal(filesQuerySchema.safeParse({ sortBy: "absolutePath" }).success, false);
   assert.equal(thumbnailKindSchema.safeParse("frame_15").success, true);
   assert.equal(thumbnailKindSchema.safeParse("frame_999").success, false);
+});
+
+test("accepts reported disk capacity and rejects invalid free space", () => {
+  assert.equal(registerDiskSchema.safeParse({
+    name: "Archive",
+    totalBytes: 2_000,
+    freeBytes: 750
+  }).success, true);
+  assert.equal(registerDiskSchema.safeParse({ name: "Archive", freeBytes: -1 }).success, false);
 });
 
 test("normalizes filename tags and companion port candidates", () => {

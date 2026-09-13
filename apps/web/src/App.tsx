@@ -28,6 +28,7 @@ import {
   Search,
   Shield,
   Shuffle,
+  Sparkles,
   Sun,
   Trash2,
   User,
@@ -36,6 +37,13 @@ import {
 import { companionPortCandidates, formatBytes, formatDuration } from "@videocat/shared";
 import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, translateText, type Language } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
+import {
+  isBetterDuplicateMetric,
+  isPendingDuplicateContender,
+  orderDuplicateContenders,
+  recommendDuplicateKeep,
+  type DuplicateRecommendationReason
+} from "./lib/duplicate-assistant";
 import type { Disk, Stats, Thumbnail, VideoFile } from "./types";
 
 type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "createdAt";
@@ -233,6 +241,20 @@ type DuplicateGroup = {
   files: VideoFile[];
 };
 
+type AssistedDuplicateGroup = DuplicateGroup & {
+  contenders: VideoFile[];
+};
+
+type DuplicateAssistantSession = {
+  groups: AssistedDuplicateGroup[];
+  groupIndex: number;
+  keeper: VideoFile;
+  challenger: VideoFile;
+  remaining: VideoFile[];
+  completedComparisons: number;
+  totalComparisons: number;
+};
+
 type AdminPurgeResponse = {
   ok: boolean;
   disk: Disk;
@@ -244,6 +266,42 @@ type AdminPurgeResponse = {
   };
   thumbnailFilesRemoved: boolean;
   thumbnailFileWarning?: string | null;
+};
+
+type AdminDiskAction = {
+  id: string;
+  type: "scan" | "deletion";
+  status: string;
+  occurredAt: string;
+  fileCount?: number | null;
+  errorCount?: number | null;
+  filename?: string | null;
+  sizeBytes?: number | null;
+};
+
+type AdminDiskOverview = {
+  disk: Disk;
+  storage: {
+    totalBytes?: number | null;
+    freeBytes?: number | null;
+    usedBytes?: number | null;
+    catalogedBytes: number;
+  };
+  catalog: {
+    presentFiles: number;
+    missingFiles: number;
+    scanCount: number;
+    errorCount: number;
+    deletionCount: number;
+  };
+  latestScan?: {
+    status: string;
+    startedAt: string;
+    finishedAt?: string | null;
+    fileCount: number;
+    errorCount: number;
+  } | null;
+  recentActions: AdminDiskAction[];
 };
 
 type ProfileSecurityResponse = {
@@ -311,7 +369,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.11";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.12";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -509,6 +567,27 @@ function hasFileCategory(file: VideoFile, key: string): boolean {
 
 function mainThumbnail(file: VideoFile): string | undefined {
   return thumbnailSrc(file.thumbnails.find((thumb) => thumb.kind === "frame_08")?.url ?? file.thumbnails[0]?.url);
+}
+
+function assistedDuplicateGroups(groups: DuplicateGroup[]): AssistedDuplicateGroup[] {
+  return groups.flatMap((group) => {
+    const contenders = orderDuplicateContenders(group.files.filter(isPendingDuplicateContender));
+    return contenders.length > 1 ? [{ ...group, contenders }] : [];
+  });
+}
+
+function startDuplicateAssistantSession(groups: AssistedDuplicateGroup[]): DuplicateAssistantSession | null {
+  const first = groups[0];
+  if (!first) return null;
+  return {
+    groups,
+    groupIndex: 0,
+    keeper: first.contenders[0],
+    challenger: first.contenders[1],
+    remaining: first.contenders.slice(2),
+    completedComparisons: 0,
+    totalComparisons: groups.reduce((total, group) => total + group.contenders.length - 1, 0)
+  };
 }
 
 function resolution(file: VideoFile): string {
@@ -795,12 +874,19 @@ export function App() {
   const desktopMenuRef = useRef<HTMLDivElement | null>(null);
   const [folderUsage, setFolderUsage] = useState<FolderUsageItem[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [duplicateAssistant, setDuplicateAssistant] = useState<DuplicateAssistantSession | null>(null);
+  const [duplicateAssistantBusy, setDuplicateAssistantBusy] = useState(false);
+  const [duplicateAssistantFeedback, setDuplicateAssistantFeedback] = useState<string | null>(null);
+  const [duplicateAssistantMessage, setDuplicateAssistantMessage] = useState("");
+  const duplicateAssistantDirtyRef = useRef(false);
   const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
   const [auditErrors, setAuditErrors] = useState<AuditErrorItem[]>([]);
   const [selectedAuditError, setSelectedAuditError] = useState<AuditErrorItem | null>(null);
   const [auxLoading, setAuxLoading] = useState(false);
   const [filterWidth, setFilterWidth] = useState(storedFilterWidth);
   const [adminBusyDiskId, setAdminBusyDiskId] = useState<string | null>(null);
+  const [adminDiskOverview, setAdminDiskOverview] = useState<AdminDiskOverview[]>([]);
+  const [adminOverviewLoading, setAdminOverviewLoading] = useState(false);
   const [adminMessage, setAdminMessage] = useState("");
   const [adminError, setAdminError] = useState("");
   const [profileSecurity, setProfileSecurity] = useState<ProfileSecurityResponse | null>(null);
@@ -907,6 +993,7 @@ export function App() {
 
   const extensions = useMemo(() => facets.extensions.map((item) => item.extension), [facets.extensions]);
   const maxFolderUsage = useMemo(() => Math.max(1, ...folderUsage.map((item) => item.sizeBytes)), [folderUsage]);
+  const pendingAssistedDuplicateGroups = useMemo(() => assistedDuplicateGroups(duplicateGroups), [duplicateGroups]);
   const maxTagCount = useMemo(() => Math.max(1, ...facets.tags.map((tag) => tag.count)), [facets.tags]);
   const folderChildren = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1277,6 +1364,11 @@ export function App() {
       })
       .catch((error) => setProfileError(error instanceof Error ? error.message : "No se pudo cargar el perfil."))
       .finally(() => setProfileLoading(false));
+  }, [authenticated, catalogVersion, viewMode]);
+
+  useEffect(() => {
+    if (!authenticated || viewMode !== "admin") return;
+    void loadAdminDiskOverview();
   }, [authenticated, catalogVersion, viewMode]);
 
   useEffect(() => {
@@ -1817,6 +1909,120 @@ export function App() {
     }
   }
 
+  function openDuplicateAssistant() {
+    const session = startDuplicateAssistantSession(pendingAssistedDuplicateGroups);
+    setDuplicateAssistantMessage("");
+    setDuplicateAssistantFeedback(null);
+    if (!session) {
+      setDuplicateAssistantMessage("No quedan grupos de duplicados pendientes de decisión.");
+      return;
+    }
+    setDuplicateAssistant(session);
+  }
+
+  function closeDuplicateAssistant() {
+    setDuplicateAssistant(null);
+    setDuplicateAssistantFeedback(null);
+    if (duplicateAssistantDirtyRef.current) {
+      duplicateAssistantDirtyRef.current = false;
+      setCatalogVersion((value) => value + 1);
+    }
+  }
+
+  function advanceDuplicateAssistant(session: DuplicateAssistantSession, keeper: VideoFile): DuplicateAssistantSession | null {
+    const completedComparisons = session.completedComparisons + 1;
+    if (session.remaining.length > 0) {
+      return {
+        ...session,
+        keeper,
+        challenger: session.remaining[0],
+        remaining: session.remaining.slice(1),
+        completedComparisons
+      };
+    }
+
+    const nextGroupIndex = session.groupIndex + 1;
+    const nextGroup = session.groups[nextGroupIndex];
+    if (!nextGroup) return null;
+    return {
+      ...session,
+      groupIndex: nextGroupIndex,
+      keeper: nextGroup.contenders[0],
+      challenger: nextGroup.contenders[1],
+      remaining: nextGroup.contenders.slice(2),
+      completedComparisons
+    };
+  }
+
+  async function decideAssistedDuplicate(keepFileId: string) {
+    const session = duplicateAssistant;
+    if (!session || duplicateAssistantBusy) return;
+    const keepFile = session.keeper.id === keepFileId ? session.keeper : session.challenger;
+    const deleteFile = session.keeper.id === keepFileId ? session.challenger : session.keeper;
+    setDuplicateAssistantBusy(true);
+    setDuplicateAssistantFeedback(keepFileId);
+    setDuplicateAssistantMessage("");
+
+    try {
+      const response = await api<{ keepFile: VideoFile; deleteFile: VideoFile }>("/api/duplicates/assisted/decision", {
+        method: "POST",
+        body: JSON.stringify({
+          keepFileId: keepFile.id,
+          deleteFileId: deleteFile.id,
+          groupFileIds: session.groups[session.groupIndex].files.map((file) => file.id)
+        })
+      });
+      const updatedById = new Map([
+        [response.keepFile.id, response.keepFile],
+        [response.deleteFile.id, response.deleteFile]
+      ]);
+      setDuplicateGroups((current) => current.map((group) => ({
+        ...group,
+        files: group.files.map((file) => updatedById.get(file.id) ?? file)
+      })));
+      duplicateAssistantDirtyRef.current = true;
+      await new Promise((resolve) => window.setTimeout(resolve, 420));
+      const next = advanceDuplicateAssistant(session, response.keepFile);
+      setDuplicateAssistant(next);
+      setDuplicateAssistantFeedback(null);
+      if (!next) {
+        duplicateAssistantDirtyRef.current = false;
+        setDuplicateAssistantMessage("Revisión asistida completada.");
+        setCatalogVersion((value) => value + 1);
+      }
+    } catch (error) {
+      setDuplicateAssistantFeedback(null);
+      setDuplicateAssistantMessage(error instanceof Error ? error.message : "No se pudo guardar la decisión.");
+    } finally {
+      setDuplicateAssistantBusy(false);
+    }
+  }
+
+  function skipAssistedDuplicateGroup() {
+    const session = duplicateAssistant;
+    if (!session) return;
+    const nextGroupIndex = session.groupIndex + 1;
+    const nextGroup = session.groups[nextGroupIndex];
+    if (!nextGroup) {
+      setDuplicateAssistant(null);
+      setDuplicateAssistantMessage("No quedan más grupos en esta sesión.");
+      if (duplicateAssistantDirtyRef.current) {
+        duplicateAssistantDirtyRef.current = false;
+        setCatalogVersion((value) => value + 1);
+      }
+      return;
+    }
+    setDuplicateAssistant({
+      ...session,
+      groupIndex: nextGroupIndex,
+      keeper: nextGroup.contenders[0],
+      challenger: nextGroup.contenders[1],
+      remaining: nextGroup.contenders.slice(2),
+      completedComparisons: session.completedComparisons + session.remaining.length + 1
+    });
+    setDuplicateAssistantFeedback(null);
+  }
+
   function openAdjacentDetail(offset: -1 | 1) {
     if (selectedIndex < 0) return;
     const nextFile = files[selectedIndex + offset];
@@ -2293,6 +2499,19 @@ export function App() {
       setAdminError(error instanceof Error ? error.message : "No se pudo limpiar la unidad");
     } finally {
       setAdminBusyDiskId(null);
+    }
+  }
+
+  async function loadAdminDiskOverview() {
+    setAdminOverviewLoading(true);
+    setAdminError("");
+    try {
+      const response = await api<{ disks: AdminDiskOverview[] }>("/api/admin/disks/overview");
+      setAdminDiskOverview(response.disks);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "No se pudo cargar el estado de las unidades");
+    } finally {
+      setAdminOverviewLoading(false);
     }
   }
 
@@ -3481,7 +3700,18 @@ export function App() {
               <strong>Potenciales duplicados</strong>
               <span>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</span>
             </div>
+            <button
+              className="primary-button duplicate-assistant-start"
+              disabled={auxLoading || pendingAssistedDuplicateGroups.length === 0}
+              onClick={openDuplicateAssistant}
+              type="button"
+            >
+              <Sparkles size={17} />
+              Iniciar modo asistido
+              <small>{pendingAssistedDuplicateGroups.length}</small>
+            </button>
           </div>
+          {duplicateAssistantMessage ? <div className="review-message">{duplicateAssistantMessage}</div> : null}
           {auxLoading ? <div className="loading">Cargando...</div> : null}
           {!auxLoading && duplicateGroups.length === 0 ? (
             <div className="empty">No hay duplicados probables para estos discos.</div>
@@ -3646,8 +3876,18 @@ export function App() {
           <div className="admin-panel">
             {adminMessage ? <div className="admin-notice">{adminMessage}</div> : null}
             {adminError ? <div className="form-error">{adminError}</div> : null}
+            {adminOverviewLoading && adminDiskOverview.length === 0 ? <div className="loading">Cargando...</div> : null}
             <div className="admin-disk-grid">
-              {disks.map((disk) => (
+              {adminDiskOverview.map((item) => {
+                const disk = item.disk;
+                const totalBytes = item.storage.totalBytes ?? disk.totalBytes ?? null;
+                const freeBytes = item.storage.freeBytes ?? disk.freeBytes ?? null;
+                const usedBytes = item.storage.usedBytes;
+                const usedPercent = totalBytes && usedBytes != null
+                  ? Math.min(100, Math.max(0, (usedBytes / totalBytes) * 100))
+                  : 0;
+                const connected = companionMountedDiskIds.includes(disk.id);
+                return (
                 <article className="admin-disk-card" key={disk.id}>
                   <div className="admin-disk-main">
                     <HardDrive size={20} />
@@ -3658,17 +3898,67 @@ export function App() {
                         {disk.fileSystem ?? "Sistema desconocido"}
                       </span>
                     </div>
+                    <span className={`admin-disk-connection ${connected ? "is-connected" : ""}`}>
+                      {connected ? "Conectado" : "Desconectado"}
+                    </span>
                   </div>
-                  <dl className="admin-disk-meta">
-                    <div>
-                      <dt>Capacidad</dt>
-                      <dd>{disk.totalBytes ? formatBytes(disk.totalBytes) : "-"}</dd>
+
+                  <div className="admin-storage-overview">
+                    <div className="admin-storage-heading">
+                      <span>Uso físico</span>
+                      <strong>{totalBytes ? `${Math.round(usedPercent)}%` : "Sin reporte"}</strong>
                     </div>
+                    <div className="admin-storage-bar"><span style={{ width: `${usedPercent}%` }} /></div>
+                    <dl className="admin-disk-meta is-storage">
+                      <div><dt>Usado</dt><dd>{usedBytes != null ? formatBytes(usedBytes) : "-"}</dd></div>
+                      <div><dt>Libre</dt><dd>{freeBytes != null ? formatBytes(freeBytes) : "Pendiente"}</dd></div>
+                      <div><dt>Total</dt><dd>{totalBytes != null ? formatBytes(totalBytes) : "-"}</dd></div>
+                      <div><dt>Catalogado</dt><dd>{formatBytes(item.storage.catalogedBytes)}</dd></div>
+                    </dl>
+                  </div>
+
+                  <dl className="admin-disk-meta is-catalog">
+                    <div><dt>Videos presentes</dt><dd>{item.catalog.presentFiles.toLocaleString(locale)}</dd></div>
+                    <div><dt>No encontrados</dt><dd>{item.catalog.missingFiles.toLocaleString(locale)}</dd></div>
+                    <div><dt>Escaneos</dt><dd>{item.catalog.scanCount.toLocaleString(locale)}</dd></div>
+                    <div><dt>Errores</dt><dd>{item.catalog.errorCount.toLocaleString(locale)}</dd></div>
                     <div>
                       <dt>Ultimo indexado</dt>
                       <dd>{dateLabel(disk.lastScannedAt, locale)}</dd>
                     </div>
                   </dl>
+
+                  <div className="admin-disk-activity">
+                    <div className="admin-activity-heading">
+                      <History size={15} />
+                      <strong>Actividad reciente</strong>
+                    </div>
+                    {item.recentActions.length > 0 ? item.recentActions.map((action) => (
+                      <div className="admin-activity-row" key={`${action.type}:${action.id}`}>
+                        <span className={`admin-activity-icon is-${action.type}`}>
+                          {action.type === "deletion" ? <Trash2 size={14} /> : <Database size={14} />}
+                        </span>
+                        <div>
+                          <strong title={action.filename ?? undefined}>
+                            {action.type === "deletion"
+                              ? `${language === "en"
+                                ? action.status === "deleted" ? "Deleted" : "Deletion"
+                                : action.status === "deleted" ? "Eliminado" : "Borrado"}: ${action.filename ?? "-"}`
+                              : `${language === "en" ? "Scan" : "Escaneo"} ${action.status}`}
+                          </strong>
+                          <span>
+                            {action.type === "deletion"
+                              ? formatBytes(action.sizeBytes ?? 0)
+                              : language === "en"
+                                ? `${action.fileCount ?? 0} files · ${action.errorCount ?? 0} errors`
+                                : `${action.fileCount ?? 0} archivos · ${action.errorCount ?? 0} errores`}
+                            {` · ${dateLabel(action.occurredAt, locale)}`}
+                          </span>
+                        </div>
+                      </div>
+                    )) : <span className="admin-activity-empty">Sin actividad registrada.</span>}
+                  </div>
+
                   <button
                     className="danger-button"
                     disabled={adminBusyDiskId === disk.id}
@@ -3679,7 +3969,8 @@ export function App() {
                     {adminBusyDiskId === disk.id ? "Limpiando..." : "Vaciar catalogo"}
                   </button>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -3813,6 +4104,19 @@ export function App() {
           onClose={closeReview}
           onDecision={(status) => void decideReview(reviewCurrent, status)}
           onToggleCategory={(categoryKey, enabled) => void toggleFileCategory(reviewCurrent, categoryKey, enabled)}
+        />
+      ) : null}
+
+      {duplicateAssistant ? (
+        <DuplicateAssistantModal
+          session={duplicateAssistant}
+          language={language}
+          busy={duplicateAssistantBusy}
+          feedbackFileId={duplicateAssistantFeedback}
+          message={duplicateAssistantMessage}
+          onClose={closeDuplicateAssistant}
+          onDecision={(fileId) => void decideAssistedDuplicate(fileId)}
+          onSkip={skipAssistedDuplicateGroup}
         />
       ) : null}
 
@@ -4326,6 +4630,173 @@ function FullscreenGallery({
       <div className="gallery-count">
         {index + 1} / {total}
       </div>
+    </div>
+  );
+}
+
+function duplicateRecommendationLabel(reason: DuplicateRecommendationReason): string {
+  if (reason === "resolution") return "Mayor resolución";
+  if (reason === "size") return "Mayor tamaño de archivo";
+  if (reason === "duration") return "Mayor duración";
+  return "Mejor opción por consistencia";
+}
+
+function DuplicateAssistantModal({
+  session,
+  language,
+  busy,
+  feedbackFileId,
+  message,
+  onClose,
+  onDecision,
+  onSkip
+}: {
+  session: DuplicateAssistantSession;
+  language: Language;
+  busy: boolean;
+  feedbackFileId: string | null;
+  message: string;
+  onClose: () => void;
+  onDecision: (fileId: string) => void;
+  onSkip: () => void;
+}) {
+  const group = session.groups[session.groupIndex];
+  const files = [session.keeper, session.challenger] as const;
+  const recommendation = recommendDuplicateKeep(session.keeper, session.challenger);
+  const currentComparison = Math.min(session.totalComparisons, session.completedComparisons + 1);
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [busy, onClose]);
+
+  return (
+    <div
+      className="modal-backdrop duplicate-assistant-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="duplicate-assistant-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <section className="duplicate-assistant-panel">
+        <header className="duplicate-assistant-header">
+          <div>
+            <span>
+              {language === "en"
+                ? `Group ${session.groupIndex + 1} of ${session.groups.length} · Comparison ${currentComparison} of ${session.totalComparisons}`
+                : `Grupo ${session.groupIndex + 1} de ${session.groups.length} · Comparación ${currentComparison} de ${session.totalComparisons}`}
+            </span>
+            <h2 id="duplicate-assistant-title">Revisión asistida de duplicados</h2>
+          </div>
+          <div className="duplicate-assistant-header-meta">
+            <span className={`duplicate-confidence is-${group.matchType}`}>
+              <strong>{group.confidence}%</strong>
+              <small>{group.reasons.map((reason) => translateText(reason, language)).join(" · ")}</small>
+            </span>
+            <button className="icon-button" disabled={busy} onClick={onClose} type="button" title="Cerrar">
+              <X size={20} />
+            </button>
+          </div>
+        </header>
+
+        <div
+          className="duplicate-assistant-progress"
+          aria-label={language === "en"
+            ? `Progress ${currentComparison} of ${session.totalComparisons}`
+            : `Progreso ${currentComparison} de ${session.totalComparisons}`}
+        >
+          <span style={{ width: `${(currentComparison / Math.max(1, session.totalComparisons)) * 100}%` }} />
+        </div>
+
+        {message ? <div className="form-error duplicate-assistant-error">{message}</div> : null}
+
+        <div className="duplicate-assistant-compare">
+          {files.map((file, index) => {
+            const other = files[index === 0 ? 1 : 0];
+            const recommended = recommendation.fileId === file.id;
+            const selected = feedbackFileId === file.id;
+            const rejected = feedbackFileId != null && !selected;
+            const thumbnail = mainThumbnail(file);
+            return (
+              <button
+                aria-label={`${language === "en" ? "Keep" : "Mantener"} ${file.filename}`}
+                className={[
+                  "duplicate-assistant-choice",
+                  recommended ? "is-recommended" : "",
+                  selected ? "is-selected" : "",
+                  rejected ? "is-rejected" : ""
+                ].filter(Boolean).join(" ")}
+                disabled={busy}
+                key={file.id}
+                onClick={() => onDecision(file.id)}
+                type="button"
+              >
+                <div className="duplicate-assistant-media">
+                  {thumbnail ? (
+                    <img src={thumbnail} alt="" decoding="async" fetchPriority="high" />
+                  ) : (
+                    <div className="duplicate-assistant-no-thumb"><Image size={36} /><span>Sin miniatura</span></div>
+                  )}
+                  <span className="duplicate-assistant-hover-action">
+                    <Check size={22} />
+                    Mantener este
+                  </span>
+                  {recommended ? (
+                    <span className="duplicate-recommendation-badge">
+                      <Sparkles size={15} /> Recomendado
+                    </span>
+                  ) : null}
+                  {selected ? <span className="duplicate-selection-feedback"><Check size={18} /> MANTENER</span> : null}
+                  {rejected ? <span className="duplicate-selection-feedback is-delete"><Trash2 size={18} /> BORRAR</span> : null}
+                </div>
+
+                <div className="duplicate-assistant-file-copy">
+                  <strong title={file.filename}>{file.filename}</strong>
+                  <span title={file.relativePath}>{file.disk?.name ?? "-"} · {file.relativePath}</span>
+                </div>
+
+                <dl className="duplicate-comparison-metrics">
+                  <div className={isBetterDuplicateMetric(file, other, "resolution") ? "is-better" : ""}>
+                    <dt>Resolución</dt>
+                    <dd>{resolution(file)}</dd>
+                  </div>
+                  <div className={isBetterDuplicateMetric(file, other, "size") ? "is-better" : ""}>
+                    <dt>Tamaño</dt>
+                    <dd>{formatBytes(file.sizeBytes)}</dd>
+                  </div>
+                  <div className={isBetterDuplicateMetric(file, other, "duration") ? "is-better" : ""}>
+                    <dt>Duración</dt>
+                    <dd>{formatDuration(file.durationSeconds)}</dd>
+                  </div>
+                  <div>
+                    <dt>Video</dt>
+                    <dd>{file.videoCodec ?? "-"}</dd>
+                  </div>
+                </dl>
+
+                {recommended ? (
+                  <span className="duplicate-recommendation-reason">
+                    {duplicateRecommendationLabel(recommendation.reason)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <footer className="duplicate-assistant-footer">
+          <span>El elegido se marcará para mantener; el otro quedará marcado para borrar.</span>
+          <button className="secondary-button" disabled={busy} onClick={onSkip} type="button">
+            Omitir este grupo
+            <ChevronRight size={17} />
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }

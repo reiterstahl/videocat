@@ -1,0 +1,1 @@
+ALTER TABLE "Disk" ADD COLUMN "freeBytes" BIGINT;

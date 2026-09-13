@@ -63,3 +63,20 @@ test("keeps same-size legacy files as candidates when fingerprints are unavailab
   const right = { ...left, id: "right", filename: "b.mp4" };
   assert.equal(compareDuplicateCandidates(left, right)?.matchType, "same_size");
 });
+
+test("does not expand low-information visual fingerprints into large candidate sets", () => {
+  const flatFingerprint = `v1:${Array.from({ length: 15 }, (_value, index) =>
+    `${String(index + 1).padStart(2, "0")}=0000000000000000`
+  ).join(";")}`;
+  const candidates = Array.from({ length: 1_000 }, (_value, index) => ({
+    id: `flat-${index}`,
+    filename: `flat-${index}.mp4`,
+    sizeBytes: 1_000_000 + index,
+    durationSeconds: 600,
+    width: 1920,
+    height: 1080,
+    visualFingerprint: flatFingerprint
+  }));
+
+  assert.deepEqual(findDuplicateGroups(candidates), []);
+});

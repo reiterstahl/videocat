@@ -14,7 +14,8 @@ export function thumbnailUrl(relativePath: string): string {
 export function serializeDisk(disk: Disk) {
   return {
     ...disk,
-    totalBytes: toNumber(disk.totalBytes)
+    totalBytes: toNumber(disk.totalBytes),
+    freeBytes: toNumber(disk.freeBytes)
   };
 }
 

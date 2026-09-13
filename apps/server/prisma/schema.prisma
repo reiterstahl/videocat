@@ -14,6 +14,7 @@ model Disk {
   volumeId        String?
   driveLetter     String?
   totalBytes      BigInt?
+  freeBytes       BigInt?
   fileSystem      String?
   firstScannedAt  DateTime         @default(now())
   lastScannedAt   DateTime         @default(now())

@@ -243,6 +243,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             volumeLabel: body.volumeLabel,
             driveLetter: body.driveLetter,
             totalBytes: body.totalBytes ?? undefined,
+            freeBytes: body.freeBytes ?? undefined,
             fileSystem: body.fileSystem,
             notes: body.notes ?? existing.notes,
             lastScannedAt: new Date()
@@ -255,6 +256,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             volumeId: body.volumeId,
             driveLetter: body.driveLetter,
             totalBytes: body.totalBytes ?? undefined,
+            freeBytes: body.freeBytes ?? undefined,
             fileSystem: body.fileSystem,
             notes: body.notes
           }

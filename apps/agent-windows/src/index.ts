@@ -1855,6 +1855,7 @@ async function inspectDisk(scanPath: string) {
     const stat = await fs.statfs(scanPath);
     return {
       totalBytes: Number(stat.blocks) * Number(stat.bsize),
+      freeBytes: Number(stat.bavail) * Number(stat.bsize),
       fileSystem: os.platform() === "win32" ? "windows" : undefined
     };
   } catch {
@@ -2310,6 +2311,7 @@ async function runScan(args: Args): Promise<void> {
       volumeId: resolved.volumeId,
       driveLetter: /^[A-Za-z]:/.test(resolved.diskRoot) ? resolved.diskRoot.slice(0, 2) : null,
       totalBytes: diskInfo.totalBytes,
+      freeBytes: diskInfo.freeBytes,
       fileSystem: diskInfo.fileSystem
     })
   });

@@ -54,6 +54,7 @@ El sistema tiene dos partes:
 - Detección de duplicados por tamaño y huellas visuales perceptuales tomadas en 15 puntos del video.
 - Reconocimiento de posibles copias con distinta resolución, códec, bitrate o nivel de compresión.
 - Sección de duplicados con nivel de confianza, motivos y espacio potencialmente recuperable.
+- Modo asistido de duplicados con comparación lado a lado, recomendación por resolución/tamaño y decisiones atómicas de mantener o borrar.
 - Etiquetas automáticas basadas en nombres de archivo.
 - Categorías personalizadas con colores, asignables de forma múltiple por video.
 - Categorías incluidas para revisión: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` y otras definidas por el usuario.
@@ -67,7 +68,7 @@ El sistema tiene dos partes:
 - Etiquetas secundarias de descarga por año/mes para evitar repetir selecciones aleatorias ya descargadas.
 - Borrado físico diferido de archivos marcados cuando el disco vuelve a conectarse.
 - Sección de auditoría para errores de escaneo, metadatos, miniaturas y borrados.
-- Sección administrativa para eliminar del catálogo el contenido de una unidad.
+- Sección administrativa con espacio físico total/usado/libre, tamaño catalogado, conteos, actividad reciente y limpieza por unidad.
 - Sección de perfil para configurar el PIN de seguridad y los patrones de folders protegidos.
 - Protección por PIN para folders que coincidan con patrones configurables.
 - Exclusión de carpetas protegidas del cálculo de duplicados.
@@ -123,12 +124,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual es `v0.1.11`.
+La versión actual es `v0.1.12`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.11.exe`
+- Companion Windows: `VideoCAT-Companion-0.1.12.exe`
 
 Verificación recomendada del companion:
 
@@ -139,7 +140,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.11.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.12.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -353,7 +354,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
 ```
 
 Uso:
@@ -488,8 +489,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.11
-reiterstahl/videocat-web:0.1.11
+reiterstahl/videocat-server:0.1.12
+reiterstahl/videocat-web:0.1.12
 ```
 
 También se publican etiquetas `latest`:
@@ -536,8 +537,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.11 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.11 -t reiterstahl/videocat-web:0.1.11 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.12 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.12 -t reiterstahl/videocat-web:0.1.12 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -550,10 +551,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.11
+  image: reiterstahl/videocat-server:0.1.12
 
 web:
-  image: reiterstahl/videocat-web:0.1.11
+  image: reiterstahl/videocat-web:0.1.12
 ```
 
 ## Endpoints principales
@@ -576,6 +577,8 @@ Web:
 - `GET /api/disks`
 - `GET /api/facets`
 - `GET /api/duplicates/by-size`
+- `POST /api/duplicates/assisted/decision`
+- `GET /api/admin/disks/overview`
 - `GET /api/folder-usage`
 - `GET /api/audit/errors`
 - `GET /api/review/summary`

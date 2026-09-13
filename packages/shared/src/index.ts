@@ -38,6 +38,7 @@ export const registerDiskSchema = z.object({
   volumeId: z.string().max(500).optional().nullable(),
   driveLetter: z.string().max(20).optional().nullable(),
   totalBytes: z.number().int().nonnegative().optional().nullable(),
+  freeBytes: z.number().int().nonnegative().optional().nullable(),
   fileSystem: z.string().max(100).optional().nullable(),
   notes: z.string().max(2000).optional().nullable()
 });

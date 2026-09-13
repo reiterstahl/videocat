@@ -54,6 +54,7 @@ The system has two parts:
 - Duplicate detection using file size and perceptual fingerprints sampled at 15 points in each video.
 - Recognition of likely copies with different resolution, codec, bitrate or compression level.
 - Dedicated duplicate review section with confidence, match reasons and potentially recoverable space.
+- Assisted duplicate mode with side-by-side comparison, resolution/size recommendation and atomic keep/delete decisions.
 - Automatic tags based on filenames.
 - Custom multi-category labels with colors.
 - Built-in review categories: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` and user-defined categories.
@@ -67,7 +68,7 @@ The system has two parts:
 - Year/month download tags to avoid randomly selecting already downloaded videos again.
 - Deferred physical deletion of marked files when the drive is connected again.
 - Audit section for scan, metadata, thumbnail and delete errors.
-- Admin section to remove a drive's cataloged content.
+- Admin section with physical total/used/free space, cataloged size, counts, recent activity and per-drive cleanup.
 - Profile section to configure the security PIN and protected folder patterns.
 - PIN protection for folders matching configurable patterns.
 - Protected folders are excluded from duplicate calculations.
@@ -122,12 +123,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.11`.
+The current release is `v0.1.12`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.11.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.12.exe`
 
 Recommended companion verification:
 
@@ -138,7 +139,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.11.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.12.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -351,7 +352,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.11.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
 ```
 
 Usage:
@@ -485,8 +486,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.11
-reiterstahl/videocat-web:0.1.11
+reiterstahl/videocat-server:0.1.12
+reiterstahl/videocat-web:0.1.12
 ```
 
 `latest` tags are also published:
@@ -533,8 +534,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.11 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.11 -t reiterstahl/videocat-web:0.1.11 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.12 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.12 -t reiterstahl/videocat-web:0.1.12 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -547,10 +548,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.11
+  image: reiterstahl/videocat-server:0.1.12
 
 web:
-  image: reiterstahl/videocat-web:0.1.11
+  image: reiterstahl/videocat-web:0.1.12
 ```
 
 ## Main Endpoints
@@ -573,6 +574,8 @@ Web:
 - `GET /api/disks`
 - `GET /api/facets`
 - `GET /api/duplicates/by-size`
+- `POST /api/duplicates/assisted/decision`
+- `GET /api/admin/disks/overview`
 - `GET /api/folder-usage`
 - `GET /api/audit/errors`
 - `GET /api/review/summary`

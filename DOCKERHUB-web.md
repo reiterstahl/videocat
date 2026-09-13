@@ -99,7 +99,7 @@ TRUST_PROXY=true
 Versioned tags are stable:
 
 ```text
-reiterstahl/videocat-web:0.1.11
+reiterstahl/videocat-web:0.1.12
 ```
 
 `latest` points to the newest published build:
