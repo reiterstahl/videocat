@@ -572,6 +572,10 @@ select:focus {
   color: var(--matrix-primary-ink);
 }
 
+.view-switcher > .section-nav-button {
+  position: relative;
+}
+
 .topbar-more {
   position: relative;
   flex: 0 0 auto;
@@ -718,6 +722,62 @@ select:focus {
 
   .view-switcher > button.is-active span {
     display: inline;
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active)::before,
+  .view-switcher > .section-nav-button:not(.is-active)::after {
+    position: absolute;
+    left: 50%;
+    z-index: 80;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active)::before {
+    content: "";
+    top: calc(100% + 5px);
+    width: 9px;
+    height: 9px;
+    border-top: 1px solid #34444d;
+    border-left: 1px solid #34444d;
+    background: #172026;
+    transform: translate(-50%, -2px) rotate(45deg);
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active)::after {
+    content: attr(data-tooltip);
+    top: calc(100% + 9px);
+    transform: translate(-50%, -4px);
+    border: 1px solid #34444d;
+    border-radius: 5px;
+    background: #172026;
+    box-shadow: 0 9px 24px rgba(13, 22, 28, 0.24);
+    color: #f4f7f8;
+    padding: 7px 9px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active):hover::before,
+  .view-switcher > .section-nav-button:not(.is-active):hover::after,
+  .view-switcher > .section-nav-button:not(.is-active):focus-visible::before,
+  .view-switcher > .section-nav-button:not(.is-active):focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active):hover::before,
+  .view-switcher > .section-nav-button:not(.is-active):focus-visible::before {
+    transform: translate(-50%, 0) rotate(45deg);
+  }
+
+  .view-switcher > .section-nav-button:not(.is-active):hover::after,
+  .view-switcher > .section-nav-button:not(.is-active):focus-visible::after {
+    transform: translate(-50%, 0);
   }
 }
 
@@ -3862,6 +3922,7 @@ tbody tr.curation-row {
 
 .duplicate-assistant-start {
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .duplicate-assistant-start small {

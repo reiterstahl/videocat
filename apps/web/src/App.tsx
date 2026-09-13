@@ -2660,9 +2660,11 @@ export function App() {
           {primaryNavigationItems.map((item) => (
             <button
               key={item.mode}
-              className={viewMode === item.mode ? "is-active" : ""}
+              className={`section-nav-button ${viewMode === item.mode ? "is-active" : ""}`}
               onClick={() => switchView(item.mode)}
               type="button"
+              aria-label={translateText(item.label, language)}
+              data-tooltip={translateText(item.label, language)}
             >
               {item.icon}
               <span>{item.label}</span>

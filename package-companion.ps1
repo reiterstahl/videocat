@@ -142,9 +142,20 @@ try {
       throw "GitHub CLI was not found. Install gh and authenticate before using -PublishRelease."
     }
 
-    Invoke-NativeStep -Label "Verify GitHub release v$version" -Command $ghCommand.Source -Arguments @(
-      "release", "view", "v$version"
-    )
+    Write-Host "`n==> Check GitHub release v$version" -ForegroundColor Cyan
+    & $ghCommand.Source release view "v$version" --json tagName 2>$null | Out-Null
+    $releaseExists = $LASTEXITCODE -eq 0
+    if ($releaseExists) {
+      Write-Host "GitHub release v$version already exists." -ForegroundColor Green
+    }
+    else {
+      Invoke-NativeStep -Label "Create GitHub release v$version" -Command $ghCommand.Source -Arguments @(
+        "release", "create", "v$version",
+        "--target", "main",
+        "--title", "VideoCAT v$version",
+        "--generate-notes"
+      )
+    }
     $uploadArguments = @("release", "upload", "v$version") + $publishFiles + @("--clobber")
     Invoke-NativeStep -Label "Upload release assets" -Command $ghCommand.Source -Arguments $uploadArguments
   }

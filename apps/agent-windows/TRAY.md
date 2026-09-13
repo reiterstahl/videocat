@@ -46,7 +46,7 @@ apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
 companion\VideoCAT-Companion-0.1.12.exe
 ```
 
-Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para subir los tres assets a un release de GitHub ya creado.
+Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para crear el release de GitHub si hace falta y subir los tres assets.
 
 ## Configuración
 

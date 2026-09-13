@@ -336,7 +336,7 @@ To bump the patch version first and open the resulting folder:
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -Bump patch -OpenOutput
 ```
 
-To upload the assets to an existing `vX.Y.Z` GitHub release using `gh`:
+To create the `vX.Y.Z` GitHub release when needed and upload its assets using `gh`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease

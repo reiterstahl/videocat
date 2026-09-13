@@ -338,7 +338,7 @@ Para incrementar primero la versión patch y abrir la carpeta resultante:
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -Bump patch -OpenOutput
 ```
 
-Para subir los assets a un release `vX.Y.Z` que ya exista en GitHub mediante `gh`:
+Para crear el release `vX.Y.Z` si todavía no existe y subir los assets mediante `gh`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
