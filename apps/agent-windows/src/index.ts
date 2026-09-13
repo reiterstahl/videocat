@@ -23,6 +23,7 @@ import {
   type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
+import { frameExtractionTimestamps, shouldRetryFrameExtraction } from "./frame-extraction.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
@@ -199,6 +200,7 @@ let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
 let companionInstallationId: string | null = null;
+let fingerprintRepairEndpointAvailable: boolean | null = null;
 
 class AgentAuthError extends Error {
   constructor(message: string) {
@@ -208,7 +210,7 @@ class AgentAuthError extends Error {
 }
 
 class AgentRequestError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(message: string, readonly retryable: boolean, readonly statusCode: number) {
     super(message);
     this.name = "AgentRequestError";
   }
@@ -1564,7 +1566,11 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
         if (response.status === 401 && body.includes("Invalid agent token")) {
           throw new AgentAuthError(`${response.status} ${body}\n${agentTokenHint()}`);
         }
-        throw new AgentRequestError(`${response.status} ${body}`, response.status === 408 || response.status === 429 || response.status >= 500);
+        throw new AgentRequestError(
+          `${response.status} ${body}`,
+          response.status === 408 || response.status === 429 || response.status >= 500,
+          response.status
+        );
       }
       return (await response.json()) as T;
     } catch (error) {
@@ -1899,32 +1905,55 @@ async function extractVisualHash(
   rawDestination: string,
   seconds: number,
   thumbnailDestination?: string
-): Promise<string> {
+): Promise<{ hash: string; timestampSeconds: number }> {
   await fs.mkdir(path.dirname(rawDestination), { recursive: true });
-  const args = ["-y", "-ss", String(Math.max(0, seconds)), "-i", source];
-  if (thumbnailDestination) {
-    args.push(
-      "-filter_complex",
-      "[0:v:0]split=2[thumbsrc][hashsrc];[thumbsrc]scale=640:-1[thumb];[hashsrc]scale=9:8,format=gray[hash]",
-      "-map", "[thumb]", "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnailDestination,
-      "-map", "[hash]", "-frames:v", "1", "-f", "rawvideo", rawDestination
-    );
-  } else {
-    args.push(
-      "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=9:8,format=gray", "-f", "rawvideo", rawDestination
-    );
+  const timestamps = frameExtractionTimestamps(seconds);
+  let lastError: unknown;
+
+  for (const [attempt, timestampSeconds] of timestamps.entries()) {
+    await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+    if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
+
+    const args = ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(timestampSeconds), "-i", source];
+    if (thumbnailDestination) {
+      args.push(
+        "-filter_complex",
+        "[0:v:0]split=2[thumbsrc][hashsrc];[thumbsrc]scale=640:-1[thumb];[hashsrc]scale=9:8,format=gray[hash]",
+        "-map", "[thumb]", "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnailDestination,
+        "-map", "[hash]", "-frames:v", "1", "-f", "rawvideo", rawDestination
+      );
+    } else {
+      args.push(
+        "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=9:8,format=gray", "-f", "rawvideo", rawDestination
+      );
+    }
+
+    try {
+      await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10 });
+      const pixels = await fs.readFile(rawDestination);
+      const hash = perceptualHashFromGray9x8(pixels);
+      await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+      if (attempt > 0) {
+        console.log(`Fotograma recuperado en posicion alternativa (${timestampSeconds.toFixed(1)}s).`);
+      }
+      return { hash, timestampSeconds };
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryFrameExtraction(error)) break;
+    }
   }
 
-  try {
-    await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10 });
-    const pixels = await fs.readFile(rawDestination);
-    return perceptualHashFromGray9x8(pixels);
-  } finally {
-    await fs.rm(rawDestination, { force: true }).catch(() => undefined);
-  }
+  await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+  if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
+  throw lastError;
 }
 
-async function createThumbnail(source: string, destination: string, rawDestination: string, seconds: number): Promise<string> {
+async function createThumbnail(
+  source: string,
+  destination: string,
+  rawDestination: string,
+  seconds: number
+): Promise<{ hash: string; timestampSeconds: number }> {
   await fs.mkdir(path.dirname(destination), { recursive: true });
   return extractVisualHash(source, rawDestination, seconds, destination);
 }
@@ -1978,11 +2007,11 @@ async function processFile(
           fingerprintTempName(rel, kind)
         );
         try {
-          const hash = createThumbnails
+          const extracted = createThumbnails
             ? await createThumbnail(filePath, destination, rawDestination, timestampSeconds)
             : await extractVisualHash(filePath, rawDestination, timestampSeconds);
-          fingerprintFrames.push({ index: Number(kind.slice(-2)), hash });
-          if (createThumbnails) thumbs.push({ kind, timestampSeconds, filePath: destination });
+          fingerprintFrames.push({ index: Number(kind.slice(-2)), hash: extracted.hash });
+          if (createThumbnails) thumbs.push({ kind, timestampSeconds: extracted.timestampSeconds, filePath: destination });
         } catch (error) {
           fingerprintFailures += 1;
           if (createThumbnails) {
@@ -2103,13 +2132,20 @@ async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
 }
 
 async function fingerprintRepairPaths(diskId: string): Promise<Set<string>> {
+  if (fingerprintRepairEndpointAvailable === false) return new Set();
   try {
     const response = await api<FingerprintRepairQueueResponse>(`/api/agent/disks/${diskId}/fingerprint-repair-queue`, {
       method: "GET",
       headers: authHeaders()
     });
+    fingerprintRepairEndpointAvailable = true;
     return new Set(response.files.map((file) => file.relativePath));
   } catch (error) {
+    if (error instanceof AgentRequestError && error.statusCode === 404) {
+      fingerprintRepairEndpointAvailable = false;
+      console.log("El servidor actual no incluye la reparacion de huellas visuales. Actualiza el contenedor server y reinicia el Companion para activarla.");
+      return new Set();
+    }
     console.warn(`No se pudo consultar la cola de huellas visuales; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
     return new Set();
   }
