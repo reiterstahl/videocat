@@ -87,6 +87,7 @@ let configWindow: BrowserWindow | null = null;
 let logWindow: BrowserWindow | null = null;
 let busy = false;
 let nextLogId = 1;
+let duplicateLaunchPending = false;
 const logEntries: LogEntry[] = [];
 const maxLogEntries = 1000;
 
@@ -277,6 +278,15 @@ function notify(title: string, body: string): void {
   if (Notification.isSupported()) {
     new Notification({ title, body }).show();
   }
+}
+
+function notifyAlreadyRunning(): void {
+  if (!app.isReady()) {
+    duplicateLaunchPending = true;
+    return;
+  }
+  duplicateLaunchPending = false;
+  notify("VideoCAT Companion", "El Companion ya esta en ejecucion en la bandeja del sistema.");
 }
 
 function addLog(level: LogLevel, source: string, message: string): void {
@@ -999,6 +1009,8 @@ function updateMenu(): void {
 
 async function main(): Promise<void> {
   await app.whenReady();
+  app.setAppUserModelId("app.videocat.companion");
+  if (duplicateLaunchPending) notifyAlreadyRunning();
   app.setLoginItemSettings({ openAtLogin: false });
   await loadEnvFile();
 
@@ -1058,11 +1070,18 @@ async function main(): Promise<void> {
   }, Number(process.env.TRAY_DISK_POLL_MS ?? 10000));
 }
 
-app.on("window-all-closed", () => {
-  // Tray-only app: keep running until the user chooses "Salir".
-});
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-main().catch((error) => {
-  notify("VideoCAT Companion", error instanceof Error ? error.message : String(error));
+if (!hasSingleInstanceLock) {
   app.quit();
-});
+} else {
+  app.on("second-instance", notifyAlreadyRunning);
+  app.on("window-all-closed", () => {
+    // Tray-only app: keep running until the user chooses "Salir".
+  });
+
+  main().catch((error) => {
+    notify("VideoCAT Companion", error instanceof Error ? error.message : String(error));
+    app.quit();
+  });
+}
