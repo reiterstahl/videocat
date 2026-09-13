@@ -3,6 +3,7 @@ import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from "electron";
 import type { OpenDialogOptions } from "electron";
+import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
 
 type DiskMarker = {
   schemaVersion: 1;
@@ -82,6 +83,9 @@ const configDefaults: Partial<Record<ConfigKey, string>> = {
 };
 let tray: Tray | null = null;
 let companion: ChildProcessWithoutNullStreams | null = null;
+let companionRestartTimer: NodeJS.Timeout | null = null;
+let companionRestartFailures = 0;
+let appQuitting = false;
 let lastMounted: MountedDisk[] = [];
 let configWindow: BrowserWindow | null = null;
 let logWindow: BrowserWindow | null = null;
@@ -343,7 +347,7 @@ function runAgentTask(label: string, args: string[]): void {
     output += text;
     addLog("error", label, text);
   });
-  child.once("exit", (code) => {
+  child.once("close", (code) => {
     busy = false;
     void refreshMountedDisks().finally(updateMenu);
     const tail = output.trim().split(/\r?\n/).slice(-3).join("\n");
@@ -411,29 +415,64 @@ async function refreshMountedDisks(): Promise<void> {
 function startCompanion(): void {
   if (companion && !companion.killed) return;
 
+  if (companionRestartTimer) {
+    clearTimeout(companionRestartTimer);
+    companionRestartTimer = null;
+  }
+
   addLog("info", "companion", `Iniciando companion v${app.getVersion()}.`);
-  companion = spawnAgent(["companion"]);
-  companion.stdout.on("data", (chunk) => {
+  const child = spawnAgent(["companion"]);
+  const startedAt = Date.now();
+  companion = child;
+  child.stdout.on("data", (chunk) => {
     const text = String(chunk);
     console.log(text.trim());
     addLog("info", "companion", text);
   });
-  companion.stderr.on("data", (chunk) => {
+  child.stderr.on("data", (chunk) => {
     const text = String(chunk);
     console.error(text.trim());
     addLog("error", "companion", text);
   });
-  companion.once("exit", (code) => {
+  child.once("error", (error) => {
+    addLog("error", "companion", `No se pudo iniciar el proceso: ${error.message}`);
+  });
+  child.once("exit", (code) => {
+    const stoppedIntentionally = child.killed || appQuitting || companion !== child;
     addLog(code === 0 ? "info" : "warn", "companion", `Companion detenido con codigo ${code ?? "desconocido"}.`);
-    companion = null;
+    if (companion === child) companion = null;
     updateMenu();
+
+    if (stoppedIntentionally) return;
+    if (companionRunWasStable(startedAt, Date.now())) companionRestartFailures = 0;
+    const delayMs = companionRestartDelayMs(companionRestartFailures);
+    companionRestartFailures += 1;
+    addLog("warn", "companion", `Reinicio automatico programado en ${Math.round(delayMs / 1000)} segundo(s).`);
+    if (companionRestartFailures === 1) {
+      notify("VideoCAT Companion", "El proceso se detuvo inesperadamente. Se intentara reiniciar automaticamente.");
+    }
+    companionRestartTimer = setTimeout(() => {
+      companionRestartTimer = null;
+      if (!appQuitting && !companion) startCompanion();
+    }, delayMs);
   });
 }
 
 function stopCompanion(): void {
-  if (companion && !companion.killed) addLog("info", "companion", "Deteniendo companion.");
-  companion?.kill();
-  companion = null;
+  if (companionRestartTimer) {
+    clearTimeout(companionRestartTimer);
+    companionRestartTimer = null;
+  }
+  const child = companion;
+  if (child && !child.killed) addLog("info", "companion", "Deteniendo companion.");
+  if (companion === child) companion = null;
+  child?.kill();
+}
+
+function restartCompanion(): void {
+  companionRestartFailures = 0;
+  stopCompanion();
+  startCompanion();
 }
 
 async function openVideoCat(): Promise<void> {
@@ -986,8 +1025,7 @@ function updateMenu(): void {
     {
       label: companion ? "Reiniciar companion" : "Iniciar companion",
       click: () => {
-        stopCompanion();
-        startCompanion();
+        restartCompanion();
         updateMenu();
       }
     },
@@ -1000,6 +1038,7 @@ function updateMenu(): void {
     {
       label: "Salir",
       click: () => {
+        appQuitting = true;
         stopCompanion();
         app.quit();
       }
@@ -1033,8 +1072,7 @@ async function main(): Promise<void> {
       if (validationError) return { ok: false, message: validationError };
 
       const target = await saveConfig(normalized);
-      stopCompanion();
-      startCompanion();
+      restartCompanion();
       updateMenu();
       notify("VideoCAT Companion", "Configuracion guardada. Companion reiniciado.");
       return { ok: true, path: target };
@@ -1076,12 +1114,17 @@ if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on("second-instance", notifyAlreadyRunning);
+  app.on("before-quit", () => {
+    appQuitting = true;
+    stopCompanion();
+  });
   app.on("window-all-closed", () => {
     // Tray-only app: keep running until the user chooses "Salir".
   });
 
   main().catch((error) => {
     notify("VideoCAT Companion", error instanceof Error ? error.message : String(error));
+    appQuitting = true;
     app.quit();
   });
 }

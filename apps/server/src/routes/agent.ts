@@ -18,6 +18,8 @@ import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history
 import { protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
 
+const fingerprintRepairBatchLimit = 5_000;
+
 function toDate(value?: string | null): Date | null {
   return value ? new Date(value) : null;
 }
@@ -333,7 +335,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         { fingerprintedAt: { sort: "asc", nulls: "first" } },
         { relativePath: "asc" }
       ],
-      take: 100
+      take: fingerprintRepairBatchLimit
     });
     return { disk: { id: disk.id, name: disk.name }, files };
   });
