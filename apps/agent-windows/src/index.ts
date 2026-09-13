@@ -25,6 +25,7 @@ import {
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
+import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -917,7 +918,10 @@ async function reportDeletionResult(
 ): Promise<void> {
   await companionAgentApi(`/api/agent/files/${fileId}/deletion-result`, {
     method: "POST",
-    body: JSON.stringify({ status, ...(status === "failed" ? { errorMessage: errorMessage ?? "Deletion failed" } : {}) })
+    body: JSON.stringify({
+      status,
+      ...(status === "failed" ? { errorMessage: boundedErrorMessage(errorMessage, 4000, "Deletion failed") } : {})
+    })
   });
 }
 
@@ -1017,9 +1021,15 @@ async function updateDownloadStatus(
   status: "downloading" | "done" | "failed",
   values: { progressBytes?: number; destinationPath?: string; errorMessage?: string } = {}
 ): Promise<void> {
+  const boundedValues = {
+    ...values,
+    ...(values.errorMessage !== undefined
+      ? { errorMessage: boundedErrorMessage(values.errorMessage, 2000, "Download failed") }
+      : {})
+  };
   await companionAgentApi(`/api/agent/downloads/${queueId}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status, ...values })
+    body: JSON.stringify({ status, ...boundedValues })
   });
 }
 
@@ -1588,12 +1598,12 @@ function auditCategory(error: unknown, fallback = "agent"): string {
 
 function auditError(error: unknown, phase: string, absolutePath: string, diskRoot?: string): PendingAgentError {
   return {
-    category: auditCategory(error),
-    phase,
-    code: errorCode(error),
-    message: error instanceof Error ? error.message : String(error),
-    absolutePath,
-    relativePath: diskRoot ? relativePath(diskRoot, absolutePath) : null
+    category: boundedText(auditCategory(error), 80),
+    phase: boundedText(phase, 40),
+    code: errorCode(error) ? boundedText(errorCode(error)!, 80) : null,
+    message: boundedErrorMessage(error),
+    absolutePath: boundedText(absolutePath, 2000),
+    relativePath: diskRoot ? boundedText(relativePath(diskRoot, absolutePath), 2000) : null
   };
 }
 
@@ -1667,8 +1677,7 @@ function compactFileLabel(filePath: string): string {
 }
 
 function compactToolError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").trim().slice(0, 360);
+  return boundedErrorMessage(error, 360).replace(/\s+/g, " ");
 }
 
 function agentStateRoot(): string {
@@ -1979,7 +1988,7 @@ async function processFile(
           if (createThumbnails) {
             thumbnailFailures += 1;
             status = "thumbnail_failed";
-            errorMessage = error instanceof Error ? error.message : "thumbnail_failed";
+            errorMessage = boundedErrorMessage(error, 4000, "thumbnail_failed");
           }
         }
       }
@@ -2010,7 +2019,7 @@ async function processFile(
       record: {
         ...baseRecord,
         status: "metadata_failed",
-        errorMessage: error instanceof Error ? error.message : "metadata_failed",
+        errorMessage: boundedErrorMessage(error, 4000, "metadata_failed"),
         visualFingerprint: createFingerprint ? null : undefined,
         fingerprintVersion: createFingerprint ? null : undefined,
         metadata: null
@@ -2033,7 +2042,12 @@ async function uploadBatch(
     body: JSON.stringify({
       scanId,
       diskId,
-      files: batch.map((item) => item.record)
+      files: batch.map((item) => ({
+        ...item.record,
+        errorMessage: item.record.errorMessage == null
+          ? item.record.errorMessage
+          : boundedErrorMessage(item.record.errorMessage)
+      }))
     })
   });
 
@@ -2044,7 +2058,7 @@ async function uploadBatch(
         await uploadThumbnail(diskId, item.record.relativePath, thumb);
       } catch (error) {
         uploadFailures += 1;
-        const message = error instanceof Error ? error.message : String(error);
+        const message = boundedErrorMessage(error);
         console.warn(`Fallo subiendo miniatura ${thumb.kind} para ${compactFileLabel(item.record.absolutePath)}; continuando con el siguiente archivo.`);
         errors.push({
           category: auditCategory(error, "thumbnail"),
@@ -2152,7 +2166,14 @@ async function uploadAuditErrors(scanId: string, diskId: string, errors: Pending
     body: JSON.stringify({
       scanId,
       diskId,
-      errors
+      errors: errors.map((error) => ({
+        category: boundedText(error.category, 80),
+        phase: boundedText(error.phase, 40),
+        code: error.code == null ? error.code : boundedText(error.code, 80),
+        message: boundedErrorMessage(error.message),
+        absolutePath: error.absolutePath == null ? error.absolutePath : boundedText(error.absolutePath, 2000),
+        relativePath: error.relativePath == null ? error.relativePath : boundedText(error.relativePath, 2000)
+      }))
     })
   });
 }
