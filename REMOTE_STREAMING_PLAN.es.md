@@ -65,20 +65,20 @@ Cada mensaje lleva `requestId`, `sessionId`, número de secuencia y un límite e
 
 ## Fases De Implementación
 
-Estado actual: el emparejamiento, las credenciales individuales cifradas y la revocación por Companion ya están implementados en `v0.1.13`. El siguiente incremento es el túnel saliente de control.
+Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación y el túnel saliente de control ya están implementados en `v0.1.14`. El siguiente incremento es el streaming directo con HTTP Range.
 
-### Fase 0: Protocolo Y Modelo De Amenazas
+### Fase 0: Protocolo Y Modelo De Amenazas — Completada En v0.1.14
 
 - Documentar activos, atacantes, límites de confianza y comportamiento ante desconexiones.
 - Definir estados, tamaños máximos, códigos de error y versión negociada del protocolo.
 - Crear pruebas para tokens, autorización, HTTP Range y contención de rutas.
 
-### Fase 1: Identidad Y Túnel De Control
+### Fase 1: Identidad Y Túnel De Control — Completada En v0.1.14
 
-- Emparejamiento por Companion completado en `v0.1.13`.
-- Implementar el WebSocket saliente con autenticación, rotación y reconexión con backoff.
-- Mostrar en Administración qué Companion acepta `stream:read`.
-- Mantener heartbeats y órdenes existentes compatibles durante una versión.
+- Emparejamiento por Companion, credenciales individuales cifradas y revocación completados.
+- WebSocket saliente con autenticación por mensaje inicial, límite de 16 KB, timeout de handshake, ping/pong y reconexión con backoff.
+- Administración muestra el estado del túnel seguro de cada Companion.
+- Heartbeats y órdenes existentes continúan compatibles; el túnel no acepta aún lectura de archivos ni acciones de escritura.
 
 ### Fase 2: Streaming Directo Con HTTP Range
 

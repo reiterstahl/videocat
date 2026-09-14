@@ -9,6 +9,7 @@ import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { companionRoutes } from "./routes/companions.js";
+import { installCompanionControlTunnel } from "./lib/companion-control-tunnel.js";
 
 export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
@@ -48,6 +49,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     return reply.code(statusCode).send({ message: typeof errorLike.message === "string" ? errorLike.message : "Request failed" });
   });
 
+  installCompanionControlTunnel(app);
   app.get("/api/health", async () => ({ ok: true }));
   await app.register(authRoutes);
   await app.register(companionRoutes);

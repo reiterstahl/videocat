@@ -11,6 +11,7 @@ Esta app ejecuta VideoCAT desde la bandeja de Windows. Mantiene el companion loc
 - Permite escanear un disco detectado desde el menú de bandeja.
 - Permite procesar borrados pendientes manualmente.
 - Permite emparejar cada instalación mediante un código de un solo uso y guardar su credencial cifrada por Windows.
+- Mantiene un túnel de control saliente autenticado con el servidor después de emparejarse, sin abrir puertos entrantes de Windows.
 - Permite configurar `SERVER_URL`, `WEB_URL`, el `AGENT_TOKEN` heredado opcional y las opciones del companion desde el menú de bandeja.
 - Permite abrir `Ver actividad...` para revisar logs en vivo del companion, escaneos y borrados.
 - Mantiene las tareas periódicas existentes del companion:
@@ -43,8 +44,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable, comprueba que todos los módulos runtime estén dentro de `app.asar` y genera los archivos SHA-256 y MD5. Los assets quedan en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.13.exe
-companion\VideoCAT-Companion-0.1.13.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.14.exe
+companion\VideoCAT-Companion-0.1.14.exe
 ```
 
 Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para crear el release de GitHub si hace falta y subir los tres assets.
@@ -88,5 +89,6 @@ COMPANION_DISABLED_DISK_IDS=
 - El estado persistente del agente se guarda por defecto en `%LOCALAPPDATA%\VideoCAT\agent-state`; `AGENT_STATE_DIR` permite cambiarlo.
 - El Companion crea `companion-identity.json` en ese directorio para mantener una identidad UUID estable por instalación. No copies ese archivo a otro equipo.
 - La credencial individual se cifra mediante Electron `safeStorage` para el usuario actual de Windows. El servidor conserva solo su hash y puede revocarla desde `Administración`.
+- El túnel actual prepara la reproducción remota segura, pero aún no transmite archivos ni acepta acciones de escritura.
 - El escaneo sigue respetando `.videocat-disk.json` y sus `scanRoots`.
 - La app no se configura para iniciar con Windows automáticamente todavía.

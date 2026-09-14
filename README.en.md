@@ -101,6 +101,7 @@ Main features:
 - Runs in the background from the Windows system tray.
 - Starts and keeps the local companion active.
 - Pairs with a one-time code and stores an individual credential encrypted by Windows.
+- Maintains an authenticated outbound control tunnel to VideoCAT without exposing Windows ports; Administration shows its state.
 - Configures `SERVER_URL`, `WEB_URL`, the optional legacy `AGENT_TOKEN`, and local options from a window.
 - Shows a live activity/log window.
 - Detects mounted drives that contain `.videocat-disk.json`.
@@ -124,12 +125,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.13`.
+The current release is `v0.1.14`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.13.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.14.exe`
 
 Recommended companion verification:
 
@@ -140,7 +141,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.13.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.14.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -353,7 +354,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.13.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.14.exe
 ```
 
 Usage:
@@ -363,8 +364,8 @@ Usage:
 3. In the VideoCAT web app, open `Administration`, generate a pairing code, and keep it visible.
 4. Open `Configuration...` in the Companion, enter `SERVER_URL`, paste the code, and select `Pair`.
 5. The individual credential is encrypted for your Windows user; `AGENT_TOKEN` is only needed by legacy clients.
-5. Use `Ver actividad...` to inspect live logs.
-6. Connect drives marked with `.videocat-disk.json`.
+6. Use `Ver actividad...` to inspect logs and confirm `Canal remoto seguro conectado al servidor.`
+7. Connect drives marked with `.videocat-disk.json`.
 
 ## Review And Delete Flow
 
@@ -383,6 +384,8 @@ If you use `Mostrar conectados`, Review picks random videos only from the select
 
 - The web app requires login.
 - Each modern Companion installation uses an individual credential issued through a one-time code, encrypted with Windows user protection, and revocable from Administration.
+- The current tunnel prepares secure remote playback: it does not transmit files or accept write operations yet.
+- The bundled Nginx proxy already forwards WebSocket traffic. An external reverse proxy must allow `Upgrade` and `Connection` headers for `/api/agent/tunnel`.
 - The server stores only credential hashes. `AGENT_TOKEN` remains temporarily available for legacy clients during the transition.
 - Each installation keeps a persistent UUID identity in its state directory.
 - The local companion can be protected with `COMPANION_TOKEN`.
@@ -490,8 +493,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.13
-reiterstahl/videocat-web:0.1.13
+reiterstahl/videocat-server:0.1.14
+reiterstahl/videocat-web:0.1.14
 ```
 
 `latest` tags are also published:
@@ -538,8 +541,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.13 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.13 -t reiterstahl/videocat-web:0.1.13 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.14 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.14 -t reiterstahl/videocat-web:0.1.14 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -552,10 +555,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.13
+  image: reiterstahl/videocat-server:0.1.14
 
 web:
-  image: reiterstahl/videocat-web:0.1.13
+  image: reiterstahl/videocat-web:0.1.14
 ```
 
 ## Main Endpoints

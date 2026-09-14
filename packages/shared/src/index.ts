@@ -1,5 +1,6 @@
 import { z } from "zod";
 export * from "./perceptual-fingerprint.js";
+export * from "./companion-tunnel.js";
 
 export const companionDefaultPort = 29429;
 const companionFallbackPorts = [18431, 23447, 31469, 37483, 43517, 49627, 55733, 60149, 15319, 26891] as const;

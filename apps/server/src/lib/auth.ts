@@ -13,6 +13,15 @@ const webAudience = "videocat-web";
 const protectedAudience = "videocat-protected-folder";
 const companionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export type AgentCredentialVerification = {
+  ok: false;
+  statusCode: 400 | 401 | 403;
+  message: string;
+} | {
+  ok: true;
+  authMode: "legacy" | "paired";
+};
+
 function constantTimeEqual(a: string, b: string): boolean {
   const aBuffer = crypto.createHash("sha256").update(a).digest();
   const bBuffer = crypto.createHash("sha256").update(b).digest();
@@ -102,39 +111,53 @@ export async function requireAgentAuth(request: FastifyRequest, reply: FastifyRe
   const token = header?.replace(/^Bearer\s+/i, "") ?? "";
   const headerValue = request.headers["x-videocat-companion-id"];
   const companionId = typeof headerValue === "string" ? headerValue : undefined;
-  if (companionId && !companionIdPattern.test(companionId)) {
-    await reply.code(400).send({ message: "Invalid companion identity" });
-    return;
-  }
-
-  const legacyAuthenticated = constantTimeEqual(token, env.AGENT_TOKEN);
-  if (!legacyAuthenticated && !companionId) {
-    await reply.code(401).send({ message: "Invalid agent credentials" });
-    return;
-  }
-
-  if (companionId) {
-    const companion = await prisma.companionAgent.findUnique({
-      where: { installationId: companionId },
-      select: { revokedAt: true, credentialHash: true }
-    });
-    if (companion?.revokedAt) {
-      await reply.code(403).send({ message: "Companion identity revoked" });
-      return;
-    }
-    if (!legacyAuthenticated) {
-      const presentedHash = hashAgentSecret(token);
-      if (!companion?.credentialHash || !constantTimeHashEqual(presentedHash, companion.credentialHash)) {
-        await reply.code(401).send({ message: "Invalid agent credentials" });
-        return;
-      }
-    }
-  } else if (!legacyAuthenticated) {
-    await reply.code(401).send({ message: "Invalid agent credentials" });
+  const verification = await verifyAgentCredentials(token, companionId);
+  if (!verification.ok) {
+    await reply.code(verification.statusCode).send({ message: verification.message });
     return;
   }
 
   clearRateLimit(limitKey);
+}
+
+export async function verifyAgentCredentials(
+  token: string,
+  companionId?: string,
+  options: { requirePaired?: boolean } = {}
+): Promise<AgentCredentialVerification> {
+  if (companionId && !companionIdPattern.test(companionId)) {
+    return { ok: false, statusCode: 400, message: "Invalid companion identity" };
+  }
+
+  const legacyAuthenticated = constantTimeEqual(token, env.AGENT_TOKEN);
+  if (!legacyAuthenticated && !companionId) {
+    return { ok: false, statusCode: 401, message: "Invalid agent credentials" };
+  }
+
+  if (!companionId) {
+    if (options.requirePaired) return { ok: false, statusCode: 401, message: "Individual Companion credentials required" };
+    return { ok: true, authMode: "legacy" };
+  }
+
+  const companion = await prisma.companionAgent.findUnique({
+    where: { installationId: companionId },
+    select: { revokedAt: true, credentialHash: true }
+  });
+  if (companion?.revokedAt) {
+    return { ok: false, statusCode: 403, message: "Companion identity revoked" };
+  }
+
+  if (legacyAuthenticated) {
+    if (options.requirePaired) return { ok: false, statusCode: 401, message: "Individual Companion credentials required" };
+    return { ok: true, authMode: "legacy" };
+  }
+
+  const presentedHash = hashAgentSecret(token);
+  if (!companion?.credentialHash || !constantTimeHashEqual(presentedHash, companion.credentialHash)) {
+    return { ok: false, statusCode: 401, message: "Invalid agent credentials" };
+  }
+
+  return { ok: true, authMode: "paired" };
 }
 
 export function setSessionCookie(reply: FastifyReply, token: string): void {

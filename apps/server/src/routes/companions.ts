@@ -10,6 +10,7 @@ import {
 } from "../lib/agent-credentials.js";
 import { prisma } from "../lib/prisma.js";
 import { clearRateLimit, rateLimit } from "../lib/security.js";
+import { companionTunnelStatus, disconnectCompanionControlTunnel } from "../lib/companion-control-tunnel.js";
 
 const pairingLifetimeMs = 10 * 60 * 1000;
 const pairingBodySchema = z.object({
@@ -119,7 +120,8 @@ export async function companionRoutes(app: FastifyInstance): Promise<void> {
         firstSeenAt: companion.firstSeenAt.toISOString(),
         lastSeenAt: companion.lastSeenAt.toISOString(),
         revokedAt: companion.revokedAt?.toISOString() ?? null,
-        credentialIssuedAt: companion.credentialIssuedAt?.toISOString() ?? null
+        credentialIssuedAt: companion.credentialIssuedAt?.toISOString() ?? null,
+        tunnel: companionTunnelStatus(app, companion.installationId)
       }))
     };
   });
@@ -131,6 +133,7 @@ export async function companionRoutes(app: FastifyInstance): Promise<void> {
       data: { revokedAt: new Date() }
     });
     if (result.count !== 1) return reply.code(404).send({ message: "Companion not found" });
+    disconnectCompanionControlTunnel(app, id);
     return { ok: true };
   });
 }

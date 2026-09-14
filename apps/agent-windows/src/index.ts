@@ -25,6 +25,7 @@ import {
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
 import { frameExtractionTimestamps, shouldRetryFrameExtraction } from "./frame-extraction.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
+import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 
@@ -196,10 +197,11 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 13;
+const companionVersion = 14;
 let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
+let companionControlTunnel: CompanionControlTunnel | null = null;
 let companionInstallationId: string | null = null;
 let fingerprintRepairEndpointAvailable: boolean | null = null;
 
@@ -1498,6 +1500,21 @@ async function runCompanion(): Promise<void> {
   console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
   await reportMediaToolAvailability();
   await startCompanionDiskWatcher();
+  const credential = process.env.VIDEOCAT_AGENT_CREDENTIAL?.trim();
+  if (credential && process.env.SERVER_URL) {
+    companionControlTunnel?.stop();
+    companionControlTunnel = startCompanionControlTunnel({
+      serverUrl: process.env.SERVER_URL,
+      credential,
+      companionId: await ensureCompanionIdentity(),
+      companionName: companionName(),
+      version: companionVersion,
+      logInfo: (message) => console.log(message),
+      logWarn: (message) => console.warn(message)
+    });
+  } else {
+    console.log("Canal remoto no iniciado: empareja este Companion con una credencial individual para habilitarlo.");
+  }
 }
 
 async function runProcessDeletes(): Promise<void> {

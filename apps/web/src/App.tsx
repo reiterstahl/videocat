@@ -314,6 +314,16 @@ type CompanionAdminItem = {
   revokedAt: string | null;
   credentialIssuedAt: string | null;
   authMode: "legacy" | "paired" | string;
+  tunnel?: {
+    connected: boolean;
+    connectedAt: string | null;
+    lastSeenAt: string | null;
+    protocolVersion: number | null;
+    capabilities: {
+      control: boolean;
+      streamRead: boolean;
+    } | null;
+  };
 };
 
 type CompanionPairingCode = {
@@ -387,7 +397,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.13";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.14";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -4024,6 +4034,7 @@ export function App() {
                 {adminCompanions.map((companionItem) => {
                   const isOnline = !companionItem.revokedAt && Date.now() - new Date(companionItem.lastSeenAt).getTime() <= 45_000;
                   const confirming = pendingCompanionRevocation === companionItem.installationId;
+                  const tunnelConnected = companionItem.tunnel?.connected === true;
                   return (
                     <article className="companion-admin-row" key={companionItem.installationId}>
                       <span className={`companion-admin-dot ${isOnline ? "is-online" : ""}`} />
@@ -4035,7 +4046,13 @@ export function App() {
                         <span className={`companion-auth-badge is-${companionItem.revokedAt ? "revoked" : companionItem.authMode}`}>
                           {companionItem.revokedAt ? "Revocado" : companionItem.authMode === "paired" ? "Individual" : "Token heredado"}
                         </span>
-                        <small>v{companionItem.version} · {dateLabel(companionItem.lastSeenAt, locale)}</small>
+                        <span className={`companion-tunnel-badge ${tunnelConnected ? "is-connected" : ""}`}>
+                          {tunnelConnected ? "Túnel seguro" : "Sin túnel"}
+                        </span>
+                        <small>
+                          v{companionItem.version} · {dateLabel(companionItem.lastSeenAt, locale)}
+                          {tunnelConnected ? " · Control remoto listo" : ""}
+                        </small>
                       </div>
                       {confirming ? (
                         <div className="companion-revoke-confirm">

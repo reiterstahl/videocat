@@ -65,20 +65,20 @@ Every message carries a `requestId`, `sessionId`, sequence number and explicit s
 
 ## Delivery Phases
 
-Current status: Companion pairing, encrypted individual credentials, and per-Companion revocation are implemented in `v0.1.13`. The next increment is the outbound control tunnel.
+Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, and the outbound control tunnel are implemented in `v0.1.14`. The next increment is direct HTTP Range streaming.
 
-### Phase 0: Protocol And Threat Model
+### Phase 0: Protocol And Threat Model — Complete In v0.1.14
 
 - Document assets, attackers, trust boundaries and disconnect behavior.
 - Define states, maximum sizes, errors and negotiated protocol version.
 - Add tests for tokens, authorization, HTTP Range and path containment.
 
-### Phase 1: Identity And Control Tunnel
+### Phase 1: Identity And Control Tunnel — Complete In v0.1.14
 
-- Companion pairing completed in `v0.1.13`.
-- Add the outbound WebSocket with authentication, rotation and reconnect backoff.
-- Show which Companions accept `stream:read` in Administration.
-- Keep existing heartbeats and commands compatible for one release.
+- Companion pairing, encrypted individual credentials, and revocation are complete.
+- Outbound WebSocket uses an authenticated initial message, a 16 KB limit, handshake timeout, ping/pong, and reconnect backoff.
+- Administration shows the secure tunnel state for each Companion.
+- Existing heartbeats and commands remain compatible; the tunnel does not yet accept file reads or write actions.
 
 ### Phase 2: Direct HTTP Range Streaming
 

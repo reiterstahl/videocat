@@ -1974,6 +1974,21 @@ select:focus {
   color: #a02f29;
 }
 
+.companion-tunnel-badge {
+  border: 1px solid #b8a374;
+  border-radius: 999px;
+  color: #7a6848;
+  font-size: 0.68rem;
+  font-weight: 950;
+  padding: 3px 7px;
+}
+
+.companion-tunnel-badge.is-connected {
+  border-color: #24ad68;
+  background: rgba(36, 173, 104, 0.1);
+  color: #177c4a;
+}
+
 .companion-revoke-confirm {
   flex: 0 0 auto;
 }
@@ -5376,6 +5391,17 @@ tbody tr.curation-row {
 :root[data-theme="dark"] .companion-revoke-confirm span {
   border-color: #c64b43;
   color: #ffaaa2;
+}
+
+:root[data-theme="dark"] .companion-tunnel-badge {
+  border-color: #665a42;
+  color: #c7ae7c;
+}
+
+:root[data-theme="dark"] .companion-tunnel-badge.is-connected {
+  border-color: #28b86f;
+  background: rgba(40, 184, 111, 0.12);
+  color: #b9f0d2;
 }
 
 @media (max-width: 720px) {

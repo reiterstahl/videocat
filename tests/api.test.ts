@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { once } from "node:events";
 import test from "node:test";
+import WebSocket from "ws";
 
 process.env.NODE_ENV ??= "test";
 process.env.DATABASE_URL ??= "postgresql://videocat:videocat@localhost:5432/videocat";
@@ -17,6 +19,7 @@ process.env.COOKIE_SECURE ??= "false";
 const { buildApp } = await import("../apps/server/src/app.ts");
 const { prisma } = await import("../apps/server/src/lib/prisma.ts");
 const app = await buildApp({ logger: false });
+let liveServerUrl: string | null = null;
 test.after(async () => {
   await app.close();
   await prisma.$disconnect();
@@ -43,6 +46,11 @@ const webMutationHeaders = (cookie: string) => ({
 const agentHeaders = {
   authorization: `Bearer ${process.env.AGENT_TOKEN}`
 };
+
+async function websocketServerUrl(): Promise<string> {
+  if (!liveServerUrl) liveServerUrl = await app.listen({ host: "127.0.0.1", port: 0 });
+  return liveServerUrl;
+}
 
 test("health endpoint responds without authentication", async () => {
   const response = await app.inject({ method: "GET", url: "/api/health" });
@@ -146,6 +154,71 @@ test("one-time pairing creates and revokes an individual Companion credential", 
     });
     assert.equal(rejected.statusCode, 403);
   } finally {
+    await prisma.companionPairingCode.deleteMany({ where: { claimedById: companionId } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
+});
+
+test("a paired Companion opens a control tunnel and revocation closes it", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  let tunnel: WebSocket | null = null;
+  try {
+    const cookie = await authenticatedCookie();
+    const codeResponse = await app.inject({
+      method: "POST",
+      url: "/api/companions/pairing-code",
+      headers: webMutationHeaders(cookie),
+      payload: {}
+    });
+    assert.equal(codeResponse.statusCode, 200, codeResponse.body);
+    const pairResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/pair",
+      payload: {
+        code: codeResponse.json().code,
+        companionId,
+        companionName: "Tunnel CI Companion",
+        version: 14
+      }
+    });
+    assert.equal(pairResponse.statusCode, 200, pairResponse.body);
+
+    const serverUrl = await websocketServerUrl();
+    tunnel = new WebSocket(`${serverUrl.replace(/^http/, "ws")}/api/agent/tunnel`);
+    await once(tunnel, "open");
+    tunnel.send(JSON.stringify({
+      type: "tunnel.hello",
+      protocolVersion: 1,
+      companionId,
+      credential: pairResponse.json().credential,
+      companionName: "Tunnel CI Companion",
+      version: 14,
+      capabilities: { control: true, streamRead: false }
+    }));
+    const [message] = await once(tunnel, "message");
+    assert.deepEqual(JSON.parse(String(message)), {
+      type: "tunnel.ready",
+      protocolVersion: 1,
+      companionId,
+      capabilities: { control: true, streamRead: false }
+    });
+
+    const companions = await app.inject({ method: "GET", url: "/api/companions", headers: { cookie } });
+    assert.equal(companions.statusCode, 200, companions.body);
+    assert.equal(companions.json().companions.find((item: { installationId: string }) => item.installationId === companionId)?.tunnel.connected, true);
+
+    const closed = once(tunnel, "close");
+    const revoke = await app.inject({
+      method: "POST",
+      url: `/api/companions/${companionId}/revoke`,
+      headers: webMutationHeaders(cookie),
+      payload: {}
+    });
+    assert.equal(revoke.statusCode, 200, revoke.body);
+    const [code] = await closed;
+    assert.equal(code, 4003);
+  } finally {
+    tunnel?.terminate();
     await prisma.companionPairingCode.deleteMany({ where: { claimedById: companionId } });
     await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
   }
