@@ -4440,6 +4440,35 @@ tbody tr.curation-row {
   object-fit: contain;
 }
 
+.duplicate-assistant-media img.is-previewing {
+  animation: duplicate-preview-frame 260ms ease-out both;
+}
+
+@keyframes duplicate-preview-frame {
+  from {
+    opacity: 0.32;
+    transform: scale(1.018);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.duplicate-assistant-preview-count {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+  z-index: 3;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(7, 12, 15, 0.72);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 1000;
+  padding: 4px 7px;
+}
+
 .duplicate-assistant-no-thumb {
   display: grid;
   justify-items: center;
@@ -5243,6 +5272,75 @@ tbody tr.curation-row {
     width: calc(100vw - 24px);
     height: calc(95dvh - 70px);
     max-height: calc(95dvh - 70px);
+  }
+
+  .detail-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    grid-template-areas:
+      "disk close"
+      "title close"
+      "primary primary"
+      "tags tags";
+    align-items: start;
+    gap: 5px 10px;
+    padding: 13px 14px;
+  }
+
+  .detail-title-block,
+  .detail-header-actions {
+    display: contents;
+  }
+
+  .detail-header > .detail-title-block > span {
+    grid-area: disk;
+    font-size: 0.72rem;
+  }
+
+  .detail-header h2 {
+    grid-area: title;
+    margin: 0;
+    font-size: 1.08rem;
+    line-height: 1.25;
+  }
+
+  .detail-header > .detail-title-block > .detail-primary-actions {
+    grid-area: primary;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    gap: 7px;
+    width: 100%;
+    margin-top: 7px;
+  }
+
+  .detail-primary-action {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+  }
+
+  .detail-header > .detail-header-actions > .curation-actions {
+    grid-area: tags;
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 3px 0 1px;
+    scrollbar-width: thin;
+  }
+
+  .detail-header > .detail-header-actions > .curation-actions .curation-action {
+    min-height: 31px;
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    padding: 0 8px;
+  }
+
+  .detail-header > .detail-header-actions > .icon-button {
+    grid-area: close;
+    width: 42px;
+    height: 42px;
   }
 
   .modal-nav {

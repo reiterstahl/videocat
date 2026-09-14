@@ -5006,11 +5006,12 @@ function DuplicateAssistantModal({
                 disabled={busy}
                 key={file.id}
                 onClick={() => onDecision(file.id)}
-                onMouseEnter={() => {
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "touch") return;
                   setHoveredFileId(file.id);
                   setHoveredFrameIndex(0);
                 }}
-                onMouseLeave={() => setHoveredFileId(null)}
+                onPointerLeave={() => setHoveredFileId(null)}
                 onFocus={() => {
                   setHoveredFileId(file.id);
                   setHoveredFrameIndex(0);
@@ -5020,7 +5021,14 @@ function DuplicateAssistantModal({
               >
                 <div className="duplicate-assistant-media">
                   {thumbnail ? (
-                    <img key={`${file.id}-${frame?.kind ?? "main"}-${hoveredFrameIndex}`} src={thumbnail} alt="" decoding="async" fetchPriority="high" />
+                    <img
+                      key={`${file.id}-${frame?.kind ?? "main"}-${hoveredFrameIndex}`}
+                      className={hovered && frames.length > 1 ? "is-previewing" : ""}
+                      src={thumbnail}
+                      alt=""
+                      decoding="async"
+                      fetchPriority="high"
+                    />
                   ) : (
                     <div className="duplicate-assistant-no-thumb"><Image size={36} /><span>Sin miniatura</span></div>
                   )}
@@ -5028,6 +5036,11 @@ function DuplicateAssistantModal({
                     <span className="duplicate-assistant-hover-action">
                       <Check size={22} />
                       Mantener este
+                    </span>
+                  ) : null}
+                  {hovered && frames.length > 1 ? (
+                    <span className="duplicate-assistant-preview-count">
+                      {hoveredFrameIndex % frames.length + 1}/{frames.length}
                     </span>
                   ) : null}
                   {selected ? <span className="duplicate-selection-feedback"><Check size={18} /> MANTENER</span> : null}

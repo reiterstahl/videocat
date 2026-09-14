@@ -114,9 +114,32 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       where: { revokedAt: null },
       select: { installationId: true, mountedDiskIds: true }
     });
+    // Companions report the stable identifier stored in .videocat-disk.json.
+    // Catalog files reference the internal Disk id, which can differ for older
+    // catalogs created before marker identifiers were used directly.
+    const mountedIdentifiers = [...new Set(companions.flatMap((companion) => mountedDiskIds(companion.mountedDiskIds)))];
+    const mountedDisks = mountedIdentifiers.length > 0
+      ? await prisma.disk.findMany({
+          where: {
+            OR: [
+              { id: { in: mountedIdentifiers } },
+              { volumeId: { in: mountedIdentifiers } }
+            ]
+          },
+          select: { id: true, volumeId: true }
+        })
+      : [];
+    const catalogDiskIdByIdentifier = new Map<string, string>();
+    for (const disk of mountedDisks) {
+      catalogDiskIdByIdentifier.set(disk.id, disk.id);
+      if (disk.volumeId) catalogDiskIdByIdentifier.set(disk.volumeId, disk.id);
+    }
+
     const candidate = companions.find((companion) => {
       const tunnel = companionTunnelStatus(app, companion.installationId);
-      return mountedDiskIds(companion.mountedDiskIds).includes(file.diskId)
+      const companionCatalogDiskIds = mountedDiskIds(companion.mountedDiskIds)
+        .map((identifier) => catalogDiskIdByIdentifier.get(identifier) ?? identifier);
+      return companionCatalogDiskIds.includes(file.diskId)
         && tunnel.connected
         && tunnel.capabilities?.streamRead === true
         && (mode !== "remux" || (env.REMOTE_REMUX_ENABLED && tunnel.capabilities?.streamRemux === true));
