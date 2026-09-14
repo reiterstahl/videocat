@@ -31,8 +31,8 @@ type TunnelConnection = {
 };
 
 type StreamOpenResult = { sizeBytes: number; mimeType: string };
-type PendingOpen = { companionId: string; resolve: (value: StreamOpenResult) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout };
-type PendingRange = { companionId: string; resolve: (value: Buffer) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout; expectedBytes?: number };
+type PendingOpen = { companionId: string; sessionId: string; resolve: (value: StreamOpenResult) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout };
+type PendingRange = { companionId: string; sessionId: string; resolve: (value: Buffer) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout; expectedBytes?: number };
 
 export type CompanionTunnelStatus = {
   connected: boolean;
@@ -107,6 +107,7 @@ class CompanionControlTunnelRegistry {
     const connection = this.connections.get(companionId);
     if (!connection) return;
     this.connections.delete(companionId);
+    this.rejectForCompanion(companionId, new Error("Companion tunnel disconnected"));
     connection.socket.close(4003, reason);
   }
 
@@ -121,7 +122,7 @@ class CompanionControlTunnelRegistry {
     expiresAt: string;
   }): Promise<StreamOpenResult> {
     const connection = this.connections.get(input.companionId);
-    if (!connection || connection.socket.readyState !== WebSocket.OPEN || !connection.capabilities.streamRead) {
+    if (!connection || connection.socket.readyState !== WebSocket.OPEN || !connection.capabilities.streamRead || (input.mode === "remux" && !connection.capabilities.streamRemux)) {
       throw new Error("Companion streaming is unavailable");
     }
     const requestId = crypto.randomUUID();
@@ -132,7 +133,7 @@ class CompanionControlTunnelRegistry {
         reject(new Error("Companion did not prepare the stream in time"));
       }, companionStreamRequestTimeoutMs);
       timeout.unref();
-      this.pendingOpens.set(requestId, { companionId: input.companionId, resolve, reject, timeout });
+      this.pendingOpens.set(requestId, { companionId: input.companionId, sessionId: input.sessionId, resolve, reject, timeout });
       send(connection.socket, message);
     });
   }
@@ -154,7 +155,7 @@ class CompanionControlTunnelRegistry {
     return new Promise<Buffer>((resolve, reject) => {
       const timeout = setTimeout(() => this.rejectRange(requestId, new Error("Companion range request timed out")), companionStreamRequestTimeoutMs);
       timeout.unref();
-      this.pendingRanges.set(requestId, { companionId: input.companionId, resolve, reject, timeout });
+      this.pendingRanges.set(requestId, { companionId: input.companionId, sessionId: input.sessionId, resolve, reject, timeout });
       this.activeRangeByCompanion.set(input.companionId, requestId);
       send(connection.socket, message);
     });
@@ -162,6 +163,7 @@ class CompanionControlTunnelRegistry {
 
   cancelStream(companionId: string, sessionId: string, reason: "client_closed" | "expired" | "superseded" | "error" = "client_closed"): void {
     const connection = this.connections.get(companionId);
+    this.rejectForSession(companionId, sessionId, new Error("Companion stream cancelled"));
     if (!connection || connection.socket.readyState !== WebSocket.OPEN) return;
     send(connection.socket, { type: "stream.cancel", sessionId, reason });
   }
@@ -315,6 +317,7 @@ class CompanionControlTunnelRegistry {
       if (connection.socket.readyState !== WebSocket.OPEN || connection.awaitingPong) {
         connection.socket.terminate();
         this.connections.delete(companionId);
+        this.rejectForCompanion(companionId, new Error("Companion tunnel heartbeat timed out"));
         continue;
       }
       connection.awaitingPong = true;
@@ -332,7 +335,7 @@ class CompanionControlTunnelRegistry {
       const ready = companionStreamReadySchema.safeParse(value);
       if (ready.success) {
         const pending = this.pendingOpens.get(ready.data.requestId);
-        if (!pending || pending.companionId !== companionId) return;
+        if (!pending || pending.companionId !== companionId || pending.sessionId !== ready.data.sessionId) return;
         this.pendingOpens.delete(ready.data.requestId);
         clearTimeout(pending.timeout);
         pending.resolve({ sizeBytes: ready.data.sizeBytes, mimeType: ready.data.mimeType });
@@ -341,14 +344,17 @@ class CompanionControlTunnelRegistry {
       const chunk = companionStreamChunkSchema.safeParse(value);
       if (chunk.success) {
         const pending = this.pendingRanges.get(chunk.data.requestId);
-        if (!pending || pending.companionId !== companionId || pending.expectedBytes !== undefined) return;
+        if (!pending || pending.companionId !== companionId || pending.sessionId !== chunk.data.sessionId || pending.expectedBytes !== undefined) return;
         pending.expectedBytes = chunk.data.bytes;
         return;
       }
       const streamError = companionStreamErrorSchema.safeParse(value);
       if (streamError.success) {
-        this.rejectOpen(streamError.data.requestId, new Error(`Companion stream error: ${streamError.data.code}`));
-        this.rejectRange(streamError.data.requestId, new Error(`Companion stream error: ${streamError.data.code}`));
+        const error = new Error(`Companion stream error: ${streamError.data.code}`);
+        const open = this.pendingOpens.get(streamError.data.requestId);
+        if (open?.companionId === companionId && open.sessionId === streamError.data.sessionId) this.rejectOpen(streamError.data.requestId, error);
+        const range = this.pendingRanges.get(streamError.data.requestId);
+        if (range?.companionId === companionId && range.sessionId === streamError.data.sessionId) this.rejectRange(streamError.data.requestId, error);
       }
     } catch {
       this.disconnect(companionId, "invalid protocol message");
@@ -393,6 +399,15 @@ class CompanionControlTunnelRegistry {
   private rejectForCompanion(companionId: string, error: Error): void {
     for (const [requestId, pending] of this.pendingOpens) if (pending.companionId === companionId) this.rejectOpen(requestId, error);
     for (const [requestId, pending] of this.pendingRanges) if (pending.companionId === companionId) this.rejectRange(requestId, error);
+  }
+
+  private rejectForSession(companionId: string, sessionId: string, error: Error): void {
+    for (const [requestId, pending] of this.pendingOpens) {
+      if (pending.companionId === companionId && pending.sessionId === sessionId) this.rejectOpen(requestId, error);
+    }
+    for (const [requestId, pending] of this.pendingRanges) {
+      if (pending.companionId === companionId && pending.sessionId === sessionId) this.rejectRange(requestId, error);
+    }
   }
 }
 

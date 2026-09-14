@@ -22,7 +22,11 @@ const envSchema = z.object({
   ADMIN_PASSWORD: z.string().min(8),
   THUMBNAILS_DIR: z.string().default("/data/video-catalog/thumbnails"),
   PUBLIC_THUMBNAILS_BASE_URL: z.string().default("/thumbnails"),
-  REMOTE_REMUX_ENABLED: booleanEnv.default(false)
+  REMOTE_REMUX_ENABLED: booleanEnv.default(false),
+  REMOTE_STREAM_SESSION_LIFETIME_MS: z.coerce.number().int().min(60_000).max(60 * 60 * 1000).default(15 * 60 * 1000),
+  REMOTE_STREAM_IDLE_TIMEOUT_MS: z.coerce.number().int().min(15_000).max(15 * 60 * 1000).default(2 * 60 * 1000),
+  REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION: z.coerce.number().int().min(1).max(4).default(1),
+  REMOTE_STREAM_MAX_SESSIONS_PER_USER: z.coerce.number().int().min(1).max(8).default(2)
 });
 
 export const env = envSchema.parse(process.env);

@@ -431,7 +431,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.17";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.18";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";

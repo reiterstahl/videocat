@@ -276,12 +276,25 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
     const sessionResponse = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId } });
     assert.equal(sessionResponse.statusCode, 200, sessionResponse.body);
     const sessionId = sessionResponse.json().session.id as string;
+    const incompatibleRemux = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId, mode: "remux" } });
+    assert.equal(incompatibleRemux.statusCode, 400, incompatibleRemux.body);
     const content = await app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=2-8" } });
     assert.equal(content.statusCode, 206, content.body);
     assert.equal(content.headers["content-range"], "bytes 2-8/12");
     assert.equal(content.headers["accept-ranges"], "bytes");
     assert.equal(content.body, "cdefghi");
     assert.equal(content.body.includes("X:\\Videos"), false);
+
+    await prisma.streamSession.update({ where: { id: sessionId }, data: { ownerUsername: "another-admin" } });
+    const foreignOwner = await app.inject({ method: "GET", url: `/api/stream-sessions/${sessionId}`, headers: { cookie } });
+    assert.equal(foreignOwner.statusCode, 404);
+
+    await prisma.streamSession.update({ where: { id: sessionId }, data: { ownerUsername: "admin", lastAccessedAt: new Date(Date.now() - 5 * 60 * 1000) } });
+    const expired = await app.inject({ method: "GET", url: `/api/stream-sessions/${sessionId}`, headers: { cookie } });
+    assert.equal(expired.statusCode, 200, expired.body);
+    assert.equal(expired.json().session.status, "expired");
+    const unavailable = await app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=0-1" } });
+    assert.equal(unavailable.statusCode, 404);
   } finally {
     tunnel?.terminate();
     await prisma.streamSession.deleteMany({ where: { videoFileId: fileId } });

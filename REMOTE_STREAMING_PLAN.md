@@ -65,7 +65,7 @@ Every message carries a `requestId`, `sessionId`, sequence number and explicit s
 
 ## Delivery Phases
 
-Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound tunnel, HTTP Range reads, web playback, and codec compatibility detection are implemented in `v0.1.17`. The next increment is hardening and release.
+Current status: the complete remote flow is implemented and hardened in `v0.1.18`: pairing, encrypted individual credentials, revocation, the outbound tunnel, HTTP Range, web playback, compatibility detection, and optional temporary remuxing.
 
 ### Phase 0: Protocol And Threat Model — Complete In v0.1.14
 
@@ -101,12 +101,13 @@ Current status: Companion pairing, encrypted individual credentials, per-Compani
 - Remuxing is opt-in on both server and Companion, uses one active stream, a two-minute FFmpeg timeout, output limits, and cleanup on cancellation or close.
 - Codec transcoding remains deliberately disabled: it never starts automatically or consumes CPU without explicit configuration.
 
-### Phase 5: Hardening And Release
+### Phase 5: Hardening And Release — Complete In v0.1.18
 
-- Test replay, traversal, cross-user sessions, revoked Companions and slow connections.
-- Measure memory with large files, repeated seeking and clients that stop reading.
-- Add configurable limits, metrics and correlated audit records.
-- Release the feature as opt-in first and document how to disable it.
+- Sessions are bound to the authenticated user that created them; another web session cannot inspect, cancel, or read their content.
+- Tunnel correlation requires `companionId`, `requestId`, and `sessionId`; cancellation, revocation, missed heartbeats, and disconnects immediately reject pending operations.
+- Configurable limits cover absolute lifetime, idle time, and simultaneous streams per Companion and user.
+- Each session persists its correlation ID, status, and completion code; the server logs creation, cancellation, failed preparation, and read errors without absolute paths.
+- Remote playback and remuxing remain opt-in; remuxing must be enabled on both server and Companion.
 
 ## Definition Of Done
 

@@ -65,7 +65,7 @@ Cada mensaje lleva `requestId`, `sessionId`, número de secuencia y un límite e
 
 ## Fases De Implementación
 
-Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente, la lectura HTTP Range, la reproducción web y la detección de compatibilidad están implementados en `v0.1.17`. El siguiente incremento es el endurecimiento y la publicación.
+Estado actual: el flujo remoto completo está implementado y endurecido en `v0.1.18`: emparejamiento, credenciales individuales cifradas, revocación, túnel saliente, HTTP Range, reproducción web, detección de compatibilidad y remux temporal opcional.
 
 ### Fase 0: Protocolo Y Modelo De Amenazas — Completada En v0.1.14
 
@@ -101,12 +101,13 @@ Estado actual: el emparejamiento, las credenciales individuales cifradas, la rev
 - El remux es opcional en servidor y Companion, usa un único stream activo, timeout de FFmpeg de dos minutos, límite de salida y limpieza al cancelar o cerrar.
 - La transcodificación de codecs permanece deliberadamente deshabilitada: nunca se inicia de forma automática ni consume CPU sin configuración explícita.
 
-### Fase 5: Endurecimiento Y Publicación
+### Fase 5: Endurecimiento Y Publicación — Completada En v0.1.18
 
-- Probar replay, traversal, sesiones cruzadas, Companion revocado y conexiones lentas.
-- Medir memoria con archivos grandes, múltiples saltos y clientes que dejan de leer.
-- Añadir límites configurables, métricas y auditoría con IDs de correlación.
-- Publicar la función inicialmente como opt-in y documentar cómo desactivarla.
+- Las sesiones se atan al usuario autenticado que las creó; otra sesión web no puede consultarlas, cancelarlas ni leer su contenido.
+- La correlación del túnel exige `companionId`, `requestId` y `sessionId`; cancelaciones, revocación, heartbeat perdido y desconexiones rechazan de inmediato las operaciones pendientes.
+- Se añaden límites configurables de duración absoluta, inactividad y streams simultáneos por Companion y usuario.
+- Cada sesión persiste su ID de correlación, estado y código de terminación; el servidor registra creación, cancelación, preparación fallida y error de lectura sin rutas absolutas.
+- Reproducción remota y remux continúan opt-in; el remux requiere activación tanto en servidor como en Companion.
 
 ## Criterios De Finalización
 

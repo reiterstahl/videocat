@@ -82,17 +82,19 @@ export function isProtectedFolderUnlocked(request: FastifyRequest): boolean {
 }
 
 export async function requireWebAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const token = request.cookies[cookieName] ?? request.headers.authorization?.replace(/^Bearer\s+/i, "");
-  if (!token) {
-    await reply.code(401).send({ message: "Authentication required" });
-    return;
+  if (!authenticatedWebUsername(request)) {
+    await reply.code(401).send({ message: "Invalid session" });
   }
+}
 
+export function authenticatedWebUsername(request: FastifyRequest): string | null {
+  const token = request.cookies[cookieName] ?? request.headers.authorization?.replace(/^Bearer\s+/i, "");
+  if (!token) return null;
   try {
     const payload = verifyJwt(token, webAudience);
-    if (payload.role !== "admin" || payload.sub !== env.ADMIN_USER) throw new Error("Invalid session payload");
+    return payload.role === "admin" && payload.sub === env.ADMIN_USER ? payload.sub : null;
   } catch {
-    await reply.code(401).send({ message: "Invalid session" });
+    return null;
   }
 }
 

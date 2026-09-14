@@ -15,7 +15,7 @@ services:
       retries: 5
 
   server:
-    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.17}}
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.18}}
     restart: unless-stopped
     init: true
     depends_on:
@@ -37,13 +37,17 @@ services:
       THUMBNAILS_DIR: /data/video-catalog/thumbnails
       PUBLIC_THUMBNAILS_BASE_URL: /thumbnails
       REMOTE_REMUX_ENABLED: ${REMOTE_REMUX_ENABLED:-false}
+      REMOTE_STREAM_SESSION_LIFETIME_MS: ${REMOTE_STREAM_SESSION_LIFETIME_MS:-900000}
+      REMOTE_STREAM_IDLE_TIMEOUT_MS: ${REMOTE_STREAM_IDLE_TIMEOUT_MS:-120000}
+      REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION: ${REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION:-1}
+      REMOTE_STREAM_MAX_SESSIONS_PER_USER: ${REMOTE_STREAM_MAX_SESSIONS_PER_USER:-2}
     volumes:
       - thumbnails_data:/data/video-catalog/thumbnails
     ports:
       - "${SERVER_BIND_ADDR:-127.0.0.1}:${SERVER_PUBLISHED_PORT:-4001}:4000"
 
   web:
-    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.17}}
+    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.18}}
     restart: unless-stopped
     depends_on:
       server:

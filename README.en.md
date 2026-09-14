@@ -127,12 +127,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.17`.
+The current release is `v0.1.18`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.17.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.18.exe`
 
 Recommended companion verification:
 
@@ -143,7 +143,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.17.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.18.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -359,7 +359,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.17.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.18.exe
 ```
 
 Usage:
@@ -381,6 +381,19 @@ Remote playback first checks whether the browser declares support for the indexe
 3. Ensure FFmpeg is available to the Companion.
 
 The operation is a temporary stream copy (`-c copy`), limited to one active playback and deleted on stop or expiry. VideoCAT does not automatically transcode H.265, AV1, or other codecs because that can consume substantial CPU.
+
+Optional server controls for remote playback:
+
+```env
+# Absolute maximum duration and inactivity time before the Companion is released.
+REMOTE_STREAM_SESSION_LIFETIME_MS=900000
+REMOTE_STREAM_IDLE_TIMEOUT_MS=120000
+# Limits per Companion and authenticated user.
+REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION=1
+REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
+```
+
+Each session is tied to the authenticated user that created it, has its own correlation ID, and closes when playback stops, expires, or the Companion tunnel disconnects.
 
 ## Review And Delete Flow
 
@@ -508,8 +521,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.17
-reiterstahl/videocat-web:0.1.17
+reiterstahl/videocat-server:0.1.18
+reiterstahl/videocat-web:0.1.18
 ```
 
 `latest` tags are also published:
@@ -556,8 +569,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.17 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.17 -t reiterstahl/videocat-web:0.1.17 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.18 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.18 -t reiterstahl/videocat-web:0.1.18 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -570,10 +583,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.17
+  image: reiterstahl/videocat-server:0.1.18
 
 web:
-  image: reiterstahl/videocat-web:0.1.17
+  image: reiterstahl/videocat-web:0.1.18
 ```
 
 ## Main Endpoints
