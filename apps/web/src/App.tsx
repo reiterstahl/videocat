@@ -21,14 +21,18 @@ import {
   LayoutGrid,
   Lock,
   LogOut,
+  Maximize,
   Menu,
   MonitorPlay,
   Moon,
   Pause,
   Play,
+  RotateCcw,
+  RotateCw,
   Search,
   Shield,
   Shuffle,
+  SkipForward,
   Sparkles,
   Sun,
   Trash2,
@@ -2102,11 +2106,11 @@ export function App() {
     setDuplicateAssistantFeedback(null);
   }
 
-  function openAdjacentDetail(offset: -1 | 1) {
+  async function openAdjacentDetail(offset: -1 | 1) {
     if (selectedIndex < 0) return;
     const nextFile = files[selectedIndex + offset];
     if (!nextFile) return;
-    void openDetail(nextFile);
+    await openDetail(nextFile);
   }
 
   function requestProtectedFolderPin(
@@ -5290,8 +5294,8 @@ function FileDetail({
   locale: string;
   canOpenPrevious: boolean;
   canOpenNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
+  onPrevious: () => Promise<void> | void;
+  onNext: () => Promise<void> | void;
   onClose: () => void;
   categories: CurationCategory[];
   companionOnline: boolean;
@@ -5308,13 +5312,20 @@ function FileDetail({
   const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [remoteMode, setRemoteMode] = useState<"original" | "remux">("original");
-  const [remoteState, setRemoteState] = useState<"idle" | "preparing" | "playing" | "buffering" | "error">("idle");
+  const [remoteState, setRemoteState] = useState<"idle" | "preparing" | "playing" | "paused" | "buffering" | "error">("idle");
   const [remoteMessage, setRemoteMessage] = useState("");
   const [remoteSeekFeedback, setRemoteSeekFeedback] = useState<"back" | "forward" | null>(null);
+  const [remoteCurrentTime, setRemoteCurrentTime] = useState(0);
+  const [remoteDuration, setRemoteDuration] = useState(0);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remotePlayerRef = useRef<HTMLElement | null>(null);
+  const remoteSessionIdRef = useRef<string | null>(null);
   const remoteTapRef = useRef<{ side: "back" | "forward"; at: number } | null>(null);
   const remoteSeekFeedbackTimerRef = useRef<number | null>(null);
+  const remoteRecoveryTimerRef = useRef<number | null>(null);
+  const remoteRecoveryAttemptsRef = useRef(0);
+  const remoteResumeTimeRef = useRef(0);
+  const remotePlayNextRef = useRef<"original" | "remux" | null>(null);
   const remoteFullscreenAttemptedRef = useRef(false);
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
   const localFolder = folderPath(file.absolutePath);
@@ -5332,18 +5343,41 @@ function FileDetail({
           ? "El formato original no es compatible con este navegador. Usa el botón MP4 para preparar una copia temporal compatible."
           : "Este navegador no puede reproducir el formato original de este video."
         : "";
+  const remoteStatusLabel = remoteState === "playing"
+    ? "Reproduciendo remotamente"
+    : remoteState === "paused"
+      ? "Reproducción pausada"
+      : remoteState === "buffering"
+        ? "Cargando el siguiente segmento"
+        : remoteMode === "remux"
+          ? "Preparando MP4 temporal"
+          : "Preparando reproducción segura";
+
+  useEffect(() => {
+    remoteSessionIdRef.current = remoteSessionId;
+  }, [remoteSessionId]);
 
   useEffect(() => () => {
-    if (remoteSessionId) {
-      void api(`/api/stream-sessions/${remoteSessionId}`, { method: "DELETE" }).catch(() => undefined);
-    }
-  }, [remoteSessionId]);
+    const sessionId = remoteSessionIdRef.current;
+    if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+  }, []);
 
   useEffect(() => () => {
     if (remoteSeekFeedbackTimerRef.current != null) {
       window.clearTimeout(remoteSeekFeedbackTimerRef.current);
     }
+    if (remoteRecoveryTimerRef.current != null) {
+      window.clearTimeout(remoteRecoveryTimerRef.current);
+    }
   }, []);
+
+  useEffect(() => {
+    const nextMode = remotePlayNextRef.current;
+    if (!nextMode) return;
+    remotePlayNextRef.current = null;
+    const timer = window.setTimeout(() => requestRemotePlayback(nextMode), 0);
+    return () => window.clearTimeout(timer);
+  }, [file.id]);
 
   function moveGallery(offset: -1 | 1) {
     setGalleryIndex((current) => {
@@ -5434,7 +5468,15 @@ function FileDetail({
     setRemoteSessionId(null);
     setRemoteState("idle");
     setRemoteMessage(message);
+    setRemoteCurrentTime(0);
+    setRemoteDuration(0);
+    if (remoteRecoveryTimerRef.current != null) {
+      window.clearTimeout(remoteRecoveryTimerRef.current);
+      remoteRecoveryTimerRef.current = null;
+    }
     remoteFullscreenAttemptedRef.current = false;
+    remoteRecoveryAttemptsRef.current = 0;
+    remoteResumeTimeRef.current = 0;
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
     }
@@ -5485,8 +5527,8 @@ function FileDetail({
     void startRemotePlayback(mode);
   }
 
-  async function requestMobileRemoteFullscreen() {
-    if (remoteFullscreenAttemptedRef.current || !window.matchMedia("(max-width: 760px), (pointer: coarse)").matches) return;
+  async function requestRemoteFullscreen(automatic = false) {
+    if (automatic && (remoteFullscreenAttemptedRef.current || !window.matchMedia("(max-width: 760px), (pointer: coarse)").matches)) return;
     const video = remoteVideoRef.current;
     const player = remotePlayerRef.current;
     if (!video || !player) return;
@@ -5510,11 +5552,55 @@ function FileDetail({
     }
   }
 
-  function handleRemoteVideoPointerUp(event: ReactPointerEvent<HTMLVideoElement>) {
-    if (event.pointerType !== "touch") return;
+  function showRemoteSeekFeedback(side: "back" | "forward") {
+    setRemoteSeekFeedback(side);
+    if (remoteSeekFeedbackTimerRef.current != null) {
+      window.clearTimeout(remoteSeekFeedbackTimerRef.current);
+    }
+    remoteSeekFeedbackTimerRef.current = window.setTimeout(() => setRemoteSeekFeedback(null), 650);
+  }
+
+  function seekRemoteBy(seconds: number) {
     const video = remoteVideoRef.current;
     if (!video) return;
+    const maxTime = Number.isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
+    video.currentTime = Math.max(0, Math.min(maxTime, video.currentTime + seconds));
+    showRemoteSeekFeedback(seconds < 0 ? "back" : "forward");
+  }
 
+  async function toggleRemotePlayback() {
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      try {
+        await video.play();
+      } catch {
+        setRemoteState("error");
+        setRemoteMessage("El navegador bloqueó la reanudación. Toca nuevamente el botón de reproducir.");
+      }
+    } else {
+      video.pause();
+    }
+  }
+
+  async function moveDetail(direction: -1 | 1, continueRemotePlayback = false) {
+    const move = direction === -1 ? onPrevious : onNext;
+    if ((direction === -1 && !canOpenPrevious) || (direction === 1 && !canOpenNext)) return;
+    const mode = remoteMode;
+    const wasRemote = Boolean(remoteSessionId || remoteUrl);
+    if (wasRemote) await stopRemotePlayback();
+    if (continueRemotePlayback && wasRemote) remotePlayNextRef.current = mode;
+    try {
+      await move();
+    } catch (error) {
+      remotePlayNextRef.current = null;
+      setRemoteState("error");
+      setRemoteMessage(error instanceof Error ? error.message : "No se pudo abrir el siguiente video.");
+    }
+  }
+
+  function handleRemoteVideoPointerUp(event: ReactPointerEvent<HTMLVideoElement>) {
+    if (event.pointerType !== "touch") return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const side = event.clientX - bounds.left < bounds.width / 2 ? "back" : "forward";
     const now = Date.now();
@@ -5526,14 +5612,7 @@ function FileDetail({
 
     event.preventDefault();
     remoteTapRef.current = null;
-    const delta = side === "back" ? -10 : 10;
-    const maxTime = Number.isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
-    video.currentTime = Math.max(0, Math.min(maxTime, video.currentTime + delta));
-    setRemoteSeekFeedback(side);
-    if (remoteSeekFeedbackTimerRef.current != null) {
-      window.clearTimeout(remoteSeekFeedbackTimerRef.current);
-    }
-    remoteSeekFeedbackTimerRef.current = window.setTimeout(() => setRemoteSeekFeedback(null), 650);
+    seekRemoteBy(side === "back" ? -10 : 10);
   }
 
   useEffect(() => {
@@ -5552,11 +5631,11 @@ function FileDetail({
       if (event.key === "Escape") onClose();
       if (event.key === "ArrowLeft" && canOpenPrevious) {
         event.preventDefault();
-        onPrevious();
+        void moveDetail(-1);
       }
       if (event.key === "ArrowRight" && canOpenNext) {
         event.preventDefault();
-        onNext();
+        void moveDetail(1);
       }
     }
 
@@ -5587,7 +5666,7 @@ function FileDetail({
     >
       <button
         className="modal-nav modal-nav-prev"
-        onClick={onPrevious}
+        onClick={() => void moveDetail(-1)}
         disabled={!canOpenPrevious}
         type="button"
         title="Video anterior"
@@ -5677,56 +5756,145 @@ function FileDetail({
           </div>
         </header>
 
-        {!remoteUrl && remoteAvailabilityMessage ? (
+        {!remoteUrl && remoteState !== "preparing" && remoteAvailabilityMessage ? (
           <div className="remote-playback-hint" role="status">{remoteAvailabilityMessage}</div>
         ) : null}
-        {!remoteUrl && remoteMessage ? (
+        {!remoteUrl && remoteState !== "preparing" && remoteMessage ? (
           <div className={`remote-playback-feedback ${remoteState === "error" ? "is-error" : ""}`} role="status" aria-live="polite">
             {remoteMessage}
           </div>
         ) : null}
 
-        {remoteUrl ? (
+        {remoteUrl || remoteState === "preparing" ? (
           <section className="remote-player" aria-label="Reproducción remota" ref={remotePlayerRef}>
             <header className="remote-player-header">
               <div>
                 <span className={`remote-player-status is-${remoteState}`} />
-                <strong>{remoteState === "playing" ? "Reproduciendo remotamente" : remoteState === "buffering" ? "Almacenando en búfer" : remoteMode === "remux" ? "MP4 temporal preparado" : "Conectando al Companion"}</strong>
+                <strong>{remoteStatusLabel}</strong>
               </div>
               <button className="remote-stop-button" onClick={() => void stopRemotePlayback("Reproducción remota detenida.")} type="button">
                 Detener
               </button>
             </header>
-            <video
-              autoPlay
-              controls
-              playsInline
-              preload="metadata"
-              ref={remoteVideoRef}
-              src={remoteUrl}
-              onLoadedMetadata={() => void requestMobileRemoteFullscreen()}
-              onPlaying={() => {
-                setRemoteState("playing");
-                setRemoteMessage("");
-              }}
-              onWaiting={() => setRemoteState("buffering")}
-              onCanPlay={() => {
-                setRemoteState((current) => current === "preparing" ? "buffering" : current);
-                void requestMobileRemoteFullscreen();
-              }}
-              onPointerUp={handleRemoteVideoPointerUp}
-              onEnded={() => void stopRemotePlayback("Reproducción remota finalizada.")}
-              onError={() => {
-                const sessionId = remoteSessionId;
-                setRemoteUrl(null);
-                setRemoteSessionId(null);
-                setRemoteState("error");
-                setRemoteMessage("La reproducción remota se interrumpió. Verifica que el Companion y el disco sigan conectados.");
-                if (sessionId) {
-                  void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
-                }
-              }}
-            />
+            {remoteUrl ? (
+              <>
+                <video
+                  autoPlay
+                  controls
+                  playsInline
+                  preload="metadata"
+                  ref={remoteVideoRef}
+                  src={remoteUrl}
+                  onLoadedMetadata={(event) => {
+                    const video = event.currentTarget;
+                    setRemoteDuration(Number.isFinite(video.duration) ? video.duration : 0);
+                    if (remoteResumeTimeRef.current > 0) {
+                      video.currentTime = Math.min(remoteResumeTimeRef.current, video.duration || remoteResumeTimeRef.current);
+                      remoteResumeTimeRef.current = 0;
+                    }
+                    void requestRemoteFullscreen(true);
+                  }}
+                  onDurationChange={(event) => setRemoteDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+                  onTimeUpdate={(event) => setRemoteCurrentTime(event.currentTarget.currentTime)}
+                  onPlaying={() => {
+                    setRemoteState("playing");
+                    setRemoteMessage("");
+                  }}
+                  onPause={(event) => {
+                    if (!event.currentTarget.ended && event.currentTarget.readyState > 0) setRemoteState("paused");
+                  }}
+                  onWaiting={() => {
+                    setRemoteState("buffering");
+                    setRemoteMessage("Cargando el siguiente segmento...");
+                  }}
+                  onSeeking={() => {
+                    setRemoteState("buffering");
+                    setRemoteMessage("Buscando la nueva posición...");
+                  }}
+                  onSeeked={(event) => {
+                    setRemoteState(event.currentTarget.paused ? "paused" : "playing");
+                    setRemoteMessage("");
+                  }}
+                  onCanPlay={() => {
+                    setRemoteState((current) => current === "preparing" ? "buffering" : current);
+                    void requestRemoteFullscreen(true);
+                  }}
+                  onPointerUp={handleRemoteVideoPointerUp}
+                  onEnded={() => void stopRemotePlayback("Reproducción remota finalizada.")}
+                  onError={(event) => {
+                    const video = event.currentTarget;
+                    if (remoteSessionId && companionOnline && remoteRecoveryAttemptsRef.current < 1) {
+                      remoteRecoveryAttemptsRef.current += 1;
+                      remoteResumeTimeRef.current = video.currentTime;
+                      setRemoteState("buffering");
+                      setRemoteMessage("Reconectando el segmento de video...");
+                      remoteRecoveryTimerRef.current = window.setTimeout(() => {
+                        setRemoteUrl(`/api/streams/${remoteSessionId}/content?retry=${Date.now()}`);
+                      }, 450);
+                      return;
+                    }
+                    const sessionId = remoteSessionId;
+                    const mediaCode = video.error?.code;
+                    setRemoteUrl(null);
+                    setRemoteSessionId(null);
+                    setRemoteState("error");
+                    setRemoteMessage(mediaCode === MediaError.MEDIA_ERR_DECODE
+                      ? "El navegador no pudo decodificar este formato de video. Prueba la opción MP4 cuando esté disponible."
+                      : "La reproducción remota se interrumpió después del reintento. Verifica el Companion y vuelve a iniciar el video.");
+                    if (sessionId) {
+                      void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+                    }
+                  }}
+                />
+                {remoteState === "buffering" ? (
+                  <div className="remote-loading-overlay" aria-live="polite">
+                    <span className="remote-loading-spinner" />
+                    <strong>{remoteMessage || "Cargando video..."}</strong>
+                  </div>
+                ) : null}
+                <div className="remote-quick-controls" aria-label="Controles rápidos del reproductor">
+                  <button type="button" onClick={() => seekRemoteBy(-10)} title="Retroceder 10 segundos" aria-label="Retroceder 10 segundos">
+                    <RotateCcw size={20} /><span>10</span>
+                  </button>
+                  <button className="is-primary" type="button" onClick={() => void toggleRemotePlayback()} title={remoteState === "paused" ? "Reanudar" : "Pausar"} aria-label={remoteState === "paused" ? "Reanudar" : "Pausar"}>
+                    {remoteState === "paused" ? <Play size={22} /> : <Pause size={22} />}
+                  </button>
+                  <button type="button" onClick={() => seekRemoteBy(10)} title="Adelantar 10 segundos" aria-label="Adelantar 10 segundos">
+                    <RotateCw size={20} /><span>10</span>
+                  </button>
+                  <label className="remote-timeline">
+                    <span>{formatDuration(remoteCurrentTime)} / {formatDuration(remoteDuration)}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(remoteDuration, 0)}
+                      step="0.1"
+                      value={Math.min(remoteCurrentTime, remoteDuration || 0)}
+                      onChange={(event) => {
+                        const video = remoteVideoRef.current;
+                        if (video) video.currentTime = Number(event.target.value);
+                      }}
+                      aria-label="Posición del video"
+                    />
+                  </label>
+                  <button type="button" onClick={() => void requestRemoteFullscreen()} title="Pantalla completa" aria-label="Pantalla completa">
+                    <Maximize size={21} />
+                  </button>
+                  <button type="button" disabled={!canOpenNext} onClick={() => void moveDetail(1, true)} title="Reproducir el siguiente video" aria-label="Reproducir el siguiente video">
+                    <SkipForward size={22} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="remote-preparing" aria-live="polite">
+                <span className="remote-loading-spinner" />
+                <div>
+                  <strong>{remoteMode === "remux" ? "Preparando video compatible" : "Conectando con tu Companion"}</strong>
+                  <span>{file.filename}</span>
+                  <small>{remoteMessage || "Esto puede tardar unos segundos."}</small>
+                </div>
+              </div>
+            )}
             {remoteSeekFeedback ? (
               <span className={`remote-seek-feedback is-${remoteSeekFeedback}`} aria-live="polite">
                 {remoteSeekFeedback === "back" ? "-10 s" : "+10 s"}
@@ -5820,7 +5988,7 @@ function FileDetail({
       </section>
       <button
         className="modal-nav modal-nav-next"
-        onClick={onNext}
+        onClick={() => void moveDetail(1)}
         disabled={!canOpenNext}
         type="button"
         title="Video siguiente"

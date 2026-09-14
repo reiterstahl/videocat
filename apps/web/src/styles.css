@@ -3941,6 +3941,10 @@ tbody tr.curation-row {
   animation: agent-pulse 1.45s ease-in-out infinite;
 }
 
+.remote-player-status.is-paused {
+  background: #8fa2ad;
+}
+
 .remote-player-status.is-buffering,
 .remote-player-status.is-preparing {
   background: var(--matrix-primary);
@@ -3958,6 +3962,137 @@ tbody tr.curation-row {
   background: #050708;
 }
 
+.remote-preparing {
+  min-height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 32px;
+  color: #e8f0f3;
+  text-align: left;
+}
+
+.remote-preparing > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.remote-preparing strong {
+  font-size: 1rem;
+}
+
+.remote-preparing span,
+.remote-preparing small {
+  max-width: min(560px, 70vw);
+  overflow: hidden;
+  color: #9eb0ba;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-loading-spinner {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 3px solid rgba(252, 97, 33, 0.22);
+  border-top-color: var(--matrix-primary);
+  border-radius: 50%;
+  animation: remote-loading-spin 720ms linear infinite;
+}
+
+.remote-loading-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 44px 0 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  background: rgba(5, 7, 8, 0.52);
+  color: #fff;
+  font-size: 0.86rem;
+  pointer-events: none;
+}
+
+.remote-quick-controls {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-top: 1px solid #263740;
+  background: #11191e;
+}
+
+.remote-quick-controls > button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #344852;
+  border-radius: 6px;
+  background: #17242b;
+  color: #eaf2f5;
+  cursor: pointer;
+}
+
+.remote-quick-controls > button:hover:not(:disabled) {
+  border-color: var(--matrix-primary);
+  color: var(--matrix-primary);
+}
+
+.remote-quick-controls > button.is-primary {
+  border-color: #16975c;
+  background: #16975c;
+  color: #fff;
+}
+
+.remote-quick-controls > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.remote-quick-controls > button span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-top: 2px;
+  font-size: 0.58rem;
+  font-weight: 1000;
+}
+
+.remote-timeline {
+  min-width: 160px;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 3px;
+  color: #a9bac3;
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
+.remote-timeline span {
+  text-align: right;
+}
+
+.remote-timeline input {
+  width: 100%;
+  accent-color: var(--matrix-primary);
+  cursor: pointer;
+}
+
+@keyframes remote-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .remote-player:fullscreen {
   width: 100vw;
   height: 100dvh;
@@ -3973,6 +4108,18 @@ tbody tr.curation-row {
   inset: 0 0 auto;
   min-height: 40px;
   background: rgba(11, 16, 20, 0.76);
+}
+
+.remote-player:fullscreen .remote-quick-controls {
+  position: absolute;
+  z-index: 3;
+  inset: auto 0 0;
+  background: rgba(11, 16, 20, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.remote-player:fullscreen .remote-loading-overlay {
+  inset: 40px 0 58px;
 }
 
 .remote-player:fullscreen video {
@@ -5430,6 +5577,47 @@ tbody tr.curation-row {
 
   .remote-player-header strong {
     font-size: 0.78rem;
+  }
+
+  .remote-preparing {
+    min-height: 210px;
+    padding: 24px 18px;
+  }
+
+  .remote-quick-controls {
+    flex-wrap: wrap;
+  }
+
+  .remote-quick-controls > button {
+    flex: 1 1 44px;
+  }
+
+  .remote-timeline {
+    order: -1;
+    flex: 1 0 100%;
+    min-width: 100%;
+    padding: 2px 4px 4px;
+  }
+
+  .remote-loading-overlay {
+    inset: 40px 0 109px;
+  }
+
+  .remote-player:fullscreen .remote-quick-controls {
+    flex-wrap: nowrap;
+  }
+
+  .remote-player:fullscreen .remote-timeline {
+    position: absolute;
+    inset: auto 6px 52px;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: rgba(11, 16, 20, 0.78);
+  }
+
+  .remote-player:fullscreen .remote-loading-overlay {
+    inset: 40px 0 58px;
   }
 
   .remote-playback-hint,

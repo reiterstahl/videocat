@@ -65,6 +65,7 @@ class CompanionControlTunnelRegistry {
   private readonly pendingOpens = new Map<string, PendingOpen>();
   private readonly pendingRanges = new Map<string, PendingRange>();
   private readonly activeRangeByCompanion = new Map<string, string>();
+  private readonly rangeTailByCompanion = new Map<string, Promise<void>>();
   private readonly server = new WebSocketServer({
     noServer: true,
     clientTracking: false,
@@ -139,11 +140,30 @@ class CompanionControlTunnelRegistry {
   }
 
   async readStreamRange(input: { companionId: string; sessionId: string; offset: number; length: number }): Promise<Buffer> {
+    const previous = this.rangeTailByCompanion.get(input.companionId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    this.rangeTailByCompanion.set(input.companionId, tail);
+
+    await previous.catch(() => undefined);
+    try {
+      return await this.readStreamRangeNow(input);
+    } finally {
+      release();
+      if (this.rangeTailByCompanion.get(input.companionId) === tail) {
+        this.rangeTailByCompanion.delete(input.companionId);
+      }
+    }
+  }
+
+  private async readStreamRangeNow(input: { companionId: string; sessionId: string; offset: number; length: number }): Promise<Buffer> {
     const connection = this.connections.get(input.companionId);
     if (!connection || connection.socket.readyState !== WebSocket.OPEN || !connection.capabilities.streamRead) {
       throw new Error("Companion streaming is unavailable");
     }
-    if (this.activeRangeByCompanion.has(input.companionId)) throw new Error("Companion stream is busy");
     const requestId = crypto.randomUUID();
     const message = companionStreamRangeSchema.parse({
       type: "stream.range",

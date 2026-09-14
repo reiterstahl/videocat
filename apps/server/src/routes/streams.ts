@@ -76,6 +76,22 @@ function sessionForOwner(id: string, ownerUsername: string) {
   return prisma.streamSession.findFirst({ where: { id, ownerUsername } });
 }
 
+async function readStreamRangeWithRetry(
+  app: FastifyInstance,
+  input: { companionId: string; sessionId: string; offset: number; length: number }
+): Promise<Buffer> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await readCompanionStreamRange(app, input);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  }
+  throw lastError;
+}
+
 export async function streamRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/stream-sessions", { preHandler: requireWebAuth }, async (request, reply) => {
     const ownerUsername = authenticatedWebUsername(request);
@@ -254,14 +270,26 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       if (request.method === "HEAD") return reply.send();
       try {
         await prisma.streamSession.update({ where: { id }, data: { lastAccessedAt: new Date() } });
-        const data = await readCompanionStreamRange(app, { companionId: session.companionId, sessionId: session.id, offset: range.start, length });
+        const data = await readStreamRangeWithRetry(app, {
+          companionId: session.companionId,
+          sessionId: session.id,
+          offset: range.start,
+          length
+        });
         if (data.length !== length) throw new Error("Unexpected range length");
         await prisma.streamSession.update({ where: { id }, data: { status: "streaming", lastAccessedAt: new Date() } });
+        if (request.raw.aborted || reply.raw.destroyed) return reply;
         return reply.send(data);
-      } catch {
-        await expireStreamSession(app, session, "read_failed", "error");
-        app.log.warn({ streamSessionId: session.id, companionId: session.companionId, ownerUsername, requestId: request.id }, "Remote stream read failed");
-        return reply.code(502).send({ message: "Companion stream became unavailable" });
+      } catch (error) {
+        if (request.raw.aborted || reply.raw.destroyed) return reply;
+        app.log.warn({
+          streamSessionId: session.id,
+          companionId: session.companionId,
+          ownerUsername,
+          requestId: request.id,
+          error: error instanceof Error ? error.message : "unknown"
+        }, "Remote stream range failed; session remains available for retry");
+        return reply.code(503).header("Retry-After", "1").send({ message: "Companion stream range is temporarily unavailable" });
       }
     }
   });

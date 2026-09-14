@@ -268,8 +268,10 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
       }
       if (input.type === "stream.range") {
         const chunk = Buffer.from("abcdefghijkl".slice(input.offset, input.offset + input.length));
-        tunnel?.send(JSON.stringify({ type: "stream.chunk", requestId: input.requestId, sessionId: input.sessionId, sequence: 0, bytes: chunk.length, eof: input.offset + chunk.length >= 12 }));
-        tunnel?.send(chunk);
+        setTimeout(() => {
+          tunnel?.send(JSON.stringify({ type: "stream.chunk", requestId: input.requestId, sessionId: input.sessionId, sequence: 0, bytes: chunk.length, eof: input.offset + chunk.length >= 12 }));
+          tunnel?.send(chunk);
+        }, 20);
       }
     });
 
@@ -284,6 +286,15 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
     assert.equal(content.headers["accept-ranges"], "bytes");
     assert.equal(content.body, "cdefghi");
     assert.equal(content.body.includes("X:\\Videos"), false);
+
+    const [firstSeek, secondSeek] = await Promise.all([
+      app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=0-2" } }),
+      app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=9-11" } })
+    ]);
+    assert.equal(firstSeek.statusCode, 206, firstSeek.body);
+    assert.equal(secondSeek.statusCode, 206, secondSeek.body);
+    assert.equal(firstSeek.body, "abc");
+    assert.equal(secondSeek.body, "jkl");
 
     await prisma.streamSession.update({ where: { id: sessionId }, data: { ownerUsername: "another-admin" } });
     const foreignOwner = await app.inject({ method: "GET", url: `/api/stream-sessions/${sessionId}`, headers: { cookie } });
