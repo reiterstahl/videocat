@@ -135,15 +135,19 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       if (disk.volumeId) catalogDiskIdByIdentifier.set(disk.volumeId, disk.id);
     }
 
-    const candidate = companions.find((companion) => {
-      const tunnel = companionTunnelStatus(app, companion.installationId);
-      const companionCatalogDiskIds = mountedDiskIds(companion.mountedDiskIds)
-        .map((identifier) => catalogDiskIdByIdentifier.get(identifier) ?? identifier);
-      return companionCatalogDiskIds.includes(file.diskId)
-        && tunnel.connected
-        && tunnel.capabilities?.streamRead === true
-        && (mode !== "remux" || (env.REMOTE_REMUX_ENABLED && tunnel.capabilities?.streamRemux === true));
-    });
+    const candidate = companions
+      .map((companion) => {
+        const mountedIdentifier = mountedDiskIds(companion.mountedDiskIds)
+          .find((identifier) => (catalogDiskIdByIdentifier.get(identifier) ?? identifier) === file.diskId);
+        return { ...companion, mountedIdentifier };
+      })
+      .find((companion) => {
+        const tunnel = companionTunnelStatus(app, companion.installationId);
+        return Boolean(companion.mountedIdentifier)
+          && tunnel.connected
+          && tunnel.capabilities?.streamRead === true
+          && (mode !== "remux" || (env.REMOTE_REMUX_ENABLED && tunnel.capabilities?.streamRemux === true));
+      });
     if (!candidate) return reply.code(409).send({ message: mode === "remux" ? "No Companion with optional MP4 remuxing is ready" : "No paired Companion with this disk is ready for streaming" });
 
     await expireInactiveStreams(app, candidate.installationId);
@@ -177,7 +181,9 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         companionId: candidate.installationId,
         sessionId: session.id,
         fileId: file.id,
-        diskId: file.diskId,
+        // The Companion resolves paths against its marker/manual target id,
+        // not the catalog's internal PostgreSQL Disk id.
+        diskId: candidate.mountedIdentifier!,
         relativePath: file.relativePath,
         expectedSizeBytes: Number(file.sizeBytes),
         mode,
