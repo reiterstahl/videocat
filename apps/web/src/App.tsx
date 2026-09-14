@@ -3294,8 +3294,8 @@ export function App() {
           ) : null}
           {bulkMessage ? <div className="bulk-message">{bulkMessage}</div> : null}
 
-          <div className="table-frame">
-            <table>
+          <div className="table-frame catalog-table-frame">
+            <table className="catalog-table">
               <thead>
                 <tr>
                   <th className="select-column">
@@ -3338,7 +3338,7 @@ export function App() {
                         type="checkbox"
                       />
                     </td>
-                    <td>
+                    <td data-label="Archivo">
                       <div className="file-cell">
                         <div className="thumb">
                           {mainThumbnail(file) ? <img src={mainThumbnail(file)} alt="" /> : <Image size={22} />}
@@ -3352,14 +3352,14 @@ export function App() {
                         </div>
                       </div>
                     </td>
-                    <td>{file.disk?.name ?? "-"}</td>
-                    <td className="path-cell">{file.relativePath}</td>
-                    <td>{formatBytes(file.sizeBytes)}</td>
-                    <td>{formatDuration(file.durationSeconds)}</td>
-                    <td>{resolution(file)}</td>
-                    <td>{file.videoCodec ?? "-"}</td>
-                    <td>{dateLabel(file.modifiedAt, locale)}</td>
-                    <td>{dateLabel(file.lastIndexedAt, locale)}</td>
+                    <td data-label="Disco">{file.disk?.name ?? "-"}</td>
+                    <td className="path-cell" data-label="Ruta">{file.relativePath}</td>
+                    <td data-label="Tamaño">{formatBytes(file.sizeBytes)}</td>
+                    <td data-label="Duración">{formatDuration(file.durationSeconds)}</td>
+                    <td data-label="Resolución">{resolution(file)}</td>
+                    <td data-label="Codec">{file.videoCodec ?? "-"}</td>
+                    <td data-label="Modificado">{dateLabel(file.modifiedAt, locale)}</td>
+                    <td data-label="Indexado">{dateLabel(file.lastIndexedAt, locale)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -5024,10 +5024,12 @@ function DuplicateAssistantModal({
                   ) : (
                     <div className="duplicate-assistant-no-thumb"><Image size={36} /><span>Sin miniatura</span></div>
                   )}
-                  <span className="duplicate-assistant-hover-action">
-                    <Check size={22} />
-                    Mantener este
-                  </span>
+                  {recommended ? (
+                    <span className="duplicate-assistant-hover-action">
+                      <Check size={22} />
+                      Mantener este
+                    </span>
+                  ) : null}
                   {selected ? <span className="duplicate-selection-feedback"><Check size={18} /> MANTENER</span> : null}
                   {rejected ? <span className="duplicate-selection-feedback is-delete"><Trash2 size={18} /> BORRAR</span> : null}
                 </div>
@@ -5295,6 +5297,12 @@ function FileDetail({
   const [remoteMode, setRemoteMode] = useState<"original" | "remux">("original");
   const [remoteState, setRemoteState] = useState<"idle" | "preparing" | "playing" | "buffering" | "error">("idle");
   const [remoteMessage, setRemoteMessage] = useState("");
+  const [remoteSeekFeedback, setRemoteSeekFeedback] = useState<"back" | "forward" | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remotePlayerRef = useRef<HTMLElement | null>(null);
+  const remoteTapRef = useRef<{ side: "back" | "forward"; at: number } | null>(null);
+  const remoteSeekFeedbackTimerRef = useRef<number | null>(null);
+  const remoteFullscreenAttemptedRef = useRef(false);
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
   const localFolder = folderPath(file.absolutePath);
   const galleryThumb = galleryIndex == null ? null : file.thumbnails[galleryIndex];
@@ -5302,12 +5310,27 @@ function FileDetail({
   const canOpenNextImage = galleryIndex != null && galleryIndex < file.thumbnails.length - 1;
   const canStreamRemotely = companionOnline && companionMountedDiskIds.includes(file.diskId);
   const playbackSupport = browserPlaybackSupport(file);
+  const remoteAvailabilityMessage = !companionOnline
+    ? "La reproducción remota requiere un Companion sincronizado con el servidor. Ábrelo en la PC donde está conectado el disco."
+    : !companionMountedDiskIds.includes(file.diskId)
+      ? "El Companion está activo, pero este disco no fue reportado como conectado. Conéctalo y actualiza los discos desde el Companion."
+      : playbackSupport.result === ""
+        ? playbackSupport.remuxUseful
+          ? "El formato original no es compatible con este navegador. Usa el botón MP4 para preparar una copia temporal compatible."
+          : "Este navegador no puede reproducir el formato original de este video."
+        : "";
 
   useEffect(() => () => {
     if (remoteSessionId) {
       void api(`/api/stream-sessions/${remoteSessionId}`, { method: "DELETE" }).catch(() => undefined);
     }
   }, [remoteSessionId]);
+
+  useEffect(() => () => {
+    if (remoteSeekFeedbackTimerRef.current != null) {
+      window.clearTimeout(remoteSeekFeedbackTimerRef.current);
+    }
+  }, []);
 
   function moveGallery(offset: -1 | 1) {
     setGalleryIndex((current) => {
@@ -5398,6 +5421,11 @@ function FileDetail({
     setRemoteSessionId(null);
     setRemoteState("idle");
     setRemoteMessage(message);
+    remoteFullscreenAttemptedRef.current = false;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    window.screen.orientation?.unlock?.();
     if (sessionId) {
       try {
         await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" });
@@ -5410,6 +5438,7 @@ function FileDetail({
   async function startRemotePlayback(mode: "original" | "remux" = "original") {
     if (remoteState === "preparing") return;
     if (remoteSessionId) await stopRemotePlayback();
+    remoteFullscreenAttemptedRef.current = false;
     setRemoteState("preparing");
     setRemoteMode(mode);
     setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
@@ -5426,6 +5455,72 @@ function FileDetail({
       setRemoteState("error");
       setRemoteMessage(error instanceof Error ? error.message : "No se pudo iniciar la reproducción remota.");
     }
+  }
+
+  function requestRemotePlayback(mode: "original" | "remux" = "original") {
+    if (remoteState === "preparing") return;
+    if (!companionOnline || !companionMountedDiskIds.includes(file.diskId)) {
+      setRemoteState("idle");
+      setRemoteMessage(remoteAvailabilityMessage);
+      return;
+    }
+    if (mode === "original" && playbackSupport.result === "") {
+      setRemoteState("idle");
+      setRemoteMessage(remoteAvailabilityMessage);
+      return;
+    }
+    void startRemotePlayback(mode);
+  }
+
+  async function requestMobileRemoteFullscreen() {
+    if (remoteFullscreenAttemptedRef.current || !window.matchMedia("(max-width: 760px), (pointer: coarse)").matches) return;
+    const video = remoteVideoRef.current;
+    const player = remotePlayerRef.current;
+    if (!video || !player) return;
+
+    remoteFullscreenAttemptedRef.current = true;
+    try {
+      if (player.requestFullscreen) {
+        await player.requestFullscreen();
+      } else {
+        (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
+      }
+    } catch {
+      // Browsers may require a direct gesture. Native controls remain available in that case.
+    }
+
+    try {
+      const orientation = window.screen.orientation as ScreenOrientation & { lock?: (orientation: "landscape") => Promise<void> };
+      await orientation?.lock?.("landscape");
+    } catch {
+      // Orientation lock is optional and unavailable on several mobile browsers.
+    }
+  }
+
+  function handleRemoteVideoPointerUp(event: ReactPointerEvent<HTMLVideoElement>) {
+    if (event.pointerType !== "touch") return;
+    const video = remoteVideoRef.current;
+    if (!video) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const side = event.clientX - bounds.left < bounds.width / 2 ? "back" : "forward";
+    const now = Date.now();
+    const previousTap = remoteTapRef.current;
+    if (!previousTap || previousTap.side !== side || now - previousTap.at > 320) {
+      remoteTapRef.current = { side, at: now };
+      return;
+    }
+
+    event.preventDefault();
+    remoteTapRef.current = null;
+    const delta = side === "back" ? -10 : 10;
+    const maxTime = Number.isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
+    video.currentTime = Math.max(0, Math.min(maxTime, video.currentTime + delta));
+    setRemoteSeekFeedback(side);
+    if (remoteSeekFeedbackTimerRef.current != null) {
+      window.clearTimeout(remoteSeekFeedbackTimerRef.current);
+    }
+    remoteSeekFeedbackTimerRef.current = window.setTimeout(() => setRemoteSeekFeedback(null), 650);
   }
 
   useEffect(() => {
@@ -5503,10 +5598,10 @@ function FileDetail({
                 <Play size={20} />
               </button>
               <button
-                className="detail-primary-action is-remote"
-                disabled={!canStreamRemotely || remoteState === "preparing" || playbackSupport.result === ""}
-                onClick={() => void startRemotePlayback()}
-                title={playbackSupport.result === "" ? "El navegador no soporta el formato original" : canStreamRemotely ? "Reproducir remotamente" : "El Companion y el disco deben estar conectados"}
+                className={`detail-primary-action is-remote ${canStreamRemotely && playbackSupport.result !== "" ? "" : "is-unavailable"}`}
+                disabled={remoteState === "preparing"}
+                onClick={() => requestRemotePlayback()}
+                title={remoteAvailabilityMessage || "Reproducir remotamente"}
                 aria-label="Reproducir remotamente"
                 type="button"
               >
@@ -5515,8 +5610,8 @@ function FileDetail({
               {playbackSupport.result === "" && playbackSupport.remuxUseful ? (
                 <button
                   className="detail-primary-action is-remux"
-                  disabled={!canStreamRemotely || remoteState === "preparing"}
-                  onClick={() => void startRemotePlayback("remux")}
+                  disabled={remoteState === "preparing"}
+                  onClick={() => requestRemotePlayback("remux")}
                   title="Preparar un MP4 temporal compatible"
                   aria-label="Preparar un MP4 temporal compatible"
                   type="button"
@@ -5569,8 +5664,17 @@ function FileDetail({
           </div>
         </header>
 
+        {!remoteUrl && remoteAvailabilityMessage ? (
+          <div className="remote-playback-hint" role="status">{remoteAvailabilityMessage}</div>
+        ) : null}
+        {!remoteUrl && remoteMessage ? (
+          <div className={`remote-playback-feedback ${remoteState === "error" ? "is-error" : ""}`} role="status" aria-live="polite">
+            {remoteMessage}
+          </div>
+        ) : null}
+
         {remoteUrl ? (
-          <section className="remote-player" aria-label="Reproducción remota">
+          <section className="remote-player" aria-label="Reproducción remota" ref={remotePlayerRef}>
             <header className="remote-player-header">
               <div>
                 <span className={`remote-player-status is-${remoteState}`} />
@@ -5585,18 +5689,36 @@ function FileDetail({
               controls
               playsInline
               preload="metadata"
+              ref={remoteVideoRef}
               src={remoteUrl}
+              onLoadedMetadata={() => void requestMobileRemoteFullscreen()}
               onPlaying={() => {
                 setRemoteState("playing");
                 setRemoteMessage("");
               }}
               onWaiting={() => setRemoteState("buffering")}
-              onCanPlay={() => setRemoteState((current) => current === "preparing" ? "buffering" : current)}
+              onCanPlay={() => {
+                setRemoteState((current) => current === "preparing" ? "buffering" : current);
+                void requestMobileRemoteFullscreen();
+              }}
+              onPointerUp={handleRemoteVideoPointerUp}
+              onEnded={() => void stopRemotePlayback("Reproducción remota finalizada.")}
               onError={() => {
+                const sessionId = remoteSessionId;
+                setRemoteUrl(null);
+                setRemoteSessionId(null);
                 setRemoteState("error");
                 setRemoteMessage("La reproducción remota se interrumpió. Verifica que el Companion y el disco sigan conectados.");
+                if (sessionId) {
+                  void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+                }
               }}
             />
+            {remoteSeekFeedback ? (
+              <span className={`remote-seek-feedback is-${remoteSeekFeedback}`} aria-live="polite">
+                {remoteSeekFeedback === "back" ? "-10 s" : "+10 s"}
+              </span>
+            ) : null}
           </section>
         ) : null}
 
@@ -5659,7 +5781,7 @@ function FileDetail({
           <Info label="Estado" value={file.scanStatus} />
         </div>
 
-        {companionMessage || remoteMessage ? <div className={`companion-status ${remoteState === "error" ? "is-error" : ""}`}>{remoteMessage || companionMessage}</div> : null}
+        {companionMessage ? <div className="companion-status">{companionMessage}</div> : null}
 
         {duplicates.length > 0 ? (
           <section className="duplicates">
