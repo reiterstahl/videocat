@@ -193,14 +193,14 @@ test("a paired Companion opens a control tunnel and revocation closes it", { ski
       credential: pairResponse.json().credential,
       companionName: "Tunnel CI Companion",
       version: 14,
-      capabilities: { control: true, streamRead: false }
+      capabilities: { control: true, streamRead: false, streamRemux: false }
     }));
     const [message] = await once(tunnel, "message");
     assert.deepEqual(JSON.parse(String(message)), {
       type: "tunnel.ready",
       protocolVersion: 1,
       companionId,
-      capabilities: { control: true, streamRead: false }
+      capabilities: { control: true, streamRead: false, streamRemux: false }
     });
 
     const companions = await app.inject({ method: "GET", url: "/api/companions", headers: { cookie } });
@@ -257,7 +257,7 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
     await once(tunnel, "open");
     tunnel.send(JSON.stringify({
       type: "tunnel.hello", protocolVersion: 1, companionId, credential: pairResponse.json().credential,
-      companionName: "Streaming CI Companion", version: 15, capabilities: { control: true, streamRead: true }
+      companionName: "Streaming CI Companion", version: 15, capabilities: { control: true, streamRead: true, streamRemux: false }
     }));
     await once(tunnel, "message");
     tunnel.on("message", (message, isBinary) => {

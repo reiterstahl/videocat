@@ -78,6 +78,8 @@ PROTECTED_FOLDER_PIN=replace-with-a-private-4-digit-pin
 PROTECTED_FOLDER_PATTERNS=Private,Protected
 THUMBNAILS_DIR=/data/video-catalog/thumbnails
 PUBLIC_THUMBNAILS_BASE_URL=/thumbnails
+# Optional server-side gate for temporary MP4 remuxing by paired Windows Companions.
+REMOTE_REMUX_ENABLED=false
 ```
 
 For public HTTPS deployments:
@@ -109,7 +111,7 @@ Back up this volume together with PostgreSQL.
 Versioned tags are stable:
 
 ```text
-reiterstahl/videocat-server:0.1.16
+reiterstahl/videocat-server:0.1.17
 ```
 
 `latest` points to the newest published build:

@@ -247,6 +247,7 @@ model StreamSession {
   companionId       String    @db.Uuid
   ownerUsername     String
   status            String    @default("opening")
+  mode              String    @default("original")
   fileSizeBytes     BigInt?
   mimeType          String?
   expiresAt         DateTime

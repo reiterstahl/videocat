@@ -3854,6 +3854,11 @@ tbody tr.curation-row {
   background: #6245a6;
 }
 
+.detail-primary-action.is-remux {
+  border-color: #bf8612;
+  background: #c98c14;
+}
+
 .detail-primary-action.is-danger {
   border-color: #c94034;
   background: #d94538;
@@ -3944,6 +3949,32 @@ tbody tr.curation-row {
   width: 100%;
   max-height: min(52dvh, 620px);
   background: #050708;
+}
+
+.stream-compatibility-notice {
+  display: grid;
+  gap: 4px;
+  margin: 12px 18px 2px;
+  border: 1px solid #d7a531;
+  border-radius: 7px;
+  background: #fff7da;
+  color: #654700;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+}
+
+.stream-compatibility-notice strong {
+  font-weight: 1000;
+}
+
+.stream-compatibility-notice span {
+  line-height: 1.35;
+}
+
+:root[data-theme="dark"] .stream-compatibility-notice {
+  border-color: #836419;
+  background: #31280f;
+  color: #f0d48b;
 }
 
 .remote-stop-button {

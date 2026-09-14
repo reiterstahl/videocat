@@ -117,6 +117,7 @@ class CompanionControlTunnelRegistry {
     diskId: string;
     relativePath: string;
     expectedSizeBytes: number;
+    mode: "original" | "remux";
     expiresAt: string;
   }): Promise<StreamOpenResult> {
     const connection = this.connections.get(input.companionId);
@@ -289,6 +290,7 @@ class CompanionControlTunnelRegistry {
             tunnelProtocolVersion: companionTunnelProtocolVersion,
             control: hello.capabilities.control,
             streamRead: hello.capabilities.streamRead,
+            streamRemux: hello.capabilities.streamRemux,
             tunnelConnectedAt: new Date(now).toISOString()
           }
         }

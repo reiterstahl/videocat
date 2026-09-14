@@ -10,8 +10,9 @@ import {
   readCompanionStreamRange
 } from "../lib/companion-control-tunnel.js";
 import { companionStreamMaxRangeBytes, companionStreamSessionLifetimeMs } from "@videocat/shared";
+import { env } from "../lib/env.js";
 
-const streamSessionSchema = z.object({ fileId: z.string().uuid() });
+const streamSessionSchema = z.object({ fileId: z.string().uuid(), mode: z.enum(["original", "remux"]).default("original") });
 const streamParamsSchema = z.object({ id: z.string().uuid() });
 const maxStreamsPerCompanion = 1;
 
@@ -39,15 +40,32 @@ function hiddenSystemPath(relativePath: string): boolean {
 
 export async function streamRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/stream-sessions", { preHandler: requireWebAuth }, async (request, reply) => {
-    const { fileId } = streamSessionSchema.parse(request.body);
+    const { fileId, mode } = streamSessionSchema.parse(request.body);
     const file = await prisma.videoFile.findUnique({
       where: { id: fileId },
-      select: { id: true, diskId: true, relativePath: true, sizeBytes: true, isPresent: true }
+      select: {
+        id: true,
+        diskId: true,
+        relativePath: true,
+        sizeBytes: true,
+        isPresent: true,
+        extension: true,
+        videoCodec: true,
+        audioCodec: true
+      }
     });
     if (!file || !file.isPresent || hiddenSystemPath(file.relativePath)) return reply.code(404).send({ message: "File not available" });
     const patterns = await protectedFolderPatterns();
     if (relativePathMatchesProtectedPatterns(file.relativePath, patterns) && !isProtectedFolderUnlocked(request)) {
       return reply.code(403).send({ message: "PIN required" });
+    }
+    if (mode === "remux") {
+      const containerNeedsRemux = ![".mp4", ".m4v", ".mov"].includes(file.extension.toLowerCase());
+      const compatibleVideo = ["h264", "avc"].includes((file.videoCodec ?? "").toLowerCase());
+      const compatibleAudio = ["aac", "mp3"].includes((file.audioCodec ?? "").toLowerCase());
+      if (!containerNeedsRemux || !compatibleVideo || !compatibleAudio) {
+        return reply.code(400).send({ message: "This file is not eligible for the MP4 remux fallback" });
+      }
     }
 
     const companions = await prisma.companionAgent.findMany({
@@ -56,9 +74,12 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     });
     const candidate = companions.find((companion) => {
       const tunnel = companionTunnelStatus(app, companion.installationId);
-      return mountedDiskIds(companion.mountedDiskIds).includes(file.diskId) && tunnel.connected && tunnel.capabilities?.streamRead === true;
+      return mountedDiskIds(companion.mountedDiskIds).includes(file.diskId)
+        && tunnel.connected
+        && tunnel.capabilities?.streamRead === true
+        && (mode !== "remux" || (env.REMOTE_REMUX_ENABLED && tunnel.capabilities?.streamRemux === true));
     });
-    if (!candidate) return reply.code(409).send({ message: "No paired Companion with this disk is ready for streaming" });
+    if (!candidate) return reply.code(409).send({ message: mode === "remux" ? "No Companion with optional MP4 remuxing is ready" : "No paired Companion with this disk is ready for streaming" });
 
     const activeCount = await prisma.streamSession.count({
       where: { companionId: candidate.installationId, status: { in: ["opening", "ready", "streaming"] }, expiresAt: { gt: new Date() } }
@@ -71,6 +92,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         videoFileId: file.id,
         companionId: candidate.installationId,
         ownerUsername: process.env.ADMIN_USER ?? "admin",
+        mode,
         expiresAt
       }
     });
@@ -82,9 +104,10 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         diskId: file.diskId,
         relativePath: file.relativePath,
         expectedSizeBytes: Number(file.sizeBytes),
+        mode,
         expiresAt: expiresAt.toISOString()
       });
-      if (prepared.sizeBytes !== Number(file.sizeBytes)) throw new Error("Stream size changed while opening");
+      if (mode === "original" && prepared.sizeBytes !== Number(file.sizeBytes)) throw new Error("Stream size changed while opening");
       const ready = await prisma.streamSession.update({
         where: { id: session.id },
         data: { status: "ready", fileSizeBytes: BigInt(prepared.sizeBytes), mimeType: prepared.mimeType }

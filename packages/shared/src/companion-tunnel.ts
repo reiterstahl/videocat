@@ -11,7 +11,8 @@ export const companionTunnelReconnectMaxMs = 60_000;
 
 export const companionTunnelCapabilitiesSchema = z.object({
   control: z.literal(true),
-  streamRead: z.boolean()
+  streamRead: z.boolean(),
+  streamRemux: z.boolean().default(false)
 });
 
 export const companionTunnelHelloSchema = z.object({
@@ -53,6 +54,7 @@ export const companionStreamOpenSchema = z.object({
   diskId: z.string().uuid(),
   relativePath: z.string().trim().min(1).max(2000),
   expectedSizeBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  mode: z.enum(["original", "remux"]).default("original"),
   expiresAt: z.string().datetime()
 });
 

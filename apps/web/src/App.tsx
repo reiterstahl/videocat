@@ -91,6 +91,28 @@ function localCompanionPortCandidates(storedPort: string | null): string[] {
   return companionPortCandidates(parsedStoredPort).map(String);
 }
 
+type BrowserPlaybackSupport = {
+  result: "" | "maybe" | "probably";
+  mediaType: string;
+  remuxUseful: boolean;
+};
+
+function browserPlaybackSupport(file: VideoFile): BrowserPlaybackSupport {
+  const videoCodecs: Record<string, string> = { h264: "avc1.42E01E", avc: "avc1.42E01E", hevc: "hev1.1.6.L93.B0", h265: "hev1.1.6.L93.B0", vp9: "vp09.00.10.08", av1: "av01.0.08M.08" };
+  const audioCodecs: Record<string, string> = { aac: "mp4a.40.2", mp3: "mp4a.40.34", opus: "opus", vorbis: "vorbis" };
+  const extension = file.extension.toLowerCase();
+  const mime = extension === ".mp4" || extension === ".mov" ? "video/mp4" : extension === ".webm" ? "video/webm" : "video/x-matroska";
+  const codecs = [file.videoCodec ? videoCodecs[file.videoCodec.toLowerCase()] : undefined, file.audioCodec ? audioCodecs[file.audioCodec.toLowerCase()] : undefined]
+    .filter((codec): codec is string => Boolean(codec));
+  const mediaType = codecs.length > 0 ? `${mime}; codecs="${codecs.join(", ")}"` : mime;
+  const result = typeof document === "undefined" ? "maybe" : document.createElement("video").canPlayType(mediaType) as BrowserPlaybackSupport["result"];
+  return {
+    result,
+    mediaType,
+    remuxUseful: ![".mp4", ".m4v", ".mov"].includes(extension) && ["h264", "avc"].includes((file.videoCodec ?? "").toLowerCase()) && ["aac", "mp3"].includes((file.audioCodec ?? "").toLowerCase())
+  };
+}
+
 type CurationStatus = string;
 type CurationCategory = {
   key: string;
@@ -323,6 +345,7 @@ type CompanionAdminItem = {
     capabilities: {
       control: boolean;
       streamRead: boolean;
+      streamRemux: boolean;
     } | null;
   };
 };
@@ -408,7 +431,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.16";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.17";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -5269,6 +5292,7 @@ function FileDetail({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
+  const [remoteMode, setRemoteMode] = useState<"original" | "remux">("original");
   const [remoteState, setRemoteState] = useState<"idle" | "preparing" | "playing" | "buffering" | "error">("idle");
   const [remoteMessage, setRemoteMessage] = useState("");
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
@@ -5277,6 +5301,7 @@ function FileDetail({
   const canOpenPreviousImage = galleryIndex != null && galleryIndex > 0;
   const canOpenNextImage = galleryIndex != null && galleryIndex < file.thumbnails.length - 1;
   const canStreamRemotely = companionOnline && companionMountedDiskIds.includes(file.diskId);
+  const playbackSupport = browserPlaybackSupport(file);
 
   useEffect(() => () => {
     if (remoteSessionId) {
@@ -5382,15 +5407,16 @@ function FileDetail({
     }
   }
 
-  async function startRemotePlayback() {
+  async function startRemotePlayback(mode: "original" | "remux" = "original") {
     if (remoteState === "preparing") return;
     if (remoteSessionId) await stopRemotePlayback();
     setRemoteState("preparing");
-    setRemoteMessage("Preparando reproducción remota segura...");
+    setRemoteMode(mode);
+    setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
     try {
       const response = await api<StreamSessionResponse>("/api/stream-sessions", {
         method: "POST",
-        body: JSON.stringify({ fileId: file.id })
+        body: JSON.stringify({ fileId: file.id, mode })
       });
       setRemoteSessionId(response.session.id);
       setRemoteUrl(`/api/streams/${response.session.id}/content`);
@@ -5478,14 +5504,26 @@ function FileDetail({
               </button>
               <button
                 className="detail-primary-action is-remote"
-                disabled={!canStreamRemotely || remoteState === "preparing"}
+                disabled={!canStreamRemotely || remoteState === "preparing" || playbackSupport.result === ""}
                 onClick={() => void startRemotePlayback()}
-                title={canStreamRemotely ? "Reproducir remotamente" : "El Companion y el disco deben estar conectados"}
+                title={playbackSupport.result === "" ? "El navegador no soporta el formato original" : canStreamRemotely ? "Reproducir remotamente" : "El Companion y el disco deben estar conectados"}
                 aria-label="Reproducir remotamente"
                 type="button"
               >
                 <MonitorPlay size={20} />
               </button>
+              {playbackSupport.result === "" && playbackSupport.remuxUseful ? (
+                <button
+                  className="detail-primary-action is-remux"
+                  disabled={!canStreamRemotely || remoteState === "preparing"}
+                  onClick={() => void startRemotePlayback("remux")}
+                  title="Preparar un MP4 temporal compatible"
+                  aria-label="Preparar un MP4 temporal compatible"
+                  type="button"
+                >
+                  <FileVideo size={20} />
+                </button>
+              ) : null}
               <button
                 className="detail-primary-action is-folder"
                 disabled={companionBusy === "open-folder"}
@@ -5536,7 +5574,7 @@ function FileDetail({
             <header className="remote-player-header">
               <div>
                 <span className={`remote-player-status is-${remoteState}`} />
-                <strong>{remoteState === "playing" ? "Reproduciendo remotamente" : remoteState === "buffering" ? "Almacenando en búfer" : "Conectando al Companion"}</strong>
+                <strong>{remoteState === "playing" ? "Reproduciendo remotamente" : remoteState === "buffering" ? "Almacenando en búfer" : remoteMode === "remux" ? "MP4 temporal preparado" : "Conectando al Companion"}</strong>
               </div>
               <button className="remote-stop-button" onClick={() => void stopRemotePlayback("Reproducción remota detenida.")} type="button">
                 Detener
@@ -5560,6 +5598,13 @@ function FileDetail({
               }}
             />
           </section>
+        ) : null}
+
+        {playbackSupport.result === "" ? (
+          <div className="stream-compatibility-notice">
+            <strong>Este navegador no declara compatibilidad con {file.videoCodec ?? file.extension}.</strong>
+            <span>{playbackSupport.remuxUseful ? "Puedes preparar un MP4 temporal con el botón adicional, si el remux opcional está habilitado en el Companion." : "Ábrelo localmente o usa un navegador con soporte para este codec."}</span>
+          </div>
         ) : null}
 
         <div className="thumb-strip">

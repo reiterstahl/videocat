@@ -65,7 +65,7 @@ Every message carries a `requestId`, `sessionId`, sequence number and explicit s
 
 ## Delivery Phases
 
-Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound tunnel, HTTP Range reads, and the initial web playback experience are implemented in `v0.1.16`. The next increment is codec compatibility.
+Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound tunnel, HTTP Range reads, web playback, and codec compatibility detection are implemented in `v0.1.17`. The next increment is hardening and release.
 
 ### Phase 0: Protocol And Threat Model — Complete In v0.1.14
 
@@ -94,12 +94,12 @@ Current status: Companion pairing, encrypted individual credentials, per-Compani
 - The player shows connection, buffering, playback, stop and disconnect states without exposing local paths.
 - Local-only actions remain separate and are not enabled from mobile when the local listener is absent.
 
-### Phase 4: Codec Compatibility
+### Phase 4: Codec Compatibility — Complete In v0.1.17
 
-- Detect whether the browser can play the original codec before starting.
-- Optionally add temporary HLS/fMP4 remuxing or transcoding through FFmpeg.
-- Bound CPU, process count, resolution and duration; cancel FFmpeg when the session closes.
-- Do not enable automatic transcoding on small installations without consent.
+- The detail modal checks `canPlayType` with indexed container and codecs before enabling original playback.
+- When H.264/AAC is wrapped in an incompatible container, it can request temporary FFmpeg remuxing to MP4.
+- Remuxing is opt-in on both server and Companion, uses one active stream, a two-minute FFmpeg timeout, output limits, and cleanup on cancellation or close.
+- Codec transcoding remains deliberately disabled: it never starts automatically or consumes CPU without explicit configuration.
 
 ### Phase 5: Hardening And Release
 

@@ -143,8 +143,17 @@ try {
     }
 
     Write-Host "`n==> Check GitHub release v$version" -ForegroundColor Cyan
-    & $ghCommand.Source release view "v$version" --json tagName 2>$null | Out-Null
-    $releaseExists = $LASTEXITCODE -eq 0
+    # A missing release is an expected state before publishing a new Companion.
+    # Keep this probe non-fatal even when PowerShell is configured to stop on native stderr.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      & $ghCommand.Source release view "v$version" --json tagName 2>$null | Out-Null
+      $releaseExists = $LASTEXITCODE -eq 0
+    }
+    finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     if ($releaseExists) {
       Write-Host "GitHub release v$version already exists." -ForegroundColor Green
     }

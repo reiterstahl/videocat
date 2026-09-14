@@ -10,6 +10,11 @@ import {
   type CompanionTunnelCapabilities
 } from "@videocat/shared";
 import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 type TunnelLog = (message: string) => void;
 
@@ -30,8 +35,11 @@ export type CompanionControlTunnel = {
 
 const capabilities: CompanionTunnelCapabilities = {
   control: true,
-  streamRead: true
+  streamRead: true,
+  streamRemux: process.env.COMPANION_REMOTE_REMUX_ENABLED === "true"
 };
+
+const execFileAsync = promisify(execFile);
 
 function parseServerMessage(event: MessageEvent): unknown {
   if (typeof event.data === "string") return JSON.parse(event.data);
@@ -46,7 +54,34 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
   let reconnectAttempt = 0;
   let loggedReady = false;
   let credentialRejected = false;
-  const streams = new Map<string, { path: string; sizeBytes: number; mimeType: string; expiresAtMs: number }>();
+  const streams = new Map<string, { path: string; sizeBytes: number; mimeType: string; expiresAtMs: number; temporary: boolean }>();
+
+  async function clearStream(sessionId: string): Promise<void> {
+    const stream = streams.get(sessionId);
+    streams.delete(sessionId);
+    if (stream?.temporary) await fs.rm(stream.path, { force: true }).catch(() => undefined);
+  }
+
+  async function remuxToTemporaryMp4(sourcePath: string, sessionId: string): Promise<{ path: string; sizeBytes: number; mimeType: string } | null> {
+    if (!capabilities.streamRemux) return null;
+    const directory = path.join(os.tmpdir(), "videocat-remote-remux");
+    const destination = path.join(directory, `${sessionId}-${crypto.randomBytes(8).toString("hex")}.mp4`);
+    try {
+      await fs.mkdir(directory, { recursive: true });
+      await execFileAsync(process.env.FFMPEG_PATH?.trim() || "ffmpeg", [
+        "-nostdin", "-y", "-i", sourcePath,
+        "-map", "0:v:0", "-map", "0:a?",
+        "-c", "copy", "-movflags", "+faststart", destination
+      ], { timeout: 120_000, maxBuffer: 256 * 1024 });
+      const stat = await fs.stat(destination);
+      const maxBytes = Number(process.env.COMPANION_REMOTE_REMUX_MAX_BYTES ?? 20 * 1024 ** 3);
+      if (!stat.isFile() || stat.size <= 0 || !Number.isFinite(maxBytes) || stat.size > maxBytes) throw new Error("Invalid remux output");
+      return { path: destination, sizeBytes: stat.size, mimeType: "video/mp4" };
+    } catch {
+      await fs.rm(destination, { force: true }).catch(() => undefined);
+      return null;
+    }
+  }
 
   function send(next: WebSocket, value: object): void {
     if (next.readyState === WebSocket.OPEN) next.send(JSON.stringify(value));
@@ -70,8 +105,16 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
           send(next, { type: "stream.error", requestId: open.data.requestId, sessionId: open.data.sessionId, code: "not_available" });
           return true;
         }
-        streams.set(open.data.sessionId, { ...file, expiresAtMs });
-        send(next, { type: "stream.ready", requestId: open.data.requestId, sessionId: open.data.sessionId, sizeBytes: file.sizeBytes, mimeType: file.mimeType });
+        const prepared = open.data.mode === "remux"
+          ? await remuxToTemporaryMp4(file.path, open.data.sessionId)
+          : file;
+        if (!prepared) {
+          send(next, { type: "stream.error", requestId: open.data.requestId, sessionId: open.data.sessionId, code: "not_available" });
+          return true;
+        }
+        await clearStream(open.data.sessionId);
+        streams.set(open.data.sessionId, { ...prepared, expiresAtMs, temporary: open.data.mode === "remux" });
+        send(next, { type: "stream.ready", requestId: open.data.requestId, sessionId: open.data.sessionId, sizeBytes: prepared.sizeBytes, mimeType: prepared.mimeType });
       } catch {
         send(next, { type: "stream.error", requestId: open.data.requestId, sessionId: open.data.sessionId, code: "read_failed" });
       }
@@ -81,7 +124,7 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
     if (range.success) {
       const stream = streams.get(range.data.sessionId);
       if (!stream || stream.expiresAtMs <= Date.now()) {
-        streams.delete(range.data.sessionId);
+        await clearStream(range.data.sessionId);
         send(next, { type: "stream.error", requestId: range.data.requestId, sessionId: range.data.sessionId, code: "expired" });
         return true;
       }
@@ -109,7 +152,7 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
     }
     const cancel = companionStreamCancelSchema.safeParse(value);
     if (cancel.success) {
-      streams.delete(cancel.data.sessionId);
+      await clearStream(cancel.data.sessionId);
       return true;
     }
     return false;
@@ -199,7 +242,7 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
       if (active && (active.readyState === WebSocket.OPEN || active.readyState === WebSocket.CONNECTING)) {
         active.close(1000, "companion stopped");
       }
-      streams.clear();
+      void Promise.all([...streams.keys()].map((sessionId) => clearStream(sessionId)));
     }
   };
 }

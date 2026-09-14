@@ -103,6 +103,7 @@ Funciones principales:
 - Se empareja con un código de un solo uso y guarda una credencial individual cifrada por Windows.
 - Mantiene un túnel de control saliente y autenticado con VideoCAT, sin exponer puertos de Windows; Administración muestra su estado.
 - Permite reproducción remota autenticada mediante HTTP Range y el túnel saliente, sin exponer rutas locales ni copiar el video permanentemente al servidor. El modal muestra estados de conexión, buffer y desconexión.
+- Detecta compatibilidad del navegador antes de reproducir. Como alternativa opcional, puede remuxear temporalmente H.264/AAC a MP4 en el Companion; la transcodificación completa no se activa automáticamente.
 - Configura `SERVER_URL`, `WEB_URL`, el `AGENT_TOKEN` heredado opcional y las opciones locales desde una ventana.
 - Muestra una ventana de actividad con logs en vivo.
 - Detecta discos montados que tengan `.videocat-disk.json`.
@@ -127,12 +128,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual es `v0.1.16`.
+La versión actual es `v0.1.17`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.16.exe`
+- Companion Windows: `VideoCAT-Companion-0.1.17.exe`
 
 Verificación recomendada del companion:
 
@@ -143,7 +144,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.16.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.17.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -280,6 +281,9 @@ COMPANION_SCAN_POLL_MS=900000
 COMPANION_DELETE_POLL_MS=60000
 TRAY_DISK_POLL_MS=10000
 COMPANION_AUTO_DELETE_MARKED=true
+# Opcional: permite remux temporal a MP4 para H.264/AAC en MKV/AVI u otro contenedor incompatible.
+# Debe activarse tambien REMOTE_REMUX_ENABLED=true en el servidor.
+COMPANION_REMOTE_REMUX_ENABLED=false
 # Normalmente se editan desde la ventana de configuracion del companion.
 COMPANION_MONITORED_TARGETS=[]
 COMPANION_DISABLED_DISK_IDS=
@@ -357,7 +361,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.16.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.17.exe
 ```
 
 Uso:
@@ -369,6 +373,16 @@ Uso:
 5. La credencial individual queda cifrada para tu usuario de Windows; `AGENT_TOKEN` solo es necesario para clientes heredados.
 6. Usa `Ver actividad...` para revisar logs y confirmar `Canal remoto seguro conectado al servidor.`
 7. Conecta discos marcados con `.videocat-disk.json`.
+
+### Compatibilidad de reproducción remota
+
+El reproductor remoto detecta primero si el navegador declara soporte para el contenedor y los codecs indexados. Si un video H.264/AVC con audio AAC/MP3 está dentro de un contenedor no compatible, puedes habilitar el botón de remux temporal a MP4 sin recodificar el video:
+
+1. En el servidor, define `REMOTE_REMUX_ENABLED=true` y reinicia el contenedor `server`.
+2. En la configuración del Companion, bajo `Opciones avanzadas`, activa `REMUX MP4 TEMPORAL`.
+3. Comprueba que FFmpeg esté disponible en el Companion.
+
+La conversión es una copia temporal de streams (`-c copy`), limitada a una sola reproducción y eliminada al detenerse o expirar. VideoCAT no transcodifica automáticamente H.265, AV1 ni otros codecs porque eso puede consumir CPU de forma considerable.
 
 ## Flujo de review y borrado
 
@@ -387,7 +401,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 
 - La web requiere login.
 - Cada instalación moderna del Companion usa una credencial individual generada mediante un código de un solo uso, almacenada cifrada con la protección del usuario de Windows y revocable desde Administración.
-- El túnel actual prepara la reproducción remota segura: no transmite archivos ni acepta operaciones de escritura todavía.
+- El túnel saliente autenticado sirve reproducción remota de solo lectura con HTTP Range; no acepta operaciones remotas de escritura.
 - El Nginx incluido ya reenvía WebSocket. Un reverse proxy externo debe permitir los encabezados `Upgrade` y `Connection` para `/api/agent/tunnel`.
 - El servidor guarda únicamente el hash de cada credencial. `AGENT_TOKEN` sigue disponible temporalmente para clientes heredados durante la transición.
 - Cada instalación mantiene una identidad UUID persistente en su directorio de estado.
@@ -496,8 +510,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.16
-reiterstahl/videocat-web:0.1.16
+reiterstahl/videocat-server:0.1.17
+reiterstahl/videocat-web:0.1.17
 ```
 
 También se publican etiquetas `latest`:
@@ -544,8 +558,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.16 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.16 -t reiterstahl/videocat-web:0.1.16 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.17 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.17 -t reiterstahl/videocat-web:0.1.17 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -558,10 +572,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.16
+  image: reiterstahl/videocat-server:0.1.17
 
 web:
-  image: reiterstahl/videocat-web:0.1.16
+  image: reiterstahl/videocat-web:0.1.17
 ```
 
 ## Endpoints principales

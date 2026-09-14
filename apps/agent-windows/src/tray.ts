@@ -63,6 +63,7 @@ const configKeys = [
   "COMPANION_DOWNLOAD_POLL_MS",
   "COMPANION_DOWNLOAD_STALL_MS",
   "COMPANION_DOWNLOAD_DIR",
+  "COMPANION_REMOTE_REMUX_ENABLED",
   "COMPANION_AUTO_DELETE_MARKED",
   "COMPANION_MONITORED_TARGETS",
   "COMPANION_DISABLED_DISK_IDS",
@@ -95,6 +96,7 @@ const configDefaults: Partial<Record<ConfigKey, string>> = {
   COMPANION_DELETE_POLL_MS: "60000",
   COMPANION_DOWNLOAD_POLL_MS: "60000",
   COMPANION_DOWNLOAD_STALL_MS: "30000",
+  COMPANION_REMOTE_REMUX_ENABLED: "false",
   COMPANION_AUTO_DELETE_MARKED: "true",
   TRAY_DISK_POLL_MS: "10000"
 };
@@ -347,6 +349,9 @@ function validateConfig(values: Record<ConfigKey, string>, allowMissingCredentia
     ?? validatePositiveInteger(values.COMPANION_DOWNLOAD_POLL_MS, "COMPANION_DOWNLOAD_POLL_MS")
     ?? validatePositiveInteger(values.COMPANION_DOWNLOAD_STALL_MS, "COMPANION_DOWNLOAD_STALL_MS")
     ?? validatePositiveInteger(values.TRAY_DISK_POLL_MS, "TRAY_DISK_POLL_MS")
+    ?? (!/^(true|false)$/i.test(values.COMPANION_REMOTE_REMUX_ENABLED)
+      ? "COMPANION_REMOTE_REMUX_ENABLED debe ser true o false."
+      : null)
     ?? (!/^(true|false)$/i.test(values.COMPANION_AUTO_DELETE_MARKED)
       ? "COMPANION_AUTO_DELETE_MARKED debe ser true o false."
       : null);
@@ -787,6 +792,7 @@ function configHtml(): string {
           <label>COMPANION_DOWNLOAD_POLL_MS<input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
           <label>COMPANION_DOWNLOAD_STALL_MS<input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
           <label>TRAY_DISK_POLL_MS<input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
+          <label>REMUX MP4 TEMPORAL<select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
           <label>COMPANION_AUTO_DELETE_MARKED<input name="COMPANION_AUTO_DELETE_MARKED" placeholder="true" /></label>
         </div>
       </details>

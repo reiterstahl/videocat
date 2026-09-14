@@ -65,7 +65,7 @@ Cada mensaje lleva `requestId`, `sessionId`, número de secuencia y un límite e
 
 ## Fases De Implementación
 
-Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente, la lectura HTTP Range y la experiencia inicial de reproducción web están implementados en `v0.1.16`. El siguiente incremento es la compatibilidad de codecs.
+Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente, la lectura HTTP Range, la reproducción web y la detección de compatibilidad están implementados en `v0.1.17`. El siguiente incremento es el endurecimiento y la publicación.
 
 ### Fase 0: Protocolo Y Modelo De Amenazas — Completada En v0.1.14
 
@@ -94,12 +94,12 @@ Estado actual: el emparejamiento, las credenciales individuales cifradas, la rev
 - El reproductor muestra conexión, buffering, reproducción, detención y desconexión sin revelar rutas locales.
 - Las acciones locales continúan separadas y no se habilitan desde móvil si el listener local no existe.
 
-### Fase 4: Compatibilidad De Codecs
+### Fase 4: Compatibilidad De Codecs — Completada En v0.1.17
 
-- Detectar previamente si el navegador puede reproducir el codec original.
-- Añadir, como opción, remux o transcodificación temporal a HLS/fMP4 mediante FFmpeg.
-- Aplicar límites de CPU, procesos, resolución y duración; cancelar FFmpeg al cerrar la sesión.
-- No habilitar transcodificación automática en instalaciones pequeñas sin consentimiento.
+- El modal consulta `canPlayType` con el contenedor y codecs indexados antes de habilitar la reproducción original.
+- Cuando H.264/AAC está encapsulado en un contenedor incompatible, puede solicitar un remux temporal a MP4 mediante FFmpeg.
+- El remux es opcional en servidor y Companion, usa un único stream activo, timeout de FFmpeg de dos minutos, límite de salida y limpieza al cancelar o cerrar.
+- La transcodificación de codecs permanece deliberadamente deshabilitada: nunca se inicia de forma automática ni consume CPU sin configuración explícita.
 
 ### Fase 5: Endurecimiento Y Publicación
 

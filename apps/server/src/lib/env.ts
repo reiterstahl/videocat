@@ -21,7 +21,8 @@ const envSchema = z.object({
   ADMIN_USER: z.string().min(1).default("admin"),
   ADMIN_PASSWORD: z.string().min(8),
   THUMBNAILS_DIR: z.string().default("/data/video-catalog/thumbnails"),
-  PUBLIC_THUMBNAILS_BASE_URL: z.string().default("/thumbnails")
+  PUBLIC_THUMBNAILS_BASE_URL: z.string().default("/thumbnails"),
+  REMOTE_REMUX_ENABLED: booleanEnv.default(false)
 });
 
 export const env = envSchema.parse(process.env);
