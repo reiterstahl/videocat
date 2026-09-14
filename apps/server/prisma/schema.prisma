@@ -84,6 +84,7 @@ model VideoFile {
   thumbnails         Thumbnail[]
   categories         VideoFileCategory[]
   downloadQueue      DownloadQueue?
+  streamSessions     StreamSession[]
 
   @@unique([diskId, relativePath])
   @@index([diskId])
@@ -238,6 +239,27 @@ model CompanionPairingCode {
 
   @@index([expiresAt])
   @@index([claimedAt])
+}
+
+model StreamSession {
+  id                String    @id @default(uuid()) @db.Uuid
+  videoFileId       String    @db.Uuid
+  companionId       String    @db.Uuid
+  ownerUsername     String
+  status            String    @default("opening")
+  fileSizeBytes     BigInt?
+  mimeType          String?
+  expiresAt         DateTime
+  lastAccessedAt    DateTime?
+  completedAt       DateTime?
+  errorCode         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  videoFile         VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+
+  @@index([videoFileId])
+  @@index([companionId, status])
+  @@index([expiresAt])
 }
 
 model Thumbnail {

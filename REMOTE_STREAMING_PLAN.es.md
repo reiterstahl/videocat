@@ -65,7 +65,7 @@ Cada mensaje lleva `requestId`, `sessionId`, número de secuencia y un límite e
 
 ## Fases De Implementación
 
-Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación y el túnel saliente de control ya están implementados en `v0.1.14`. El siguiente incremento es el streaming directo con HTTP Range.
+Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente de control y la lectura remota mediante HTTP Range están implementados en `v0.1.15`. El siguiente incremento es la experiencia de reproducción en la web.
 
 ### Fase 0: Protocolo Y Modelo De Amenazas — Completada En v0.1.14
 
@@ -80,12 +80,12 @@ Estado actual: el emparejamiento, las credenciales individuales cifradas, la rev
 - Administración muestra el estado del túnel seguro de cada Companion.
 - Heartbeats y órdenes existentes continúan compatibles; el túnel no acepta aún lectura de archivos ni acciones de escritura.
 
-### Fase 2: Streaming Directo Con HTTP Range
+### Fase 2: Streaming Directo Con HTTP Range — Completada En v0.1.15
 
-- Implementar sesiones temporales y el puente Range/WebSocket.
-- Leer archivos con handles acotados, backpressure y cancelación inmediata.
-- Soportar `GET`, `HEAD`, saltos en el video y reanudación de rangos.
-- Limitar inicialmente a una reproducción simultánea por Companion.
+- Sesiones temporales asociadas al archivo, Companion y sesión web autenticada.
+- Puente Range/WebSocket limitado a 512 KiB por solicitud, con timeout y cancelación inmediata.
+- `GET` y `HEAD` devuelven cabeceras HTTP Range válidas; los saltos no cargan el video completo en memoria.
+- Una reproducción activa por Companion y revalidación de disco, ruta canónica, extensión y tamaño en Windows.
 
 ### Fase 3: Experiencia Web
 

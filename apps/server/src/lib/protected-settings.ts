@@ -50,6 +50,18 @@ export function normalizeProtectedPatterns(values: string[]): string[] {
   return result.slice(0, 50);
 }
 
+export function relativePathMatchesProtectedPatterns(relativePath: string, patterns: string[]): boolean {
+  if (patterns.length === 0) return false;
+  return relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .some((segment) => {
+      const normalized = segment.toLowerCase();
+      return patterns.some((pattern) => normalized.includes(pattern.toLowerCase()));
+    });
+}
+
 export function clearProtectedSettingsCache(): void {
   patternsCache = null;
 }

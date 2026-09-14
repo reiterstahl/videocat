@@ -17,7 +17,7 @@ test("validates a bounded, paired control-tunnel handshake", () => {
     credential: "vcat_agent_abcdefghijklmnopqrstuvwxyz123456",
     companionName: "Desktop VideoCAT",
     version: 14,
-    capabilities: { control: true, streamRead: false }
+    capabilities: { control: true, streamRead: true }
   });
 
   assert.equal(parsed.success, true);

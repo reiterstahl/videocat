@@ -65,7 +65,7 @@ Every message carries a `requestId`, `sessionId`, sequence number and explicit s
 
 ## Delivery Phases
 
-Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, and the outbound control tunnel are implemented in `v0.1.14`. The next increment is direct HTTP Range streaming.
+Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound control tunnel, and remote HTTP Range reads are implemented in `v0.1.15`. The next increment is the web playback experience.
 
 ### Phase 0: Protocol And Threat Model — Complete In v0.1.14
 
@@ -80,12 +80,12 @@ Current status: Companion pairing, encrypted individual credentials, per-Compani
 - Administration shows the secure tunnel state for each Companion.
 - Existing heartbeats and commands remain compatible; the tunnel does not yet accept file reads or write actions.
 
-### Phase 2: Direct HTTP Range Streaming
+### Phase 2: Direct HTTP Range Streaming — Complete In v0.1.15
 
-- Implement temporary sessions and the Range/WebSocket bridge.
-- Read through bounded handles with backpressure and immediate cancellation.
-- Support `GET`, `HEAD`, seeking and resumed ranges.
-- Initially limit each Companion to one concurrent playback.
+- Temporary sessions are tied to the file, Companion and authenticated web session.
+- The Range/WebSocket bridge is limited to 512 KiB per request, with timeouts and immediate cancellation.
+- `GET` and `HEAD` return valid HTTP Range headers; seeking never buffers an entire video in memory.
+- One active playback per Companion, with Windows revalidating the drive, canonical path, extension and size.
 
 ### Phase 3: Web Experience
 

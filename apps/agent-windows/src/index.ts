@@ -187,6 +187,29 @@ type CompanionHeartbeatResponse = {
   };
 };
 
+function streamMimeType(filePath: string): string {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".mp4": return "video/mp4";
+    case ".webm": return "video/webm";
+    case ".mkv": return "video/x-matroska";
+    case ".mov": return "video/quicktime";
+    case ".avi": return "video/x-msvideo";
+    default: return "application/octet-stream";
+  }
+}
+
+async function resolveCompanionStreamFile(input: { diskId: string; relativePath: string }): Promise<{ path: string; sizeBytes: number; mimeType: string } | null> {
+  const filePath = await resolveCompanionPath({ diskId: input.diskId, relativePath: input.relativePath });
+  if (!filePath || !isVideoExtension(path.extname(filePath))) return null;
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile() || stat.size <= 0) return null;
+    return { path: filePath, sizeBytes: stat.size, mimeType: streamMimeType(filePath) };
+  } catch {
+    return null;
+  }
+}
+
 const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
   const frame = String(index + 1).padStart(2, "0");
   return [`frame_${frame}`, (index + 1) / 16] as const;
@@ -197,7 +220,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 14;
+const companionVersion = 15;
 let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
@@ -1510,7 +1533,8 @@ async function runCompanion(): Promise<void> {
       companionName: companionName(),
       version: companionVersion,
       logInfo: (message) => console.log(message),
-      logWarn: (message) => console.warn(message)
+      logWarn: (message) => console.warn(message),
+      resolveStreamFile: resolveCompanionStreamFile
     });
   } else {
     console.log("Canal remoto no iniciado: empareja este Companion con una credencial individual para habilitarlo.");

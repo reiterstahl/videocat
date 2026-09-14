@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { IncomingMessage } from "node:http";
 import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   companionTunnelHandshakeTimeoutMs,
@@ -8,6 +9,13 @@ import {
   companionTunnelMaxMessageBytes,
   companionTunnelPingIntervalMs,
   companionTunnelProtocolVersion,
+  companionStreamChunkSchema,
+  companionStreamErrorSchema,
+  companionStreamMaxRangeBytes,
+  companionStreamOpenSchema,
+  companionStreamRangeSchema,
+  companionStreamReadySchema,
+  companionStreamRequestTimeoutMs,
   type CompanionTunnelCapabilities
 } from "@videocat/shared";
 import { verifyAgentCredentials } from "./auth.js";
@@ -21,6 +29,10 @@ type TunnelConnection = {
   awaitingPong: boolean;
   capabilities: CompanionTunnelCapabilities;
 };
+
+type StreamOpenResult = { sizeBytes: number; mimeType: string };
+type PendingOpen = { companionId: string; resolve: (value: StreamOpenResult) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout };
+type PendingRange = { companionId: string; resolve: (value: Buffer) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout; expectedBytes?: number };
 
 export type CompanionTunnelStatus = {
   connected: boolean;
@@ -50,11 +62,14 @@ function errorCode(statusCode: number): "authentication_failed" | "credential_re
 
 class CompanionControlTunnelRegistry {
   private readonly connections = new Map<string, TunnelConnection>();
+  private readonly pendingOpens = new Map<string, PendingOpen>();
+  private readonly pendingRanges = new Map<string, PendingRange>();
+  private readonly activeRangeByCompanion = new Map<string, string>();
   private readonly server = new WebSocketServer({
     noServer: true,
     clientTracking: false,
     perMessageDeflate: false,
-    maxPayload: companionTunnelMaxMessageBytes
+    maxPayload: companionStreamMaxRangeBytes + 1024
   });
   private readonly pingTimer: NodeJS.Timeout;
 
@@ -95,10 +110,67 @@ class CompanionControlTunnelRegistry {
     connection.socket.close(4003, reason);
   }
 
+  async openStream(input: {
+    companionId: string;
+    sessionId: string;
+    fileId: string;
+    diskId: string;
+    relativePath: string;
+    expectedSizeBytes: number;
+    expiresAt: string;
+  }): Promise<StreamOpenResult> {
+    const connection = this.connections.get(input.companionId);
+    if (!connection || connection.socket.readyState !== WebSocket.OPEN || !connection.capabilities.streamRead) {
+      throw new Error("Companion streaming is unavailable");
+    }
+    const requestId = crypto.randomUUID();
+    const message = companionStreamOpenSchema.parse({ type: "stream.open", requestId, ...input });
+    return new Promise<StreamOpenResult>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingOpens.delete(requestId);
+        reject(new Error("Companion did not prepare the stream in time"));
+      }, companionStreamRequestTimeoutMs);
+      timeout.unref();
+      this.pendingOpens.set(requestId, { companionId: input.companionId, resolve, reject, timeout });
+      send(connection.socket, message);
+    });
+  }
+
+  async readStreamRange(input: { companionId: string; sessionId: string; offset: number; length: number }): Promise<Buffer> {
+    const connection = this.connections.get(input.companionId);
+    if (!connection || connection.socket.readyState !== WebSocket.OPEN || !connection.capabilities.streamRead) {
+      throw new Error("Companion streaming is unavailable");
+    }
+    if (this.activeRangeByCompanion.has(input.companionId)) throw new Error("Companion stream is busy");
+    const requestId = crypto.randomUUID();
+    const message = companionStreamRangeSchema.parse({
+      type: "stream.range",
+      requestId,
+      sessionId: input.sessionId,
+      offset: input.offset,
+      length: Math.min(input.length, companionStreamMaxRangeBytes)
+    });
+    return new Promise<Buffer>((resolve, reject) => {
+      const timeout = setTimeout(() => this.rejectRange(requestId, new Error("Companion range request timed out")), companionStreamRequestTimeoutMs);
+      timeout.unref();
+      this.pendingRanges.set(requestId, { companionId: input.companionId, resolve, reject, timeout });
+      this.activeRangeByCompanion.set(input.companionId, requestId);
+      send(connection.socket, message);
+    });
+  }
+
+  cancelStream(companionId: string, sessionId: string, reason: "client_closed" | "expired" | "superseded" | "error" = "client_closed"): void {
+    const connection = this.connections.get(companionId);
+    if (!connection || connection.socket.readyState !== WebSocket.OPEN) return;
+    send(connection.socket, { type: "stream.cancel", sessionId, reason });
+  }
+
   async close(): Promise<void> {
     clearInterval(this.pingTimer);
     for (const { socket } of this.connections.values()) socket.terminate();
     this.connections.clear();
+    for (const [requestId] of this.pendingOpens) this.rejectOpen(requestId, new Error("Tunnel closed"));
+    for (const [requestId] of this.pendingRanges) this.rejectRange(requestId, new Error("Tunnel closed"));
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
 
@@ -116,6 +188,7 @@ class CompanionControlTunnelRegistry {
       if (companionId && this.connections.get(companionId)?.socket === socket) {
         this.connections.delete(companionId);
         this.app.log.info({ companionId }, "Companion control tunnel disconnected");
+        this.rejectForCompanion(companionId, new Error("Companion tunnel disconnected"));
       }
     };
 
@@ -145,6 +218,15 @@ class CompanionControlTunnelRegistry {
     setAuthenticating: (value: boolean) => void;
     handshakeTimer: NodeJS.Timeout;
   }): Promise<void> {
+    const existingCompanionId = input.getCompanionId();
+    if (existingCompanionId) {
+      if (input.isBinary) {
+        this.handleStreamBinary(existingCompanionId, Buffer.from(input.data as Buffer));
+      } else {
+        this.handleAuthenticatedMessage(existingCompanionId, rawMessageText(input.data));
+      }
+      return;
+    }
     if (input.isBinary) {
       send(input.socket, { type: "tunnel.error", code: "protocol_error" });
       input.socket.close(4002, "binary handshake not supported");
@@ -157,10 +239,6 @@ class CompanionControlTunnelRegistry {
       return;
     }
 
-    if (input.getCompanionId()) {
-      send(input.socket, { type: "tunnel.error", code: "unsupported_message" });
-      return;
-    }
     if (input.getAuthenticating()) {
       input.socket.close(4002, "concurrent handshake");
       return;
@@ -241,6 +319,79 @@ class CompanionControlTunnelRegistry {
       connection.socket.ping();
     }
   }
+
+  private handleAuthenticatedMessage(companionId: string, text: string): void {
+    if (Buffer.byteLength(text, "utf8") > companionTunnelMaxMessageBytes) {
+      this.disconnect(companionId, "protocol message too large");
+      return;
+    }
+    try {
+      const value = JSON.parse(text);
+      const ready = companionStreamReadySchema.safeParse(value);
+      if (ready.success) {
+        const pending = this.pendingOpens.get(ready.data.requestId);
+        if (!pending || pending.companionId !== companionId) return;
+        this.pendingOpens.delete(ready.data.requestId);
+        clearTimeout(pending.timeout);
+        pending.resolve({ sizeBytes: ready.data.sizeBytes, mimeType: ready.data.mimeType });
+        return;
+      }
+      const chunk = companionStreamChunkSchema.safeParse(value);
+      if (chunk.success) {
+        const pending = this.pendingRanges.get(chunk.data.requestId);
+        if (!pending || pending.companionId !== companionId || pending.expectedBytes !== undefined) return;
+        pending.expectedBytes = chunk.data.bytes;
+        return;
+      }
+      const streamError = companionStreamErrorSchema.safeParse(value);
+      if (streamError.success) {
+        this.rejectOpen(streamError.data.requestId, new Error(`Companion stream error: ${streamError.data.code}`));
+        this.rejectRange(streamError.data.requestId, new Error(`Companion stream error: ${streamError.data.code}`));
+      }
+    } catch {
+      this.disconnect(companionId, "invalid protocol message");
+    }
+  }
+
+  private handleStreamBinary(companionId: string, data: Buffer): void {
+    const requestId = this.activeRangeByCompanion.get(companionId);
+    if (!requestId) {
+      this.disconnect(companionId, "unexpected stream data");
+      return;
+    }
+    const pending = this.pendingRanges.get(requestId);
+    if (!pending || pending.expectedBytes === undefined || pending.expectedBytes !== data.length || data.length > companionStreamMaxRangeBytes) {
+      this.rejectRange(requestId, new Error("Invalid stream chunk"));
+      this.disconnect(companionId, "invalid stream chunk");
+      return;
+    }
+    this.pendingRanges.delete(requestId);
+    this.activeRangeByCompanion.delete(companionId);
+    clearTimeout(pending.timeout);
+    pending.resolve(data);
+  }
+
+  private rejectOpen(requestId: string, error: Error): void {
+    const pending = this.pendingOpens.get(requestId);
+    if (!pending) return;
+    this.pendingOpens.delete(requestId);
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+  }
+
+  private rejectRange(requestId: string, error: Error): void {
+    const pending = this.pendingRanges.get(requestId);
+    if (!pending) return;
+    this.pendingRanges.delete(requestId);
+    this.activeRangeByCompanion.delete(pending.companionId);
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+  }
+
+  private rejectForCompanion(companionId: string, error: Error): void {
+    for (const [requestId, pending] of this.pendingOpens) if (pending.companionId === companionId) this.rejectOpen(requestId, error);
+    for (const [requestId, pending] of this.pendingRanges) if (pending.companionId === companionId) this.rejectRange(requestId, error);
+  }
 }
 
 export function installCompanionControlTunnel(app: FastifyInstance): void {
@@ -259,4 +410,20 @@ export function companionTunnelStatus(app: FastifyInstance, companionId: string)
 
 export function disconnectCompanionControlTunnel(app: FastifyInstance, companionId: string): void {
   registries.get(app.server)?.disconnect(companionId);
+}
+
+export function openCompanionStream(app: FastifyInstance, input: Parameters<CompanionControlTunnelRegistry["openStream"]>[0]): Promise<StreamOpenResult> {
+  const registry = registries.get(app.server);
+  if (!registry) return Promise.reject(new Error("Companion tunnel unavailable"));
+  return registry.openStream(input);
+}
+
+export function readCompanionStreamRange(app: FastifyInstance, input: Parameters<CompanionControlTunnelRegistry["readStreamRange"]>[0]): Promise<Buffer> {
+  const registry = registries.get(app.server);
+  if (!registry) return Promise.reject(new Error("Companion tunnel unavailable"));
+  return registry.readStreamRange(input);
+}
+
+export function cancelCompanionStream(app: FastifyInstance, companionId: string, sessionId: string, reason?: "client_closed" | "expired" | "superseded" | "error"): void {
+  registries.get(app.server)?.cancelStream(companionId, sessionId, reason);
 }

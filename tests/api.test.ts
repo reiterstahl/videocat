@@ -224,6 +224,74 @@ test("a paired Companion opens a control tunnel and revocation closes it", { ski
   }
 });
 
+test("a paired streaming Companion serves a bounded HTTP range without exposing a local path", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  const diskId = crypto.randomUUID();
+  const fileId = crypto.randomUUID();
+  let tunnel: WebSocket | null = null;
+  try {
+    const cookie = await authenticatedCookie();
+    const codeResponse = await app.inject({ method: "POST", url: "/api/companions/pairing-code", headers: webMutationHeaders(cookie), payload: {} });
+    const pairResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/pair",
+      payload: { code: codeResponse.json().code, companionId, companionName: "Streaming CI Companion", version: 15 }
+    });
+    assert.equal(pairResponse.statusCode, 200, pairResponse.body);
+    await prisma.disk.create({ data: { id: diskId, name: "Streaming CI Disk", volumeId: `stream-${diskId}` } });
+    await prisma.videoFile.create({
+      data: {
+        id: fileId,
+        diskId,
+        filename: "sample.mp4",
+        extension: ".mp4",
+        absolutePath: "X:\\Videos\\sample.mp4",
+        relativePath: "Videos/sample.mp4",
+        sizeBytes: 12
+      }
+    });
+    await prisma.companionAgent.update({ where: { installationId: companionId }, data: { mountedDiskIds: [diskId] } });
+
+    const serverUrl = await websocketServerUrl();
+    tunnel = new WebSocket(`${serverUrl.replace(/^http/, "ws")}/api/agent/tunnel`);
+    await once(tunnel, "open");
+    tunnel.send(JSON.stringify({
+      type: "tunnel.hello", protocolVersion: 1, companionId, credential: pairResponse.json().credential,
+      companionName: "Streaming CI Companion", version: 15, capabilities: { control: true, streamRead: true }
+    }));
+    await once(tunnel, "message");
+    tunnel.on("message", (message, isBinary) => {
+      if (isBinary) return;
+      const input = JSON.parse(String(message));
+      if (input.type === "stream.open") {
+        tunnel?.send(JSON.stringify({ type: "stream.ready", requestId: input.requestId, sessionId: input.sessionId, sizeBytes: 12, mimeType: "video/mp4" }));
+      }
+      if (input.type === "stream.range") {
+        const chunk = Buffer.from("abcdefghijkl".slice(input.offset, input.offset + input.length));
+        tunnel?.send(JSON.stringify({ type: "stream.chunk", requestId: input.requestId, sessionId: input.sessionId, sequence: 0, bytes: chunk.length, eof: input.offset + chunk.length >= 12 }));
+        tunnel?.send(chunk);
+      }
+    });
+
+    const sessionResponse = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId } });
+    assert.equal(sessionResponse.statusCode, 200, sessionResponse.body);
+    const sessionId = sessionResponse.json().session.id as string;
+    const content = await app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=2-8" } });
+    assert.equal(content.statusCode, 206, content.body);
+    assert.equal(content.headers["content-range"], "bytes 2-8/12");
+    assert.equal(content.headers["accept-ranges"], "bytes");
+    assert.equal(content.body, "cdefghi");
+    assert.equal(content.body.includes("X:\\Videos"), false);
+  } finally {
+    tunnel?.terminate();
+    await prisma.streamSession.deleteMany({ where: { videoFileId: fileId } });
+    await prisma.videoFile.deleteMany({ where: { id: fileId } });
+    await prisma.disk.deleteMany({ where: { id: diskId } });
+    await prisma.companionPairingCode.deleteMany({ where: { claimedById: companionId } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
+});
+
 test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const companionId = crypto.randomUUID();
   const response = await app.inject({
