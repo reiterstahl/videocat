@@ -22,6 +22,7 @@ import {
   Lock,
   LogOut,
   Menu,
+  MonitorPlay,
   Moon,
   Pause,
   Play,
@@ -388,6 +389,16 @@ type CompanionStatusResponse = {
   }>;
 };
 
+type StreamSessionResponse = {
+  session: {
+    id: string;
+    status: "opening" | "ready" | "streaming" | "failed" | "cancelled" | "expired";
+    expiresAt: string;
+    mimeType: string | null;
+    sizeBytes: number | null;
+  };
+};
+
 type MountedCompanionDisk = {
   root: string;
   diskId: string;
@@ -397,7 +408,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.15";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.16";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -4336,6 +4347,7 @@ export function App() {
           categories={facets.curationStatuses}
           companionOnline={companionOnline}
           companionLocalOnline={companionLocalOnline}
+          companionMountedDiskIds={companionMountedDiskIds}
           onToggleCategory={(categoryKey, enabled) => toggleFileCategory(selected, categoryKey, enabled)}
           onDeleted={removeDeletedFile}
         />
@@ -5231,6 +5243,7 @@ function FileDetail({
   categories,
   companionOnline,
   companionLocalOnline,
+  companionMountedDiskIds,
   onToggleCategory,
   onDeleted
 }: {
@@ -5245,6 +5258,7 @@ function FileDetail({
   categories: CurationCategory[];
   companionOnline: boolean;
   companionLocalOnline: boolean;
+  companionMountedDiskIds: string[];
   onToggleCategory: (categoryKey: string, enabled: boolean) => Promise<void> | void;
   onDeleted: (fileId: string) => void;
 }) {
@@ -5253,11 +5267,22 @@ function FileDetail({
   const [companionMessage, setCompanionMessage] = useState("");
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
+  const [remoteState, setRemoteState] = useState<"idle" | "preparing" | "playing" | "buffering" | "error">("idle");
+  const [remoteMessage, setRemoteMessage] = useState("");
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
   const localFolder = folderPath(file.absolutePath);
   const galleryThumb = galleryIndex == null ? null : file.thumbnails[galleryIndex];
   const canOpenPreviousImage = galleryIndex != null && galleryIndex > 0;
   const canOpenNextImage = galleryIndex != null && galleryIndex < file.thumbnails.length - 1;
+  const canStreamRemotely = companionOnline && companionMountedDiskIds.includes(file.diskId);
+
+  useEffect(() => () => {
+    if (remoteSessionId) {
+      void api(`/api/stream-sessions/${remoteSessionId}`, { method: "DELETE" }).catch(() => undefined);
+    }
+  }, [remoteSessionId]);
 
   function moveGallery(offset: -1 | 1) {
     setGalleryIndex((current) => {
@@ -5342,6 +5367,41 @@ function FileDetail({
     }
   }
 
+  async function stopRemotePlayback(message = "") {
+    const sessionId = remoteSessionId;
+    setRemoteUrl(null);
+    setRemoteSessionId(null);
+    setRemoteState("idle");
+    setRemoteMessage(message);
+    if (sessionId) {
+      try {
+        await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" });
+      } catch {
+        // The short-lived session will expire even when the Companion went offline.
+      }
+    }
+  }
+
+  async function startRemotePlayback() {
+    if (remoteState === "preparing") return;
+    if (remoteSessionId) await stopRemotePlayback();
+    setRemoteState("preparing");
+    setRemoteMessage("Preparando reproducción remota segura...");
+    try {
+      const response = await api<StreamSessionResponse>("/api/stream-sessions", {
+        method: "POST",
+        body: JSON.stringify({ fileId: file.id })
+      });
+      setRemoteSessionId(response.session.id);
+      setRemoteUrl(`/api/streams/${response.session.id}/content`);
+      setRemoteState("buffering");
+      setRemoteMessage("Conectado al Companion. Cargando video...");
+    } catch (error) {
+      setRemoteState("error");
+      setRemoteMessage(error instanceof Error ? error.message : "No se pudo iniciar la reproducción remota.");
+    }
+  }
+
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
       if (deletePromptOpen) {
@@ -5417,6 +5477,16 @@ function FileDetail({
                 <Play size={20} />
               </button>
               <button
+                className="detail-primary-action is-remote"
+                disabled={!canStreamRemotely || remoteState === "preparing"}
+                onClick={() => void startRemotePlayback()}
+                title={canStreamRemotely ? "Reproducir remotamente" : "El Companion y el disco deben estar conectados"}
+                aria-label="Reproducir remotamente"
+                type="button"
+              >
+                <MonitorPlay size={20} />
+              </button>
+              <button
                 className="detail-primary-action is-folder"
                 disabled={companionBusy === "open-folder"}
                 onClick={() => void callCompanion("open-folder")}
@@ -5460,6 +5530,37 @@ function FileDetail({
             </button>
           </div>
         </header>
+
+        {remoteUrl ? (
+          <section className="remote-player" aria-label="Reproducción remota">
+            <header className="remote-player-header">
+              <div>
+                <span className={`remote-player-status is-${remoteState}`} />
+                <strong>{remoteState === "playing" ? "Reproduciendo remotamente" : remoteState === "buffering" ? "Almacenando en búfer" : "Conectando al Companion"}</strong>
+              </div>
+              <button className="remote-stop-button" onClick={() => void stopRemotePlayback("Reproducción remota detenida.")} type="button">
+                Detener
+              </button>
+            </header>
+            <video
+              autoPlay
+              controls
+              playsInline
+              preload="metadata"
+              src={remoteUrl}
+              onPlaying={() => {
+                setRemoteState("playing");
+                setRemoteMessage("");
+              }}
+              onWaiting={() => setRemoteState("buffering")}
+              onCanPlay={() => setRemoteState((current) => current === "preparing" ? "buffering" : current)}
+              onError={() => {
+                setRemoteState("error");
+                setRemoteMessage("La reproducción remota se interrumpió. Verifica que el Companion y el disco sigan conectados.");
+              }}
+            />
+          </section>
+        ) : null}
 
         <div className="thumb-strip">
           {file.thumbnails.length > 0 ? (
@@ -5513,7 +5614,7 @@ function FileDetail({
           <Info label="Estado" value={file.scanStatus} />
         </div>
 
-        {companionMessage ? <div className="companion-status">{companionMessage}</div> : null}
+        {companionMessage || remoteMessage ? <div className={`companion-status ${remoteState === "error" ? "is-error" : ""}`}>{remoteMessage || companionMessage}</div> : null}
 
         {duplicates.length > 0 ? (
           <section className="duplicates">

@@ -65,7 +65,7 @@ Every message carries a `requestId`, `sessionId`, sequence number and explicit s
 
 ## Delivery Phases
 
-Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound control tunnel, and remote HTTP Range reads are implemented in `v0.1.15`. The next increment is the web playback experience.
+Current status: Companion pairing, encrypted individual credentials, per-Companion revocation, the outbound tunnel, HTTP Range reads, and the initial web playback experience are implemented in `v0.1.16`. The next increment is codec compatibility.
 
 ### Phase 0: Protocol And Threat Model — Complete In v0.1.14
 
@@ -87,12 +87,12 @@ Current status: Companion pairing, encrypted individual credentials, per-Compani
 - `GET` and `HEAD` return valid HTTP Range headers; seeking never buffers an entire video in memory.
 - One active playback per Companion, with Windows revalidating the drive, canonical path, extension and size.
 
-### Phase 3: Web Experience
+### Phase 3: Web Experience — Complete In v0.1.16
 
-- Enable remote Play only while the Companion and disk are available.
-- Prefer local opening when the browser is running on the same PC.
-- Show connection, buffering, throughput, disconnect and retry states without exposing paths.
-- Keep incompatible local actions explicitly unavailable on mobile.
+- The detail modal enables remote Play only while the Companion and disk report availability.
+- Local opening retains visual priority and remains available from the PC running the Companion.
+- The player shows connection, buffering, playback, stop and disconnect states without exposing local paths.
+- Local-only actions remain separate and are not enabled from mobile when the local listener is absent.
 
 ### Phase 4: Codec Compatibility
 

@@ -3849,6 +3849,11 @@ tbody tr.curation-row {
   background: #247ea8;
 }
 
+.detail-primary-action.is-remote {
+  border-color: #7658bd;
+  background: #6245a6;
+}
+
 .detail-primary-action.is-danger {
   border-color: #c94034;
   background: #d94538;
@@ -3880,6 +3885,81 @@ tbody tr.curation-row {
   padding: 10px 14px;
   background: #172026;
   flex: 0 0 auto;
+}
+
+.remote-player {
+  margin: 14px 18px 2px;
+  overflow: hidden;
+  border: 1px solid #34444d;
+  border-radius: 8px;
+  background: #0b1014;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.remote-player-header {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 13px;
+  background: #172026;
+  color: #e8f0f3;
+}
+
+.remote-player-header > div {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.84rem;
+}
+
+.remote-player-status {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #8899a3;
+}
+
+.remote-player-status.is-playing {
+  background: #20a464;
+  box-shadow: 0 0 0 4px rgba(32, 164, 100, 0.17);
+  animation: agent-pulse 1.45s ease-in-out infinite;
+}
+
+.remote-player-status.is-buffering,
+.remote-player-status.is-preparing {
+  background: var(--matrix-primary);
+  animation: agent-pulse 1.15s ease-in-out infinite;
+}
+
+.remote-player-status.is-error {
+  background: #d94538;
+}
+
+.remote-player video {
+  display: block;
+  width: 100%;
+  max-height: min(52dvh, 620px);
+  background: #050708;
+}
+
+.remote-stop-button {
+  min-height: 30px;
+  border: 1px solid #51616a;
+  border-radius: 5px;
+  background: #24323a;
+  color: #f4f7f8;
+  font-size: 0.76rem;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.remote-stop-button:hover {
+  border-color: #ff8a4c;
+  background: #3a2a22;
 }
 
 .thumb-button {
@@ -4048,6 +4128,12 @@ tbody tr.curation-row {
   font-size: 0.86rem;
   font-weight: 900;
   padding: 9px 11px;
+}
+
+.companion-status.is-error {
+  border-color: rgba(217, 69, 56, 0.5);
+  background: #fff0ee;
+  color: #9c2c24;
 }
 
 .duplicates {

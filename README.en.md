@@ -102,7 +102,7 @@ Main features:
 - Starts and keeps the local companion active.
 - Pairs with a one-time code and stores an individual credential encrypted by Windows.
 - Maintains an authenticated outbound control tunnel to VideoCAT without exposing Windows ports; Administration shows its state.
-- Supports authenticated remote HTTP Range reads through that tunnel, without exposing local paths or permanently copying videos to the server. The remote playback interface arrives in a later phase.
+- Supports authenticated remote playback through HTTP Range and the outbound tunnel, without exposing local paths or permanently copying videos to the server. The modal shows connection, buffering and disconnect states.
 - Configures `SERVER_URL`, `WEB_URL`, the optional legacy `AGENT_TOKEN`, and local options from a window.
 - Shows a live activity/log window.
 - Detects mounted drives that contain `.videocat-disk.json`.
@@ -126,12 +126,12 @@ Main features:
 
 ## Current Release
 
-The current release is `v0.1.15`.
+The current release is `v0.1.16`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.15.exe`
+- Windows Companion: `VideoCAT-Companion-0.1.16.exe`
 
 Recommended companion verification:
 
@@ -142,7 +142,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.15.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.16.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -355,7 +355,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.15.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.16.exe
 ```
 
 Usage:
@@ -494,8 +494,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.15
-reiterstahl/videocat-web:0.1.15
+reiterstahl/videocat-server:0.1.16
+reiterstahl/videocat-web:0.1.16
 ```
 
 `latest` tags are also published:
@@ -542,8 +542,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.15 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.15 -t reiterstahl/videocat-web:0.1.15 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.16 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.16 -t reiterstahl/videocat-web:0.1.16 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -556,10 +556,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.15
+  image: reiterstahl/videocat-server:0.1.16
 
 web:
-  image: reiterstahl/videocat-web:0.1.15
+  image: reiterstahl/videocat-web:0.1.16
 ```
 
 ## Main Endpoints

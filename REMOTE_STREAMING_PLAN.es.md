@@ -65,7 +65,7 @@ Cada mensaje lleva `requestId`, `sessionId`, número de secuencia y un límite e
 
 ## Fases De Implementación
 
-Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente de control y la lectura remota mediante HTTP Range están implementados en `v0.1.15`. El siguiente incremento es la experiencia de reproducción en la web.
+Estado actual: el emparejamiento, las credenciales individuales cifradas, la revocación, el túnel saliente, la lectura HTTP Range y la experiencia inicial de reproducción web están implementados en `v0.1.16`. El siguiente incremento es la compatibilidad de codecs.
 
 ### Fase 0: Protocolo Y Modelo De Amenazas — Completada En v0.1.14
 
@@ -87,12 +87,12 @@ Estado actual: el emparejamiento, las credenciales individuales cifradas, la rev
 - `GET` y `HEAD` devuelven cabeceras HTTP Range válidas; los saltos no cargan el video completo en memoria.
 - Una reproducción activa por Companion y revalidación de disco, ruta canónica, extensión y tamaño en Windows.
 
-### Fase 3: Experiencia Web
+### Fase 3: Experiencia Web — Completada En v0.1.16
 
-- Activar Reproducir remotamente solo cuando el Companion y el disco estén disponibles.
-- Preferir la apertura local cuando el navegador se ejecute en la misma PC.
-- Mostrar conexión, buffering, velocidad, desconexión y reintento sin revelar rutas.
-- Mantener explícitamente deshabilitadas las acciones locales incompatibles desde móvil.
+- El modal activa Reproducir remotamente solo cuando el Companion y el disco reportan conexión.
+- La apertura local conserva prioridad visual y sigue disponible desde la PC que ejecuta el Companion.
+- El reproductor muestra conexión, buffering, reproducción, detención y desconexión sin revelar rutas locales.
+- Las acciones locales continúan separadas y no se habilitan desde móvil si el listener local no existe.
 
 ### Fase 4: Compatibilidad De Codecs
 
