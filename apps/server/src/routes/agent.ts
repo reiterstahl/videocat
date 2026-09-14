@@ -225,8 +225,11 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
     await Promise.all(metrics);
-    const processDeletesRequestedAt = await appMetricValue("delete_process_requested_at");
-    return { ok: true, commands: { processDeletesRequestedAt } };
+    const [processDeletesRequestedAt, processDownloadsRequestedAt] = await Promise.all([
+      appMetricValue("delete_process_requested_at"),
+      appMetricValue("download_process_requested_at")
+    ]);
+    return { ok: true, commands: { processDeletesRequestedAt, processDownloadsRequestedAt } };
   });
 
   app.post("/api/agent/register-disk", { preHandler: requireAgentAuth }, async (request) => {

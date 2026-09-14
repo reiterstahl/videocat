@@ -5,9 +5,17 @@ import { listPackage } from "@electron/asar";
 const agentRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(agentRoot, "../..");
 const archivePath = path.join(agentRoot, "release", "win-unpacked", "resources", "app.asar");
+const generatedIconPath = path.join(agentRoot, "build", "icon.png");
+const packagedIconPath = path.join(agentRoot, "release", "win-unpacked", "resources", "icon.png");
 
 if (!fs.existsSync(archivePath)) {
   throw new Error(`Packaged Electron archive not found: ${archivePath}`);
+}
+if (!fs.existsSync(generatedIconPath)) {
+  throw new Error(`Generated Windows icon not found: ${generatedIconPath}`);
+}
+if (!fs.existsSync(packagedIconPath)) {
+  throw new Error(`Windows icon missing from packaged resources: ${packagedIconPath}`);
 }
 
 const archiveEntries = new Set(listPackage(archivePath).map((entry) => entry.replace(/\\/g, "/")));

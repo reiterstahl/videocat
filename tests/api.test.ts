@@ -75,7 +75,80 @@ test("agent routes require the agent token before reaching the database", async 
     payload: {}
   });
   assert.equal(response.statusCode, 401);
-  assert.deepEqual(response.json(), { message: "Invalid agent token" });
+  assert.deepEqual(response.json(), { message: "Invalid agent credentials" });
+});
+
+test("one-time pairing creates and revokes an individual Companion credential", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  const cookie = await authenticatedCookie();
+  try {
+    const codeResponse = await app.inject({
+      method: "POST",
+      url: "/api/companions/pairing-code",
+      headers: webMutationHeaders(cookie),
+      payload: {}
+    });
+    assert.equal(codeResponse.statusCode, 200, codeResponse.body);
+    assert.match(codeResponse.json().code, /^[A-Z0-9]{5}-[A-Z0-9]{5}$/);
+
+    const pairResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/pair",
+      payload: {
+        code: codeResponse.json().code,
+        companionId,
+        companionName: "Paired CI Companion",
+        version: 13
+      }
+    });
+    assert.equal(pairResponse.statusCode, 200, pairResponse.body);
+    assert.match(pairResponse.json().credential, /^vcat_agent_[A-Za-z0-9_-]+$/);
+
+    const reused = await app.inject({
+      method: "POST",
+      url: "/api/agent/pair",
+      payload: { code: codeResponse.json().code, companionId: crypto.randomUUID(), version: 13 }
+    });
+    assert.equal(reused.statusCode, 401);
+
+    const heartbeat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: {
+        authorization: `Bearer ${pairResponse.json().credential}`,
+        "x-videocat-companion-id": companionId
+      },
+      payload: { companionId, version: 13, mountedDiskIds: [] }
+    });
+    assert.equal(heartbeat.statusCode, 200, heartbeat.body);
+
+    const stored = await prisma.companionAgent.findUnique({ where: { installationId: companionId } });
+    assert.equal(stored?.authMode, "paired");
+    assert.ok(stored?.credentialHash);
+    assert.notEqual(stored?.credentialHash, pairResponse.json().credential);
+
+    const revoke = await app.inject({
+      method: "POST",
+      url: `/api/companions/${companionId}/revoke`,
+      headers: webMutationHeaders(cookie),
+      payload: {}
+    });
+    assert.equal(revoke.statusCode, 200, revoke.body);
+
+    const rejected = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: {
+        authorization: `Bearer ${pairResponse.json().credential}`,
+        "x-videocat-companion-id": companionId
+      },
+      payload: { companionId, mountedDiskIds: [] }
+    });
+    assert.equal(rejected.statusCode, 403);
+  } finally {
+    await prisma.companionPairingCode.deleteMany({ where: { claimedById: companionId } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
 });
 
 test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {

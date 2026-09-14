@@ -182,6 +182,7 @@ type CompanionHeartbeatResponse = {
   ok: boolean;
   commands?: {
     processDeletesRequestedAt?: number;
+    processDownloadsRequestedAt?: number;
   };
 };
 
@@ -195,7 +196,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 12;
+const companionVersion = 13;
 let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
@@ -224,11 +225,19 @@ function envSource(name: string): string {
 function agentTokenHint(): string {
   const files = loadedEnvFiles.length > 0 ? loadedEnvFiles.join(", ") : "ningun .env leido";
   return [
-    "El servidor rechazo AGENT_TOKEN.",
-    `AGENT_TOKEN usado por el agente: ${envSource("AGENT_TOKEN")}.`,
+    "El servidor rechazo las credenciales del agente.",
+    process.env.VIDEOCAT_AGENT_CREDENTIAL
+      ? "El Companion esta usando su credencial individual emparejada. Vuelve a emparejarlo si fue revocada."
+      : `AGENT_TOKEN usado por el agente: ${envSource("AGENT_TOKEN")}.`,
     `Archivos .env leidos: ${files}.`,
-    "Verifica que ese valor coincida exactamente con AGENT_TOKEN en el .env del servidor Docker."
+    process.env.VIDEOCAT_AGENT_CREDENTIAL
+      ? "Genera un codigo nuevo en Administracion y vuelve a emparejar este equipo."
+      : "Verifica que ese valor coincida exactamente con AGENT_TOKEN en el .env del servidor Docker."
   ].join(" ");
+}
+
+function agentCredential(): string | undefined {
+  return process.env.VIDEOCAT_AGENT_CREDENTIAL || process.env.AGENT_TOKEN;
 }
 
 async function loadEnvFile(): Promise<void> {
@@ -541,6 +550,11 @@ function companionName(): string | undefined {
 }
 
 async function ensureCompanionIdentity(): Promise<string> {
+  const injected = process.env.VIDEOCAT_COMPANION_ID?.trim();
+  if (injected && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(injected)) {
+    companionInstallationId = injected;
+    return injected;
+  }
   if (!companionInstallationId) companionInstallationId = await loadOrCreateCompanionIdentity(agentStateRoot());
   return companionInstallationId;
 }
@@ -562,6 +576,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   let downloadReviewRunning = false;
   let heartbeatRunning = false;
   let lastHandledDeleteRequestAt = 0;
+  let lastHandledDownloadRequestAt = 0;
 
   async function scanTarget(root: string, marker: DiskMarker, repairThumbnails: boolean): Promise<void> {
     await runScan({
@@ -676,6 +691,14 @@ async function startCompanionDiskWatcher(): Promise<void> {
         if (Date.now() - requestedAt <= 10 * 60 * 1000) {
           console.log("Orden web recibida: procesando borrados pendientes ahora.");
           await reviewPendingDeletes();
+        }
+      }
+      const downloadRequestedAt = response.commands?.processDownloadsRequestedAt ?? 0;
+      if (downloadRequestedAt > lastHandledDownloadRequestAt) {
+        lastHandledDownloadRequestAt = downloadRequestedAt;
+        if (Date.now() - downloadRequestedAt <= 10 * 60 * 1000) {
+          console.log("Orden web recibida: procesando descargas pendientes ahora.");
+          await reviewPendingDownloads();
         }
       }
     } catch (error) {
@@ -889,16 +912,17 @@ async function deleteLocalFile(filePath: string): Promise<void> {
 }
 
 function companionAgentApiEnabled(): boolean {
-  return Boolean(process.env.SERVER_URL && process.env.AGENT_TOKEN);
+  return Boolean(process.env.SERVER_URL && agentCredential());
 }
 
 async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promise<T> {
-  if (!process.env.SERVER_URL || !process.env.AGENT_TOKEN) {
-    throw new Error("SERVER_URL y AGENT_TOKEN son requeridos para la revision automatica.");
+  const credential = agentCredential();
+  if (!process.env.SERVER_URL || !credential) {
+    throw new Error("SERVER_URL y una credencial emparejada o AGENT_TOKEN son requeridos para la revision automatica.");
   }
 
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${process.env.AGENT_TOKEN}`);
+  headers.set("Authorization", `Bearer ${credential}`);
   if (companionInstallationId) headers.set("X-VideoCat-Companion-Id", companionInstallationId);
   if (!headers.has("Content-Type") && init.body) headers.set("Content-Type", "application/json");
 
@@ -943,7 +967,7 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
 async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
   if (process.env.COMPANION_AUTO_DELETE_MARKED === "false") return;
   if (!companionAgentApiEnabled()) {
-    console.log("Revision automatica sin borrar: faltan SERVER_URL o AGENT_TOKEN en el .env del agente.");
+    console.log("Revision automatica sin borrar: faltan SERVER_URL o credenciales del agente.");
     return;
   }
 
@@ -1103,7 +1127,7 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
       return;
     }
     if (!companionAgentApiEnabled()) {
-      console.log("Revision automatica sin descargar: faltan SERVER_URL o AGENT_TOKEN en el .env del agente.");
+      console.log("Revision automatica sin descargar: faltan SERVER_URL o credenciales del agente.");
       return;
     }
 
@@ -1544,8 +1568,13 @@ function requiredEnv(name: string): string {
 }
 
 function authHeaders(): HeadersInit {
+  const credential = agentCredential();
+  if (!credential) {
+    console.error("Falta una credencial emparejada o AGENT_TOKEN");
+    process.exit(1);
+  }
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${requiredEnv("AGENT_TOKEN")}`,
+    Authorization: `Bearer ${credential}`,
     "Content-Type": "application/json"
   };
   if (companionInstallationId) headers["X-VideoCat-Companion-Id"] = companionInstallationId;
@@ -1563,7 +1592,7 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
       });
       if (!response.ok) {
         const body = await response.text();
-        if (response.status === 401 && body.includes("Invalid agent token")) {
+        if (response.status === 401 && (body.includes("Invalid agent token") || body.includes("Invalid agent credentials"))) {
           throw new AgentAuthError(`${response.status} ${body}\n${agentTokenHint()}`);
         }
         throw new AgentRequestError(
@@ -1871,15 +1900,44 @@ function parseFps(value?: string): number | null {
 }
 
 async function ffprobe(filePath: string) {
-  const { stdout } = await execFileAsync(mediaToolPath("FFPROBE_PATH", "ffprobe"), [
-    "-v",
-    "quiet",
-    "-print_format",
-    "json",
-    "-show_format",
-    "-show_streams",
-    filePath
-  ], { maxBuffer: 1024 * 1024 * 20 });
+  const executable = mediaToolPath("FFPROBE_PATH", "ffprobe");
+  const maxAttempts = 3;
+  let stdout = "";
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      const delayMs = attempt === 2 ? 750 : 2_000;
+      console.log(`Reintentando metadatos ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)} en ${delayMs}ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    const tolerantProbe = attempt === maxAttempts
+      ? ["-analyzeduration", "100M", "-probesize", "100M"]
+      : [];
+    try {
+      const result = await execFileAsync(executable, [
+        "-v",
+        "error",
+        ...tolerantProbe,
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        filePath
+      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000 });
+      stdout = result.stdout;
+      if (attempt > 1) console.log(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)}.`);
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EACCES") break;
+    }
+  }
+
+  if (lastError) throw lastError;
 
   const raw = JSON.parse(stdout);
   const videoStream = raw.streams?.find((stream: Record<string, unknown>) => stream.codec_type === "video");
@@ -2188,9 +2246,11 @@ async function uploadThumbnail(diskId: string, relativePathValue: string, thumb:
 
   await api("/api/agent/thumbnails/upload", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${requiredEnv("AGENT_TOKEN")}`
-    },
+    headers: (() => {
+      const headers = new Headers(authHeaders());
+      headers.delete("Content-Type");
+      return headers;
+    })(),
     body: form
   });
 }

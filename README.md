@@ -100,7 +100,8 @@ Funciones principales:
 
 - Se ejecuta en segundo plano desde la bandeja de Windows.
 - Inicia y mantiene activo el companion local.
-- Configura `SERVER_URL`, `WEB_URL`, `AGENT_TOKEN` y opciones locales desde una ventana.
+- Se empareja con un código de un solo uso y guarda una credencial individual cifrada por Windows.
+- Configura `SERVER_URL`, `WEB_URL`, el `AGENT_TOKEN` heredado opcional y las opciones locales desde una ventana.
 - Muestra una ventana de actividad con logs en vivo.
 - Detecta discos montados que tengan `.videocat-disk.json`.
 - Permite añadir unidades o carpetas locales/de red como rutas monitoreadas desde la configuración del companion.
@@ -124,12 +125,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual es `v0.1.12`.
+La versión actual es `v0.1.13`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.12.exe`
+- Companion Windows: `VideoCAT-Companion-0.1.13.exe`
 
 Verificación recomendada del companion:
 
@@ -140,7 +141,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.12.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.13.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -354,15 +355,16 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.13.exe
 ```
 
 Uso:
 
 1. Abre el ejecutable.
 2. Clic derecho en el ícono de la bandeja.
-3. Entra a `Configuración...`.
-4. Guarda `SERVER_URL`, `WEB_URL` y `AGENT_TOKEN`.
+3. En VideoCAT web entra a `Administración`, genera un código de emparejamiento y mantenlo visible.
+4. Entra a `Configuración...` en el Companion, indica `SERVER_URL`, pega el código y pulsa `Emparejar`.
+5. La credencial individual queda cifrada para tu usuario de Windows; `AGENT_TOKEN` solo es necesario para clientes heredados.
 5. Usa `Ver actividad...` para revisar logs.
 6. Conecta discos marcados con `.videocat-disk.json`.
 
@@ -382,8 +384,9 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 ## Seguridad y privacidad
 
 - La web requiere login.
-- Las rutas del agente están protegidas por `AGENT_TOKEN`.
-- Cada instalación del Companion mantiene además una identidad UUID persistente en su directorio de estado; esta entrega la registra y permite revocarla sin rotar todavía el token compartido.
+- Cada instalación moderna del Companion usa una credencial individual generada mediante un código de un solo uso, almacenada cifrada con la protección del usuario de Windows y revocable desde Administración.
+- El servidor guarda únicamente el hash de cada credencial. `AGENT_TOKEN` sigue disponible temporalmente para clientes heredados durante la transición.
+- Cada instalación mantiene una identidad UUID persistente en su directorio de estado.
 - El companion local puede protegerse con `COMPANION_TOKEN`.
 - Las sesiones JWT restringen explícitamente el algoritmo de firma y caducan a las 12 horas.
 - Las operaciones web que modifican datos validan su origen contra `WEB_ORIGIN`.
@@ -402,7 +405,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 
 `PROTECTED_FOLDER_PATTERNS` es una lista separada por comas. Para una instalación pública o genérica puedes usar valores como `Private,Protected`. Para una instalación privada, define ahí los fragmentos reales de nombre de carpeta que quieres proteger sin modificar el código.
 
-Consulta [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada y [ROADMAP.es.md](ROADMAP.es.md) para conocer el plan de endurecimiento y fiabilidad pendiente.
+Consulta [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada, [ROADMAP.es.md](ROADMAP.es.md) para conocer el plan de endurecimiento y fiabilidad pendiente y [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md) para la propuesta de reproducción remota segura.
 
 ## Backups
 
@@ -489,8 +492,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.12
-reiterstahl/videocat-web:0.1.12
+reiterstahl/videocat-server:0.1.13
+reiterstahl/videocat-web:0.1.13
 ```
 
 También se publican etiquetas `latest`:
@@ -537,8 +540,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.12 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.12 -t reiterstahl/videocat-web:0.1.12 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.13 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.13 -t reiterstahl/videocat-web:0.1.13 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -551,10 +554,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.12
+  image: reiterstahl/videocat-server:0.1.13
 
 web:
-  image: reiterstahl/videocat-web:0.1.12
+  image: reiterstahl/videocat-web:0.1.13
 ```
 
 ## Endpoints principales

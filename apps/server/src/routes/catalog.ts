@@ -167,6 +167,7 @@ async function companionPresence(): Promise<{
     version: number;
     lastSeenAt: string;
     revokedAt: string | null;
+    authMode: string;
   }>;
 }> {
   const [lastSeenAt, version, mountedDiskCount, mountedSetting, agents] = await Promise.all([
@@ -176,7 +177,7 @@ async function companionPresence(): Promise<{
     appSettingValue(companionMountedDiskIdsKey),
     prisma.companionAgent.findMany({
       where: { revokedAt: null },
-      select: { installationId: true, name: true, version: true, lastSeenAt: true, revokedAt: true },
+      select: { installationId: true, name: true, version: true, lastSeenAt: true, revokedAt: true, authMode: true },
       orderBy: { lastSeenAt: "desc" },
       take: 20
     })
@@ -218,7 +219,8 @@ async function companionPresence(): Promise<{
       name: agent.name,
       version: agent.version,
       lastSeenAt: agent.lastSeenAt.toISOString(),
-      revokedAt: agent.revokedAt?.toISOString() ?? null
+      revokedAt: agent.revokedAt?.toISOString() ?? null,
+      authMode: agent.authMode
     }))
   };
 }
@@ -1849,6 +1851,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const body = downloadPauseSchema.parse(request.body);
     await setAppMetricValue("download_queue_paused", body.paused ? 1n : 0n);
     return { ok: true, paused: body.paused };
+  });
+
+  app.post("/api/downloads/process", { preHandler: requireWebAuth }, async (_request, reply) => {
+    const [presence, paused] = await Promise.all([
+      companionPresence(),
+      appMetricValue("download_queue_paused")
+    ]);
+    if (!presence.online) return reply.code(409).send({ message: "Companion is offline" });
+    if (presence.mountedDiskCount === 0) return reply.code(409).send({ message: "No connected disks" });
+    if (paused > 0) return reply.code(409).send({ message: "Download queue is paused" });
+
+    const requestedAt = Date.now();
+    await setAppMetricValue("download_process_requested_at", BigInt(requestedAt));
+    return { ok: true, requestedAt, connectedDiskCount: presence.mountedDiskCount };
   });
 
   app.delete("/api/downloads/queue", { preHandler: requireWebAuth }, async () => {

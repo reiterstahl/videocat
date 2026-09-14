@@ -4,6 +4,7 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { clearRateLimit, rateLimit } from "./security.js";
+import { constantTimeHashEqual, hashAgentSecret } from "./agent-credentials.js";
 
 const cookieName = "videocat_session";
 const protectedFolderCookieName = "videocat_protected_folder";
@@ -99,11 +100,6 @@ export async function requireAgentAuth(request: FastifyRequest, reply: FastifyRe
 
   const header = request.headers.authorization;
   const token = header?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!constantTimeEqual(token, env.AGENT_TOKEN)) {
-    await reply.code(401).send({ message: "Invalid agent token" });
-    return;
-  }
-
   const headerValue = request.headers["x-videocat-companion-id"];
   const companionId = typeof headerValue === "string" ? headerValue : undefined;
   if (companionId && !companionIdPattern.test(companionId)) {
@@ -111,15 +107,31 @@ export async function requireAgentAuth(request: FastifyRequest, reply: FastifyRe
     return;
   }
 
+  const legacyAuthenticated = constantTimeEqual(token, env.AGENT_TOKEN);
+  if (!legacyAuthenticated && !companionId) {
+    await reply.code(401).send({ message: "Invalid agent credentials" });
+    return;
+  }
+
   if (companionId) {
     const companion = await prisma.companionAgent.findUnique({
       where: { installationId: companionId },
-      select: { revokedAt: true }
+      select: { revokedAt: true, credentialHash: true }
     });
     if (companion?.revokedAt) {
       await reply.code(403).send({ message: "Companion identity revoked" });
       return;
     }
+    if (!legacyAuthenticated) {
+      const presentedHash = hashAgentSecret(token);
+      if (!companion?.credentialHash || !constantTimeHashEqual(presentedHash, companion.credentialHash)) {
+        await reply.code(401).send({ message: "Invalid agent credentials" });
+        return;
+      }
+    }
+  } else if (!legacyAuthenticated) {
+    await reply.code(401).send({ message: "Invalid agent credentials" });
+    return;
   }
 
   clearRateLimit(limitKey);

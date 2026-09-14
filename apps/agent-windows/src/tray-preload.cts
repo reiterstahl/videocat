@@ -2,6 +2,14 @@ import { contextBridge, ipcRenderer } from "electron";
 
 type TrayConfig = Record<string, string>;
 type TrayConfigSaveResult = { ok: true; path: string } | { ok: false; message: string };
+type TrayPairingResult = { ok: true; companionId: string; issuedAt: string } | { ok: false; message: string };
+type TrayPairingStatus = {
+  paired: boolean;
+  companionId: string | null;
+  serverUrl: string | null;
+  issuedAt: string | null;
+  encryptionAvailable: boolean;
+};
 type TrayDrive = {
   root: string;
   diskId?: string;
@@ -21,6 +29,10 @@ contextBridge.exposeInMainWorld("videocatConfig", {
   listDrives: (): Promise<TrayDrive[]> => ipcRenderer.invoke("config:list-drives") as Promise<TrayDrive[]>,
   save: (values: TrayConfig): Promise<TrayConfigSaveResult> =>
     ipcRenderer.invoke("config:save", values) as Promise<TrayConfigSaveResult>,
+  pairingStatus: (): Promise<TrayPairingStatus> =>
+    ipcRenderer.invoke("config:pairing-status") as Promise<TrayPairingStatus>,
+  pair: (code: string, values: TrayConfig): Promise<TrayPairingResult> =>
+    ipcRenderer.invoke("config:pair", code, values) as Promise<TrayPairingResult>,
   close: (): void => ipcRenderer.send("config:close")
 });
 

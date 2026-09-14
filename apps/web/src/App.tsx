@@ -304,6 +304,23 @@ type AdminDiskOverview = {
   recentActions: AdminDiskAction[];
 };
 
+type CompanionAdminItem = {
+  installationId: string;
+  name: string | null;
+  version: number;
+  mountedDiskCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+  credentialIssuedAt: string | null;
+  authMode: "legacy" | "paired" | string;
+};
+
+type CompanionPairingCode = {
+  code: string;
+  expiresAt: string;
+};
+
 type ProfileSecurityResponse = {
   hasPin: boolean;
   protectedFolderPatterns: string[];
@@ -357,6 +374,7 @@ type CompanionStatusResponse = {
     version: number;
     lastSeenAt: string;
     revokedAt: string | null;
+    authMode: string;
   }>;
 };
 
@@ -369,7 +387,7 @@ type MountedCompanionDisk = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.12";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.13";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -886,6 +904,10 @@ export function App() {
   const [filterWidth, setFilterWidth] = useState(storedFilterWidth);
   const [adminBusyDiskId, setAdminBusyDiskId] = useState<string | null>(null);
   const [adminDiskOverview, setAdminDiskOverview] = useState<AdminDiskOverview[]>([]);
+  const [adminCompanions, setAdminCompanions] = useState<CompanionAdminItem[]>([]);
+  const [companionPairingCode, setCompanionPairingCode] = useState<CompanionPairingCode | null>(null);
+  const [companionAdminBusy, setCompanionAdminBusy] = useState(false);
+  const [pendingCompanionRevocation, setPendingCompanionRevocation] = useState<string | null>(null);
   const [adminOverviewLoading, setAdminOverviewLoading] = useState(false);
   const [adminMessage, setAdminMessage] = useState("");
   const [adminError, setAdminError] = useState("");
@@ -1849,6 +1871,15 @@ export function App() {
     setDownloadProcessing(true);
     setDownloadMessage("");
     try {
+      if (!companionLocalOnline) {
+        const result = await api<{ ok: boolean; connectedDiskCount: number }>("/api/downloads/process", {
+          method: "POST"
+        });
+        setDownloadMessage(`Orden enviada al Companion de la PC (${result.connectedDiskCount} disco(s) conectado(s)).`);
+        window.setTimeout(() => void loadDownloadSummary(), 1800);
+        return;
+      }
+
       const port = localStorage.getItem("videocat-companion-port") ?? "29429";
       const token = localStorage.getItem("videocat-companion-token") ?? "";
       const headers = new Headers();
@@ -1869,8 +1900,12 @@ export function App() {
       }
       setDownloadMessage(`Procesamiento solicitado al companion (${result.processedDisks ?? 0} disco(s) revisados).`);
       window.setTimeout(() => void loadDownloadSummary(), 1200);
-    } catch {
-      setDownloadMessage("Companion no iniciado o bloqueado por el navegador.");
+    } catch (error) {
+      setDownloadMessage(
+        companionOnline
+          ? error instanceof Error ? error.message : "No se pudo enviar la orden al Companion de la PC."
+          : "Companion no iniciado o no sincronizado con el servidor."
+      );
     } finally {
       setDownloadProcessing(false);
       setDownloadActionBusy(false);
@@ -2157,6 +2192,36 @@ export function App() {
     setConnectedMessage("");
 
     try {
+      if (!companionLocalOnline) {
+        const [status, refreshed] = await Promise.all([
+          api<CompanionStatusResponse>("/api/companion/status"),
+          api<{ disks: Disk[] }>("/api/disks")
+        ]);
+        setCompanionOnline(status.online);
+        setCompanionVersion(status.online ? (status.version ?? 0) : 0);
+        setCompanionMountedDiskCount(status.online ? (status.mountedDiskCount ?? 0) : 0);
+        const mountedDiskIds = status.online ? (status.mountedDiskIds ?? []) : [];
+        setCompanionMountedDiskIds(mountedDiskIds);
+        setDisks(refreshed.disks);
+
+        if (!status.online) {
+          setConnectedMessage("Companion no iniciado o no sincronizado con el servidor");
+          return;
+        }
+
+        const matchingIds = refreshed.disks
+          .filter((disk) => mountedDiskIds.includes(disk.id))
+          .map((disk) => disk.id);
+        setConnectedDiskIds(matchingIds);
+        clearDiskScopedFilters();
+        setConnectedMessage(
+          matchingIds.length > 0
+            ? `${matchingIds.length} disco(s) detectado(s) por el Companion de la PC`
+            : "Companion activo, sin discos VideoCAT conectados"
+        );
+        return;
+      }
+
       const headers = new Headers();
       if (token) headers.set("X-VideoCat-Companion-Token", token);
       const response = await fetch(`http://127.0.0.1:${port}/mounted-disks`, { headers });
@@ -2190,8 +2255,14 @@ export function App() {
           ? `${matchingIds.length} disco(s) conectados detectados${unmatchedCount > 0 ? `; ${unmatchedCount} sin catalogo asociado` : ""}`
           : "No hay discos VideoCAT conectados detectados"
       );
-    } catch {
-      setConnectedMessage("Companion no iniciado");
+    } catch (error) {
+      setConnectedMessage(
+        companionOnline
+          ? error instanceof Error
+            ? `No se pudo consultar el Companion mediante el servidor: ${error.message}`
+            : "No se pudo consultar el Companion mediante el servidor"
+          : "Companion no iniciado o no sincronizado con el servidor"
+      );
     } finally {
       setDetectingConnected(false);
     }
@@ -2506,12 +2577,47 @@ export function App() {
     setAdminOverviewLoading(true);
     setAdminError("");
     try {
-      const response = await api<{ disks: AdminDiskOverview[] }>("/api/admin/disks/overview");
-      setAdminDiskOverview(response.disks);
+      const [overview, companions] = await Promise.all([
+        api<{ disks: AdminDiskOverview[] }>("/api/admin/disks/overview"),
+        api<{ companions: CompanionAdminItem[] }>("/api/companions")
+      ]);
+      setAdminDiskOverview(overview.disks);
+      setAdminCompanions(companions.companions);
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : "No se pudo cargar el estado de las unidades");
     } finally {
       setAdminOverviewLoading(false);
+    }
+  }
+
+  async function createCompanionPairingCode() {
+    setCompanionAdminBusy(true);
+    setAdminError("");
+    try {
+      const result = await api<CompanionPairingCode>("/api/companions/pairing-code", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      setCompanionPairingCode(result);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "No se pudo generar el codigo de emparejamiento");
+    } finally {
+      setCompanionAdminBusy(false);
+    }
+  }
+
+  async function revokeCompanion(id: string) {
+    setCompanionAdminBusy(true);
+    setAdminError("");
+    try {
+      await api(`/api/companions/${id}/revoke`, { method: "POST", body: JSON.stringify({}) });
+      setPendingCompanionRevocation(null);
+      setCompanionPairingCode(null);
+      await loadAdminDiskOverview();
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : "No se pudo revocar el Companion");
+    } finally {
+      setCompanionAdminBusy(false);
     }
   }
 
@@ -3878,6 +3984,84 @@ export function App() {
           <div className="admin-panel">
             {adminMessage ? <div className="admin-notice">{adminMessage}</div> : null}
             {adminError ? <div className="form-error">{adminError}</div> : null}
+            <section className="companion-admin-panel">
+              <div className="companion-admin-heading">
+                <div>
+                  <strong>Companions autorizados</strong>
+                  <span>Cada equipo puede usar una credencial individual, cifrada localmente y revocable.</span>
+                </div>
+                <button
+                  className="primary-button"
+                  disabled={companionAdminBusy}
+                  onClick={() => void createCompanionPairingCode()}
+                  type="button"
+                >
+                  <Shield size={16} />
+                  Generar codigo
+                </button>
+              </div>
+              {companionPairingCode ? (
+                <div className="companion-pairing-code">
+                  <div>
+                    <span>Codigo de un solo uso</span>
+                    <strong>{companionPairingCode.code}</strong>
+                    <small>Expira a las {new Date(companionPairingCode.expiresAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}.</small>
+                  </div>
+                  <button
+                    className="icon-button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(companionPairingCode.code);
+                      setAdminMessage("Codigo de emparejamiento copiado.");
+                    }}
+                    title="Copiar codigo"
+                    type="button"
+                  >
+                    <Copy size={18} />
+                  </button>
+                </div>
+              ) : null}
+              <div className="companion-admin-list">
+                {adminCompanions.map((companionItem) => {
+                  const isOnline = !companionItem.revokedAt && Date.now() - new Date(companionItem.lastSeenAt).getTime() <= 45_000;
+                  const confirming = pendingCompanionRevocation === companionItem.installationId;
+                  return (
+                    <article className="companion-admin-row" key={companionItem.installationId}>
+                      <span className={`companion-admin-dot ${isOnline ? "is-online" : ""}`} />
+                      <div className="companion-admin-identity">
+                        <strong>{companionItem.name || "VideoCAT Companion"}</strong>
+                        <span>{companionItem.installationId}</span>
+                      </div>
+                      <div className="companion-admin-meta">
+                        <span className={`companion-auth-badge is-${companionItem.revokedAt ? "revoked" : companionItem.authMode}`}>
+                          {companionItem.revokedAt ? "Revocado" : companionItem.authMode === "paired" ? "Individual" : "Token heredado"}
+                        </span>
+                        <small>v{companionItem.version} · {dateLabel(companionItem.lastSeenAt, locale)}</small>
+                      </div>
+                      {confirming ? (
+                        <div className="companion-revoke-confirm">
+                          <span>¿Revocar acceso?</span>
+                          <button disabled={companionAdminBusy} onClick={() => void revokeCompanion(companionItem.installationId)} type="button">Sí</button>
+                          <button onClick={() => setPendingCompanionRevocation(null)} type="button">No</button>
+                        </div>
+                      ) : (
+                        <button
+                          className="icon-button danger-icon"
+                          disabled={Boolean(companionItem.revokedAt) || companionAdminBusy}
+                          onClick={() => setPendingCompanionRevocation(companionItem.installationId)}
+                          title="Revocar Companion"
+                          type="button"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      )}
+                    </article>
+                  );
+                })}
+                {!adminOverviewLoading && adminCompanions.length === 0 ? (
+                  <div className="companion-admin-empty">Todavia no hay Companion registrados.</div>
+                ) : null}
+              </div>
+            </section>
             {adminOverviewLoading && adminDiskOverview.length === 0 ? <div className="loading">Cargando...</div> : null}
             <div className="admin-disk-grid">
               {adminDiskOverview.map((item) => {
@@ -4133,7 +4317,9 @@ export function App() {
           onNext={() => openAdjacentDetail(1)}
           onClose={() => setSelected(null)}
           categories={facets.curationStatuses}
-          onToggleCategory={(categoryKey, enabled) => void toggleFileCategory(selected, categoryKey, enabled)}
+          companionOnline={companionOnline}
+          companionLocalOnline={companionLocalOnline}
+          onToggleCategory={(categoryKey, enabled) => toggleFileCategory(selected, categoryKey, enabled)}
           onDeleted={removeDeletedFile}
         />
       ) : null}
@@ -4663,9 +4849,36 @@ function DuplicateAssistantModal({
   onSkip: () => void;
 }) {
   const group = session.groups[session.groupIndex];
-  const files = [session.keeper, session.challenger] as const;
   const recommendation = recommendDuplicateKeep(session.keeper, session.challenger);
+  const files = useMemo(
+    () => recommendation.fileId === session.keeper.id
+      ? [session.keeper, session.challenger]
+      : [session.challenger, session.keeper],
+    [recommendation.fileId, session.challenger, session.keeper]
+  );
   const currentComparison = Math.min(session.totalComparisons, session.completedComparisons + 1);
+  const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
+  const [hoveredFrameIndex, setHoveredFrameIndex] = useState(0);
+
+  useEffect(() => {
+    const images = files.flatMap((file) => file.thumbnails).map((thumbnail) => thumbnailSrc(thumbnail.url) ?? thumbnail.url);
+    for (const source of images) {
+      const image = new window.Image();
+      image.src = source;
+    }
+  }, [files]);
+
+  useEffect(() => {
+    setHoveredFrameIndex(0);
+    if (!hoveredFileId) return;
+    const hoveredFile = files.find((file) => file.id === hoveredFileId);
+    const frames = hoveredFile?.thumbnails ?? [];
+    if (frames.length < 2) return;
+    const timer = window.setInterval(() => {
+      setHoveredFrameIndex((current) => (current + 1) % frames.length);
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [files, hoveredFileId]);
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
@@ -4723,7 +4936,12 @@ function DuplicateAssistantModal({
             const recommended = recommendation.fileId === file.id;
             const selected = feedbackFileId === file.id;
             const rejected = feedbackFileId != null && !selected;
-            const thumbnail = mainThumbnail(file);
+            const frames = file.thumbnails;
+            const hovered = hoveredFileId === file.id;
+            const frame = hovered && frames.length > 0
+              ? frames[hoveredFrameIndex % frames.length]
+              : undefined;
+            const thumbnail = frame ? thumbnailSrc(frame.url) ?? frame.url : mainThumbnail(file);
             return (
               <button
                 aria-label={`${language === "en" ? "Keep" : "Mantener"} ${file.filename}`}
@@ -4736,11 +4954,21 @@ function DuplicateAssistantModal({
                 disabled={busy}
                 key={file.id}
                 onClick={() => onDecision(file.id)}
+                onMouseEnter={() => {
+                  setHoveredFileId(file.id);
+                  setHoveredFrameIndex(0);
+                }}
+                onMouseLeave={() => setHoveredFileId(null)}
+                onFocus={() => {
+                  setHoveredFileId(file.id);
+                  setHoveredFrameIndex(0);
+                }}
+                onBlur={() => setHoveredFileId(null)}
                 type="button"
               >
                 <div className="duplicate-assistant-media">
                   {thumbnail ? (
-                    <img src={thumbnail} alt="" decoding="async" fetchPriority="high" />
+                    <img key={`${file.id}-${frame?.kind ?? "main"}-${hoveredFrameIndex}`} src={thumbnail} alt="" decoding="async" fetchPriority="high" />
                   ) : (
                     <div className="duplicate-assistant-no-thumb"><Image size={36} /><span>Sin miniatura</span></div>
                   )}
@@ -4989,6 +5217,8 @@ function FileDetail({
   onNext,
   onClose,
   categories,
+  companionOnline,
+  companionLocalOnline,
   onToggleCategory,
   onDeleted
 }: {
@@ -5001,7 +5231,9 @@ function FileDetail({
   onNext: () => void;
   onClose: () => void;
   categories: CurationCategory[];
-  onToggleCategory: (categoryKey: string, enabled: boolean) => void;
+  companionOnline: boolean;
+  companionLocalOnline: boolean;
+  onToggleCategory: (categoryKey: string, enabled: boolean) => Promise<void> | void;
   onDeleted: (fileId: string) => void;
 }) {
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
@@ -5031,6 +5263,30 @@ function FileDetail({
     setCompanionMessage("");
 
     try {
+      if (!companionLocalOnline) {
+        if (action !== "delete-file") {
+          setCompanionMessage(
+            companionOnline
+              ? "El Companion está activo en la PC. Reproducir y abrir carpetas solo funciona desde ese equipo."
+              : "Companion no iniciado o no sincronizado con el servidor."
+          );
+          return;
+        }
+
+        await onToggleCategory("delete", true);
+        if (companionOnline) {
+          try {
+            await api("/api/review/deletions/process", { method: "POST" });
+            setCompanionMessage("Marcado para borrar. La orden fue enviada al Companion de la PC.");
+          } catch {
+            setCompanionMessage("Marcado para borrar. El Companion lo procesará en su revisión periódica.");
+          }
+        } else {
+          setCompanionMessage("Marcado para borrar. Se procesará cuando el Companion vuelva a conectarse.");
+        }
+        return;
+      }
+
       const headers = new Headers({ "Content-Type": "application/json" });
       if (token) headers.set("X-VideoCat-Companion-Token", token);
       const response = await fetch(`http://127.0.0.1:${port}/${action}`, {
@@ -5067,8 +5323,8 @@ function FileDetail({
       } else {
         setCompanionMessage(result.detail ? `No se pudo abrir localmente: ${result.detail}` : "No se pudo abrir localmente");
       }
-    } catch {
-      setCompanionMessage("Companion no iniciado");
+    } catch (error) {
+      setCompanionMessage(error instanceof Error ? error.message : "No se pudo completar la acción");
     } finally {
       setCompanionBusy(null);
     }

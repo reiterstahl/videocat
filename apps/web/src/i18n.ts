@@ -48,6 +48,20 @@ const en: Record<string, string> = {
   "Esquema de uso": "Usage map",
   "Auditoria": "Audit",
   "Administracion": "Administration",
+  "Companions autorizados": "Authorized Companions",
+  "Cada equipo puede usar una credencial individual, cifrada localmente y revocable.": "Each computer can use its own locally encrypted, revocable credential.",
+  "Generar codigo": "Generate code",
+  "Codigo de un solo uso": "One-time code",
+  "Copiar codigo": "Copy code",
+  "Codigo de emparejamiento copiado.": "Pairing code copied.",
+  "Individual": "Individual",
+  "Token heredado": "Legacy token",
+  "Revocado": "Revoked",
+  "Revocar Companion": "Revoke Companion",
+  "¿Revocar acceso?": "Revoke access?",
+  "Sí": "Yes",
+  "No": "No",
+  "Todavia no hay Companion registrados.": "No Companions have been registered yet.",
   "Uso físico": "Physical usage",
   "Sin reporte": "Not reported",
   "Usado": "Used",
@@ -364,6 +378,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Conectado · (.+)$/);
   if (match) return `Connected · ${match[1]}`;
+
+  match = text.match(/^Expira a las (.+)\.$/);
+  if (match) return `Expires at ${match[1]}.`;
 
   match = text.match(/^Orden enviada al companion para (\d+) disco\(s\)\. Los resultados aparecerán aquí\.$/);
   if (match) return `Command sent to the companion for ${match[1]} drive(s). Results will appear here.`;

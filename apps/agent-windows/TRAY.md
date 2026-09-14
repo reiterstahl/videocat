@@ -10,7 +10,8 @@ Esta app ejecuta VideoCAT desde la bandeja de Windows. Mantiene el companion loc
 - Permite quitar rutas manuales y marcar discos VideoCAT detectados como ignorados temporalmente.
 - Permite escanear un disco detectado desde el menú de bandeja.
 - Permite procesar borrados pendientes manualmente.
-- Permite configurar `SERVER_URL`, `WEB_URL`, `AGENT_TOKEN` y opciones del companion desde el menú de bandeja.
+- Permite emparejar cada instalación mediante un código de un solo uso y guardar su credencial cifrada por Windows.
+- Permite configurar `SERVER_URL`, `WEB_URL`, el `AGENT_TOKEN` heredado opcional y las opciones del companion desde el menú de bandeja.
 - Permite abrir `Ver actividad...` para revisar logs en vivo del companion, escaneos y borrados.
 - Mantiene las tareas periódicas existentes del companion:
   - detección de discos,
@@ -29,7 +30,7 @@ npm run tray -w @videocat/agent-windows
 
 El ícono queda en la bandeja. Clic izquierdo abre VideoCAT; clic derecho muestra el menú.
 
-En el menú usa `Configuración...` para guardar el token del agente y la URL del servidor. Al guardar, el companion se reinicia automáticamente.
+En VideoCAT web abre `Administración` y genera un código. Luego usa `Configuración...` en el Companion para indicar la URL del servidor y emparejarlo. Al completar el proceso, la credencial individual se guarda cifrada, se retira el token compartido de la configuración local y el Companion se reinicia automáticamente.
 
 ## Generar ejecutable
 
@@ -42,8 +43,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable, comprueba que todos los módulos runtime estén dentro de `app.asar` y genera los archivos SHA-256 y MD5. Los assets quedan en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.12.exe
-companion\VideoCAT-Companion-0.1.12.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.13.exe
+companion\VideoCAT-Companion-0.1.13.exe
 ```
 
 Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para crear el release de GitHub si hace falta y subir los tres assets.
@@ -61,7 +62,8 @@ Variables útiles:
 ```env
 SERVER_URL=http://192.168.1.x:8081
 WEB_URL=https://videocat.example.com
-AGENT_TOKEN=change-me-agent-token
+# Opcional para clientes heredados; el emparejamiento individual es preferible.
+AGENT_TOKEN=
 AGENT_STATE_DIR=
 FFMPEG_PATH=
 FFPROBE_PATH=
@@ -85,5 +87,6 @@ COMPANION_DISABLED_DISK_IDS=
 - El Companion usa FFmpeg para generar huellas visuales de 15 fotogramas. Los videos antiguos se analizan progresivamente, hasta 100 por cada revisión del disco.
 - El estado persistente del agente se guarda por defecto en `%LOCALAPPDATA%\VideoCAT\agent-state`; `AGENT_STATE_DIR` permite cambiarlo.
 - El Companion crea `companion-identity.json` en ese directorio para mantener una identidad UUID estable por instalación. No copies ese archivo a otro equipo.
+- La credencial individual se cifra mediante Electron `safeStorage` para el usuario actual de Windows. El servidor conserva solo su hash y puede revocarla desde `Administración`.
 - El escaneo sigue respetando `.videocat-disk.json` y sus `scanRoots`.
 - La app no se configura para iniciar con Windows automáticamente todavía.

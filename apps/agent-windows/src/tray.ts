@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
+import { loadOrCreateCompanionIdentity } from "./identity.js";
 
 type DiskMarker = {
   schemaVersion: 1;
@@ -68,8 +70,23 @@ const configKeys = [
 ] as const;
 type ConfigKey = typeof configKeys[number];
 type ConfigSaveResult = { ok: true; path: string } | { ok: false; message: string };
+type PairingResult = { ok: true; companionId: string; issuedAt: string } | { ok: false; message: string };
+type StoredCompanionCredential = {
+  schemaVersion: 1;
+  companionId: string;
+  serverUrl: string;
+  encryptedCredential: string;
+  issuedAt: string;
+};
+type PairingStatus = {
+  paired: boolean;
+  companionId: string | null;
+  serverUrl: string | null;
+  issuedAt: string | null;
+  encryptionAvailable: boolean;
+};
 
-const requiredConfigKeys = new Set<ConfigKey>(["SERVER_URL", "AGENT_TOKEN"]);
+const requiredConfigKeys = new Set<ConfigKey>(["SERVER_URL"]);
 const configDefaults: Partial<Record<ConfigKey, string>> = {
   COMPANION_PORT: "29429",
   COMPANION_DISK_POLL_MS: "5000",
@@ -92,6 +109,8 @@ let logWindow: BrowserWindow | null = null;
 let busy = false;
 let nextLogId = 1;
 let duplicateLaunchPending = false;
+let pairedCredential: string | null = null;
+let storedCredential: StoredCompanionCredential | null = null;
 const logEntries: LogEntry[] = [];
 const maxLogEntries = 1000;
 
@@ -101,6 +120,73 @@ function resourcesPath(): string {
 
 function userEnvPath(): string {
   return path.join(app.getPath("userData"), ".env");
+}
+
+function agentStateRoot(): string {
+  const configured = process.env.AGENT_STATE_DIR?.trim();
+  if (configured) return path.resolve(configured);
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  return path.join(localAppData, "VideoCAT", "agent-state");
+}
+
+function credentialPath(): string {
+  return path.join(app.getPath("userData"), "companion-credential.json");
+}
+
+function normalizeServerUrl(value: string): string {
+  const url = new URL(value);
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error("SERVER_URL debe iniciar con http:// o https://.");
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+async function loadStoredCredential(): Promise<void> {
+  pairedCredential = null;
+  storedCredential = null;
+  try {
+    const parsed = JSON.parse(await fs.readFile(credentialPath(), "utf8")) as Partial<StoredCompanionCredential>;
+    if (
+      parsed.schemaVersion !== 1
+      || typeof parsed.companionId !== "string"
+      || typeof parsed.serverUrl !== "string"
+      || typeof parsed.encryptedCredential !== "string"
+      || typeof parsed.issuedAt !== "string"
+      || !safeStorage.isEncryptionAvailable()
+    ) return;
+    const decrypted = safeStorage.decryptString(Buffer.from(parsed.encryptedCredential, "base64"));
+    if (!decrypted) return;
+    storedCredential = parsed as StoredCompanionCredential;
+    pairedCredential = decrypted;
+  } catch {
+    // Missing, unreadable or machine-incompatible credentials require pairing again.
+  }
+}
+
+async function saveStoredCredential(record: Omit<StoredCompanionCredential, "schemaVersion" | "encryptedCredential">, credential: string): Promise<void> {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Windows no permite cifrar la credencial en este momento. Inicia sesion normalmente e intenta de nuevo.");
+  }
+  const next: StoredCompanionCredential = {
+    schemaVersion: 1,
+    ...record,
+    encryptedCredential: safeStorage.encryptString(credential).toString("base64")
+  };
+  await fs.mkdir(path.dirname(credentialPath()), { recursive: true });
+  await fs.writeFile(credentialPath(), `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  storedCredential = next;
+  pairedCredential = credential;
+}
+
+async function pairingStatus(): Promise<PairingStatus> {
+  const companionId = await loadOrCreateCompanionIdentity(agentStateRoot());
+  return {
+    paired: Boolean(pairedCredential && storedCredential),
+    companionId,
+    serverUrl: storedCredential?.serverUrl ?? null,
+    issuedAt: storedCredential?.issuedAt ?? null,
+    encryptionAvailable: safeStorage.isEncryptionAvailable()
+  };
 }
 
 function preloadPath(): string {
@@ -234,9 +320,21 @@ function validatePositiveInteger(value: string, label: string): string | null {
   return null;
 }
 
-function validateConfig(values: Record<ConfigKey, string>): string | null {
+function hasPairedCredentialFor(serverUrl: string): boolean {
+  try {
+    return Boolean(pairedCredential && storedCredential && normalizeServerUrl(serverUrl) === storedCredential.serverUrl);
+  } catch {
+    return false;
+  }
+}
+
+function validateConfig(values: Record<ConfigKey, string>, allowMissingCredential = false): string | null {
   for (const key of requiredConfigKeys) {
     if (!values[key]) return `${key} es obligatorio.`;
+  }
+
+  if (!allowMissingCredential && !values.AGENT_TOKEN && !hasPairedCredentialFor(values.SERVER_URL)) {
+    return "Empareja este Companion o configura AGENT_TOKEN para continuar.";
   }
 
   return validateUrl(values.SERVER_URL, "SERVER_URL")
@@ -272,10 +370,63 @@ function agentScriptPath(): string {
 }
 
 function childEnv(): NodeJS.ProcessEnv {
+  let credential: string | undefined;
+  try {
+    if (
+      hasPairedCredentialFor(process.env.SERVER_URL ?? "")
+      && pairedCredential
+    ) credential = pairedCredential;
+  } catch {
+    credential = undefined;
+  }
   return {
     ...process.env,
+    ...(credential && storedCredential ? {
+      VIDEOCAT_AGENT_CREDENTIAL: credential,
+      VIDEOCAT_COMPANION_ID: storedCredential.companionId
+    } : {}),
     ELECTRON_RUN_AS_NODE: "1"
   };
+}
+
+async function pairCompanion(code: string, values: Record<string, string>): Promise<PairingResult> {
+  try {
+    const normalized = normalizeConfig(values);
+    const validationError = validateConfig(normalized, true);
+    if (validationError) return { ok: false, message: validationError };
+    const serverUrl = normalizeServerUrl(normalized.SERVER_URL);
+    const companionId = await loadOrCreateCompanionIdentity(
+      normalized.AGENT_STATE_DIR ? path.resolve(normalized.AGENT_STATE_DIR) : agentStateRoot()
+    );
+    const response = await fetch(`${serverUrl}/api/agent/pair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        companionId,
+        companionName: normalized.COMPANION_NAME || os.hostname(),
+        version: Number(app.getVersion().split(".").at(-1)) || 0
+      }),
+      signal: AbortSignal.timeout(20_000)
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      return { ok: false, message: body?.message ?? `El servidor rechazo el emparejamiento (${response.status}).` };
+    }
+    const body = await response.json() as { credential?: string; issuedAt?: string };
+    if (!body.credential || !body.issuedAt) return { ok: false, message: "El servidor devolvio una respuesta de emparejamiento incompleta." };
+
+    await saveStoredCredential({ companionId, serverUrl, issuedAt: body.issuedAt }, body.credential);
+    normalized.AGENT_TOKEN = "";
+    const target = await saveConfig(normalized);
+    addLog("info", "seguridad", `Companion emparejado con ${serverUrl}. Configuracion: ${target}`);
+    restartCompanion();
+    updateMenu();
+    notify("VideoCAT Companion", "Emparejamiento completado. La credencial individual se guardo cifrada.");
+    return { ok: true, companionId, issuedAt: body.issuedAt };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function notify(title: string, body: string): void {
@@ -492,28 +643,48 @@ function configHtml(): string {
   <title>VideoCAT Companion v${app.getVersion()}</title>
   <style>
     :root { color-scheme: dark; }
-    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #10171c; color: #eef5f7; }
-    main { padding: 22px; display: grid; gap: 14px; }
-    h1 { margin: 0; font-size: 20px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #0d1418; color: #eef5f7; }
+    main { width: min(920px, 100%); margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
+    h1 { margin: 0; font-size: 24px; }
+    h2 { margin: 0; font-size: 16px; }
     p { margin: 0; color: #9aabb4; line-height: 1.4; }
     label { display: grid; gap: 6px; color: #9aabb4; font-size: 12px; font-weight: 800; text-transform: uppercase; }
-    input, textarea, select { min-height: 38px; border: 1px solid #2b3941; border-radius: 7px; background: #151c21; color: #fff; padding: 0 10px; font: inherit; }
+    input, textarea, select { min-height: 42px; border: 1px solid #33444d; border-radius: 7px; background: #10191e; color: #fff; padding: 0 11px; font: inherit; }
     textarea { min-height: 72px; padding: 10px; resize: vertical; }
     input:focus, textarea:focus, select:focus { outline: 2px solid rgba(252, 97, 33, 0.45); border-color: #fc6121; }
     input:invalid { border-color: rgba(252, 97, 33, 0.8); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid { display: grid; gap: 14px; }
     .full { grid-column: 1 / -1; }
-    .monitor-panel { grid-column: 1 / -1; border: 1px solid #26343c; border-radius: 9px; padding: 12px; display: grid; gap: 10px; background: #0f171c; }
+    .settings-section { border: 1px solid #2b3941; border-radius: 8px; padding: 16px; display: grid; gap: 13px; background: #111a1f; }
+    .settings-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .section-head > div { display: grid; gap: 4px; }
+    .monitor-panel { border-color: #35464f; }
+    .pair-panel { border: 1px solid #3c4d56; border-left: 4px solid #fc6121; border-radius: 7px; padding: 13px; display: grid; gap: 10px; background: #0f181d; }
+    .pair-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .pair-head h2 { margin: 0 0 4px; font-size: 15px; }
+    .pair-status { color: #ffbd96; font-size: 12px; font-weight: 900; }
+    .pair-status.is-paired { color: #76d69d; }
+    .pair-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    .pair-code { letter-spacing: 2px; text-transform: uppercase; }
     .monitor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .monitor-head h2 { margin: 0; font-size: 15px; }
     .monitor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .monitor-group { display: grid; gap: 7px; }
+    .monitor-group-title { color: #d7e3e8; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+    .drive-picker { display: grid; gap: 7px; border: 1px solid #34454e; border-radius: 7px; background: #0c151a; padding: 10px; }
+    .drive-picker[hidden] { display: none; }
     .monitor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid #24343d; border-radius: 8px; padding: 10px; background: #131d23; }
     .monitor-row strong, .monitor-row span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .monitor-row strong { color: #fff; font-size: 13px; }
     .monitor-row span { color: #9aabb4; font-size: 12px; margin-top: 2px; }
     .monitor-row small { display: inline-block; color: #ffb98f; font-size: 11px; font-weight: 900; margin-top: 4px; text-transform: uppercase; }
     .monitor-empty { color: #78909c; font-size: 12px; font-weight: 800; border: 1px dashed #2b3941; border-radius: 8px; padding: 12px; }
-    .actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 8px; }
+    details.settings-section { padding: 0; }
+    details.settings-section > summary { cursor: pointer; padding: 15px 16px; color: #eef5f7; font-weight: 900; }
+    details.settings-section > .settings-section-grid { padding: 0 16px 16px; }
+    .actions { position: sticky; bottom: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; border: 1px solid #33444d; border-radius: 8px; background: rgba(15, 24, 29, 0.96); padding: 10px; backdrop-filter: blur(12px); }
     button { min-height: 38px; border: 0; border-radius: 7px; padding: 0 14px; font-weight: 900; color: #fff; background: #53636c; }
     button.primary { background: #fc6121; }
     button.danger { background: #b7352b; }
@@ -525,6 +696,13 @@ function configHtml(): string {
     #status.is-error { color: #ffb4a4; }
     #status.is-info { color: #b1c4ce; }
     .version { color: #fc6121; font-size: 12px; font-weight: 800; vertical-align: middle; }
+    @media (max-width: 680px) {
+      main { padding: 14px; }
+      .settings-section-grid { grid-template-columns: 1fr; }
+      .section-head, .monitor-head { flex-direction: column; }
+      .actions { grid-template-columns: 1fr 1fr; }
+      #status { grid-column: 1 / -1; }
+    }
   </style>
 </head>
 <body>
@@ -534,49 +712,89 @@ function configHtml(): string {
       <p>Configura la conexion que usa el agente para reportar escaneos y recibir tareas.</p>
     </div>
     <form id="form" class="grid">
-      <div class="hint full"><span class="required">*</span> Campos obligatorios para escanear y reportar al servidor.</div>
-      <label class="full">SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
-      <label class="full">WEB_URL<input name="WEB_URL" placeholder="https://cat.example.com" /></label>
-      <label class="full">AGENT_TOKEN <span class="required">*</span><input name="AGENT_TOKEN" required type="password" /></label>
-      <label class="full">AGENT_STATE_DIR<input name="AGENT_STATE_DIR" placeholder="Automatico: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
-      <label>FFMPEG_PATH<input name="FFMPEG_PATH" placeholder="ffmpeg o C:\\ffmpeg\\bin\\ffmpeg.exe" /></label>
-      <label>FFPROBE_PATH<input name="FFPROBE_PATH" placeholder="ffprobe o C:\\ffmpeg\\bin\\ffprobe.exe" /></label>
-      <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
-      <label>COMPANION_TOKEN<input name="COMPANION_TOKEN" type="password" /></label>
-      <label>COMPANION_NAME<input name="COMPANION_NAME" placeholder="Nombre opcional de este equipo" /></label>
-      <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>
-      <label>COMPANION_DISK_POLL_MS<input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
-      <label>COMPANION_SCAN_POLL_MS<input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
-      <label>COMPANION_HEARTBEAT_MS<input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
-      <label>COMPANION_DELETE_POLL_MS<input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
-      <label>COMPANION_DOWNLOAD_POLL_MS<input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
-      <label>COMPANION_DOWNLOAD_STALL_MS<input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
-      <label class="full">COMPANION_DOWNLOAD_DIR<input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
-      <section class="monitor-panel">
+      <section class="settings-section">
+        <div class="section-head">
+          <div><h2>Conexion con VideoCAT</h2><p class="hint">Define el servidor y autoriza este equipo con una credencial propia.</p></div>
+          <span class="hint"><span class="required">*</span> Obligatorio</span>
+        </div>
+        <div class="settings-section-grid">
+          <label>SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
+          <label>WEB_URL<input name="WEB_URL" placeholder="https://cat.example.com" /></label>
+          <label>COMPANION_NAME<input name="COMPANION_NAME" placeholder="Nombre opcional de este equipo" /></label>
+          <label>AGENT_TOKEN <span class="hint">(solo clientes heredados)</span><input name="AGENT_TOKEN" type="password" /></label>
+        </div>
+        <div class="pair-panel">
+          <div class="pair-head">
+            <div>
+              <h2>Credencial individual</h2>
+              <p class="hint">Genera un codigo en VideoCAT: Administracion &gt; Companions. Solo se usa una vez.</p>
+            </div>
+            <span id="pairStatus" class="pair-status">Sin emparejar</span>
+          </div>
+          <div class="pair-controls">
+            <label>CODIGO DE EMPAREJAMIENTO<input id="pairCode" class="pair-code" maxlength="11" placeholder="ABCDE-23456" autocomplete="one-time-code" /></label>
+            <button type="button" id="pair" class="primary">Emparejar</button>
+          </div>
+          <div id="pairDetail" class="hint"></div>
+        </div>
+      </section>
+
+      <section class="settings-section monitor-panel">
         <div class="monitor-head">
           <div>
             <h2>Rutas monitoreadas</h2>
-            <p class="hint">Unidades y carpetas que el companion revisara automaticamente. Pueden ser rutas locales o de red.</p>
+            <p class="hint">Unidades y carpetas locales o de red que el Companion revisara automaticamente.</p>
           </div>
           <div class="monitor-actions">
             <button type="button" id="addFolder" class="ghost">Añadir carpeta...</button>
-            <button type="button" id="addDrive" class="ghost">Añadir unidad...</button>
+            <button type="button" id="addDrive" class="primary">Añadir unidad...</button>
           </div>
         </div>
-        <div id="targetList"></div>
-        <div>
-          <p class="hint">Discos VideoCAT detectados con marcador. Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
+        <div id="drivePicker" class="drive-picker" hidden></div>
+        <div class="monitor-group">
+          <span class="monitor-group-title">Rutas añadidas manualmente</span>
+          <div id="targetList"></div>
+        </div>
+        <div class="monitor-group">
+          <span class="monitor-group-title">Discos VideoCAT detectados</span>
+          <p class="hint">Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
           <div id="autoDiskList"></div>
         </div>
         <textarea name="COMPANION_MONITORED_TARGETS" id="COMPANION_MONITORED_TARGETS" hidden></textarea>
         <input name="COMPANION_DISABLED_DISK_IDS" id="COMPANION_DISABLED_DISK_IDS" hidden />
       </section>
-      <label>TRAY_DISK_POLL_MS<input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
-      <label>COMPANION_AUTO_DELETE_MARKED<input name="COMPANION_AUTO_DELETE_MARKED" placeholder="true" /></label>
-      <div id="status" class="full"></div>
-      <div class="actions full">
+
+      <section class="settings-section">
+        <div class="section-head"><div><h2>Archivos y herramientas</h2><p class="hint">Destino de las copias y rutas opcionales de FFmpeg.</p></div></div>
+        <div class="settings-section-grid">
+          <label class="full">COMPANION_DOWNLOAD_DIR<input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
+          <label>FFMPEG_PATH<input name="FFMPEG_PATH" placeholder="Deteccion automatica" /></label>
+          <label>FFPROBE_PATH<input name="FFPROBE_PATH" placeholder="Deteccion automatica" /></label>
+          <label class="full">AGENT_STATE_DIR<input name="AGENT_STATE_DIR" placeholder="Automatico: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
+        </div>
+      </section>
+
+      <details class="settings-section">
+        <summary>Opciones avanzadas</summary>
+        <div class="settings-section-grid">
+          <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
+          <label>COMPANION_TOKEN<input name="COMPANION_TOKEN" type="password" /></label>
+          <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>
+          <label>COMPANION_DISK_POLL_MS<input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
+          <label>COMPANION_SCAN_POLL_MS<input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
+          <label>COMPANION_HEARTBEAT_MS<input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
+          <label>COMPANION_DELETE_POLL_MS<input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
+          <label>COMPANION_DOWNLOAD_POLL_MS<input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
+          <label>COMPANION_DOWNLOAD_STALL_MS<input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
+          <label>TRAY_DISK_POLL_MS<input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
+          <label>COMPANION_AUTO_DELETE_MARKED<input name="COMPANION_AUTO_DELETE_MARKED" placeholder="true" /></label>
+        </div>
+      </details>
+
+      <div class="actions">
+        <div id="status"></div>
         <button type="button" id="close">Cerrar</button>
-        <button type="submit" class="primary">Guardar</button>
+        <button type="submit" class="primary">Guardar cambios</button>
       </div>
     </form>
   </main>
@@ -585,8 +803,12 @@ function configHtml(): string {
     const status = document.getElementById("status");
     const targetList = document.getElementById("targetList");
     const autoDiskList = document.getElementById("autoDiskList");
+    const drivePicker = document.getElementById("drivePicker");
     const targetInput = document.getElementById("COMPANION_MONITORED_TARGETS");
     const disabledInput = document.getElementById("COMPANION_DISABLED_DISK_IDS");
+    const pairStatus = document.getElementById("pairStatus");
+    const pairDetail = document.getElementById("pairDetail");
+    const pairCode = document.getElementById("pairCode");
     let targets = [];
     let disabledDiskIds = new Set();
     let availableDrives = [];
@@ -594,6 +816,22 @@ function configHtml(): string {
     function setStatus(message, type = "info") {
       status.textContent = message;
       status.className = type === "error" ? "is-error" : type === "success" ? "" : "is-info";
+    }
+
+    async function refreshPairingStatus() {
+      try {
+        const pairing = await window.videocatConfig.pairingStatus();
+        pairStatus.textContent = pairing.paired ? "Emparejado" : "Sin emparejar";
+        pairStatus.className = pairing.paired ? "pair-status is-paired" : "pair-status";
+        pairDetail.textContent = pairing.paired
+          ? "Credencial cifrada para " + pairing.serverUrl + ". ID: " + pairing.companionId
+          : pairing.encryptionAvailable
+            ? "Este equipo todavia usa el token compartido o no tiene credenciales."
+            : "El cifrado seguro de Windows no esta disponible en esta sesion.";
+      } catch (error) {
+        pairStatus.textContent = "Estado desconocido";
+        pairDetail.textContent = error?.message || "No se pudo consultar el emparejamiento.";
+      }
     }
 
     function newId() {
@@ -622,8 +860,74 @@ function configHtml(): string {
       disabledInput.value = [...disabledDiskIds].join(",");
     }
 
+    function hasManualTarget(targetPath) {
+      const normalized = String(targetPath).replace(/[\\/]+$/, "").toLowerCase();
+      return targets.some((target) => String(target.path).replace(/[\\/]+$/, "").toLowerCase() === normalized);
+    }
+
+    function addManualTarget(targetPath, name) {
+      if (hasManualTarget(targetPath)) {
+        setStatus("Esta ruta ya se encuentra en monitoreo.", "info");
+        return false;
+      }
+      targets.push({ id: newId(), name: String(name).trim(), path: targetPath, enabled: true });
+      renderMonitors();
+      setStatus("Ruta añadida. Guarda los cambios para iniciar su monitoreo.", "success");
+      return true;
+    }
+
+    function renderDrivePicker() {
+      drivePicker.textContent = "";
+      if (availableDrives.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "monitor-empty";
+        empty.textContent = "No se detectaron unidades accesibles. Conecta una unidad y pulsa Añadir unidad de nuevo.";
+        drivePicker.appendChild(empty);
+        return;
+      }
+
+      for (const drive of availableDrives) {
+        const row = document.createElement("div");
+        row.className = "monitor-row";
+        const main = document.createElement("div");
+        const name = document.createElement("strong");
+        name.textContent = drive.diskName || drive.root;
+        const location = document.createElement("span");
+        location.textContent = drive.diskId ? drive.root + " · Disco VideoCAT" : drive.root + " · Unidad disponible";
+        main.append(name, location);
+
+        const action = document.createElement("button");
+        action.type = "button";
+        const alreadyManual = hasManualTarget(drive.root);
+        const ignored = drive.diskId && disabledDiskIds.has(drive.diskId);
+        if (drive.diskId && !ignored) {
+          action.textContent = "Automatico";
+          action.disabled = true;
+          action.className = "ghost";
+        } else if (drive.diskId && ignored) {
+          action.textContent = "Monitorear";
+          action.className = "primary";
+          action.addEventListener("click", () => {
+            disabledDiskIds.delete(drive.diskId);
+            renderMonitors();
+            setStatus("Disco VideoCAT activado. Guarda los cambios para aplicar.", "success");
+          });
+        } else {
+          action.textContent = alreadyManual ? "Añadida" : "Añadir";
+          action.className = alreadyManual ? "ghost" : "primary";
+          action.disabled = alreadyManual;
+          action.addEventListener("click", () => {
+            if (addManualTarget(drive.root, drive.root.replace(/\\$/, ""))) drivePicker.hidden = true;
+          });
+        }
+        row.append(main, action);
+        drivePicker.appendChild(row);
+      }
+    }
+
     function renderMonitors() {
       syncMonitorInputs();
+      renderDrivePicker();
       targetList.textContent = "";
       if (targets.length === 0) {
         const empty = document.createElement("div");
@@ -715,6 +1019,7 @@ function configHtml(): string {
         targets = normalizeTargets(config.COMPANION_MONITORED_TARGETS);
         disabledDiskIds = new Set(String(config.COMPANION_DISABLED_DISK_IDS || "").split(",").map((item) => item.trim()).filter(Boolean));
         await refreshAvailableDrives();
+        await refreshPairingStatus();
       } catch (error) {
         setStatus(error?.message || "No se pudo cargar la configuracion.", "error");
       }
@@ -722,6 +1027,34 @@ function configHtml(): string {
 
     void loadConfig();
     document.getElementById("close").addEventListener("click", () => window.videocatConfig?.close());
+    document.getElementById("pair").addEventListener("click", async () => {
+      if (!window.videocatConfig?.pair) return;
+      const code = String(pairCode.value || "").trim();
+      if (!code) {
+        setStatus("Ingresa el codigo generado desde Administracion.", "error");
+        pairCode.focus();
+        return;
+      }
+      syncMonitorInputs();
+      const button = document.getElementById("pair");
+      button.disabled = true;
+      setStatus("Emparejando con el servidor...", "info");
+      try {
+        const result = await window.videocatConfig.pair(code, Object.fromEntries(new FormData(form).entries()));
+        if (!result.ok) {
+          setStatus(result.message || "No se pudo emparejar.", "error");
+          return;
+        }
+        pairCode.value = "";
+        form.elements.namedItem("AGENT_TOKEN").value = "";
+        await refreshPairingStatus();
+        setStatus("Emparejamiento completado. Companion reiniciado con su credencial individual.", "success");
+      } catch (error) {
+        setStatus(error?.message || "No se pudo emparejar.", "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
     document.getElementById("addFolder").addEventListener("click", async () => {
       if (!window.videocatConfig?.chooseFolder) {
         setStatus("No se pudo abrir el selector de carpetas.", "error");
@@ -730,35 +1063,16 @@ function configHtml(): string {
       const folder = await window.videocatConfig.chooseFolder();
       if (!folder) return;
       const defaultName = folder.split(/[\\\\/]/).filter(Boolean).pop() || folder;
-      const name = prompt("Nombre para mostrar en VideoCAT:", defaultName);
-      if (!name) return;
-      targets.push({ id: newId(), name: name.trim(), path: folder, enabled: true });
-      renderMonitors();
+      addManualTarget(folder, defaultName);
     });
     document.getElementById("addDrive").addEventListener("click", async () => {
+      drivePicker.hidden = false;
+      setStatus("Buscando unidades conectadas...", "info");
       await refreshAvailableDrives();
-      const choices = availableDrives.map((drive, index) => {
-        const marker = drive.diskName ? " - " + drive.diskName : "";
-        return (index + 1) + ". " + drive.root + marker;
-      });
-      if (choices.length === 0) {
-        setStatus("No hay unidades conectadas para añadir.", "error");
-        return;
-      }
-      const answer = prompt("Elige la unidad por numero:\\n\\n" + choices.join("\\n"));
-      const index = Number(answer) - 1;
-      const drive = availableDrives[index];
-      if (!drive) return;
-      if (drive.diskId) {
-        disabledDiskIds.delete(drive.diskId);
-        setStatus("Disco VideoCAT marcado para monitoreo automatico.", "success");
-        renderMonitors();
-        return;
-      }
-      const name = prompt("Nombre para mostrar en VideoCAT:", drive.root.replace(/\\\\$/, ""));
-      if (!name) return;
-      targets.push({ id: newId(), name: name.trim(), path: drive.root, enabled: true });
-      renderMonitors();
+      setStatus(
+        availableDrives.length > 0 ? "Elige una unidad de la lista." : "No se detectaron unidades accesibles.",
+        availableDrives.length > 0 ? "info" : "error"
+      );
     });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -797,8 +1111,10 @@ function openConfigWindow(): void {
   }
 
   configWindow = new BrowserWindow({
-    width: 680,
-    height: 620,
+    width: 900,
+    height: 780,
+    minWidth: 680,
+    minHeight: 620,
     title: `VideoCAT Companion v${app.getVersion()}`,
     icon: iconPath() || undefined,
     resizable: true,
@@ -834,11 +1150,11 @@ function logHtml(): string {
     button { min-height: 34px; border: 1px solid #33444e; border-radius: 7px; padding: 0 12px; font-weight: 900; color: #fff; background: #162128; }
     button.primary { border-color: #fc6121; background: #fc6121; }
     #log { overflow: auto; padding: 12px 14px; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; line-height: 1.45; }
-    .row { display: grid; grid-template-columns: 74px 86px 110px 1fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+    .row { display: grid; grid-template-columns: 74px 86px 110px 1fr; gap: 10px; align-items: start; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
     .time { color: #78909c; }
     .source { color: #dce8ed; font-weight: 800; }
     .message { color: #c8d5db; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .level { width: max-content; min-width: 58px; text-align: center; border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 900; text-transform: uppercase; }
+    .level { width: 64px; height: 22px; display: inline-flex; align-items: center; justify-content: center; align-self: start; border: 1px solid transparent; border-radius: 4px; padding: 0 7px; font-size: 11px; line-height: 1; font-weight: 900; text-transform: uppercase; }
     .info .level { color: #bde8cd; background: rgba(39, 174, 96, 0.16); }
     .warn .level { color: #ffdf8f; background: rgba(245, 158, 11, 0.18); }
     .error .level { color: #ffb4a4; background: rgba(239, 68, 68, 0.2); }
@@ -951,9 +1267,9 @@ function openLogWindow(): void {
 
 function iconPath(): string {
   const candidates = app.isPackaged
-    ? [path.join(resourcesPath(), "logo.png"), path.join(resourcesPath(), "icon.ico")]
+    ? [path.join(resourcesPath(), "icon.png"), path.join(resourcesPath(), "icon.ico")]
     : [
-        path.resolve(process.cwd(), "logo.png"),
+        path.resolve(process.cwd(), "apps", "agent-windows", "build", "icon.png"),
         path.resolve(process.cwd(), "apps", "agent-windows", "build", "icon.ico"),
         path.resolve(process.cwd(), "../../logo.png")
       ];
@@ -1052,8 +1368,11 @@ async function main(): Promise<void> {
   if (duplicateLaunchPending) notifyAlreadyRunning();
   app.setLoginItemSettings({ openAtLogin: false });
   await loadEnvFile();
+  await loadStoredCredential();
 
   ipcMain.handle("config:load", () => currentConfig());
+  ipcMain.handle("config:pairing-status", () => pairingStatus());
+  ipcMain.handle("config:pair", (_event, code: string, values: Record<string, string>) => pairCompanion(code, values));
   ipcMain.handle("config:choose-folder", async () => {
     const options: OpenDialogOptions = {
       title: "Seleccionar carpeta para monitorear",

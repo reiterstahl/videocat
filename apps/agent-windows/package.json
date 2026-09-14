@@ -1,6 +1,6 @@
 {
   "name": "@videocat/agent-windows",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "VideoCAT Windows agent and tray companion.",
   "author": "VideoCAT contributors",
   "private": true,
@@ -25,7 +25,8 @@
     "process-deletes": "node dist/index.js process-deletes",
     "pretray": "npm run ensure-tray-runtime",
     "tray": "electron dist/tray.js",
-    "prepackage:tray": "npm run ensure-tray-runtime",
+    "build:icon": "node scripts/build-icon.mjs",
+    "prepackage:tray": "npm run ensure-tray-runtime && npm run build:icon",
     "package:tray": "electron-builder --win portable && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs",
     "preinit-disk": "npm run ensure-runtime",
@@ -67,8 +68,8 @@
     ],
     "extraResources": [
       {
-        "from": "../../logo.png",
-        "to": "logo.png"
+        "from": "build/icon.png",
+        "to": "icon.png"
       },
       {
         "from": "build/icon.ico",
@@ -76,7 +77,7 @@
       }
     ],
     "win": {
-      "icon": "../../logo.png",
+      "icon": "build/icon.png",
       "target": [
         "portable"
       ]
@@ -87,6 +88,7 @@
     "@types/node": "^20.14.12",
     "electron": "42.11.3",
     "electron-builder": "^26.15.3",
+    "pngjs": "7.0.0",
     "tsx": "^4.23.13",
     "typescript": "^5.5.4"
   }

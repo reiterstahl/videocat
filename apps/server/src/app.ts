@@ -8,6 +8,7 @@ import { applySecurityHeaders, requireTrustedOrigin } from "./lib/security.js";
 import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
 import { catalogRoutes } from "./routes/catalog.js";
+import { companionRoutes } from "./routes/companions.js";
 
 export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
@@ -49,6 +50,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   app.get("/api/health", async () => ({ ok: true }));
   await app.register(authRoutes);
+  await app.register(companionRoutes);
   await app.register(agentRoutes);
   await app.register(catalogRoutes);
 

@@ -5,11 +5,13 @@ import test from "node:test";
 test("packages every generated Companion runtime module and verifies app.asar", () => {
   const packageJson = JSON.parse(fs.readFileSync("apps/agent-windows/package.json", "utf8")) as {
     scripts: Record<string, string>;
-    build: { files: Array<string | object> };
+    build: { files: Array<string | object>; win: { icon: string } };
   };
 
   assert.ok(packageJson.build.files.includes("dist/*.js"));
   assert.ok(packageJson.build.files.includes("dist/*.cjs"));
   assert.match(packageJson.scripts["package:tray"], /verify:package/);
+  assert.match(packageJson.scripts["prepackage:tray"], /build:icon/);
+  assert.equal(packageJson.build.win.icon, "build/icon.png");
   assert.match(packageJson.scripts.build, /npm run clean/);
 });

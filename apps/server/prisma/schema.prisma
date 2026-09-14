@@ -218,11 +218,26 @@ model CompanionAgent {
   firstSeenAt      DateTime  @default(now())
   lastSeenAt       DateTime  @default(now())
   revokedAt        DateTime?
+  credentialHash   String?   @unique
+  credentialIssuedAt DateTime?
+  authMode         String    @default("legacy")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@index([lastSeenAt])
   @@index([revokedAt])
+}
+
+model CompanionPairingCode {
+  id          String    @id @default(uuid()) @db.Uuid
+  codeHash    String    @unique
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  claimedAt   DateTime?
+  claimedById String?   @db.Uuid
+
+  @@index([expiresAt])
+  @@index([claimedAt])
 }
 
 model Thumbnail {
