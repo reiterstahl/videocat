@@ -4171,8 +4171,8 @@ tbody tr.curation-row {
 
 .duplicate-assistant-choice:hover,
 .duplicate-assistant-choice:focus-visible {
-  border-color: #20a464;
-  box-shadow: 0 0 0 3px rgba(32, 164, 100, 0.16), 0 14px 32px rgba(13, 22, 28, 0.13);
+  border-color: #d7dee2;
+  box-shadow: 0 0 0 3px rgba(215, 222, 226, 0.16), 0 14px 32px rgba(13, 22, 28, 0.13);
   outline: none;
   transform: translateY(-2px);
 }
@@ -4263,23 +4263,6 @@ tbody tr.curation-row {
 
 .duplicate-selection-feedback.is-delete {
   background: rgba(173, 43, 36, 0.9);
-}
-
-.duplicate-recommendation-badge {
-  position: absolute;
-  z-index: 3;
-  top: 10px;
-  left: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 6px;
-  background: rgba(217, 77, 20, 0.94);
-  color: #ffffff;
-  padding: 7px 9px;
-  font-size: 0.76rem;
-  font-weight: 1000;
 }
 
 .duplicate-assistant-file-copy {
@@ -5750,11 +5733,14 @@ tbody tr.curation-row {
 }
 
 :root[data-theme="dark"] .duplicate-assistant-choice.is-recommended {
-  border-color: var(--matrix-primary);
+  border-color: #2b3941;
 }
 
 :root[data-theme="dark"] .duplicate-assistant-choice:hover,
-:root[data-theme="dark"] .duplicate-assistant-choice:focus-visible,
+:root[data-theme="dark"] .duplicate-assistant-choice:focus-visible {
+  border-color: #2b3941;
+}
+
 :root[data-theme="dark"] .duplicate-assistant-choice.is-selected {
   border-color: #28b86f;
 }

@@ -4976,11 +4976,6 @@ function DuplicateAssistantModal({
                     <Check size={22} />
                     Mantener este
                   </span>
-                  {recommended ? (
-                    <span className="duplicate-recommendation-badge">
-                      <Sparkles size={15} /> Recomendado
-                    </span>
-                  ) : null}
                   {selected ? <span className="duplicate-selection-feedback"><Check size={18} /> MANTENER</span> : null}
                   {rejected ? <span className="duplicate-selection-feedback is-delete"><Trash2 size={18} /> BORRAR</span> : null}
                 </div>
