@@ -152,6 +152,27 @@ button {
   opacity: 0.82;
 }
 
+.version-update-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(252, 97, 33, 0.42);
+  border-radius: 5px;
+  background: rgba(252, 97, 33, 0.1);
+  color: var(--matrix-primary-strong);
+  padding: 0 7px;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.version-update-badge b {
+  font-size: inherit;
+}
+
 .agent-status-dot {
   width: 10px;
   height: 10px;
@@ -5134,6 +5155,15 @@ tbody tr.curation-row {
     height: 8px;
   }
 
+  .topbar .version-update-badge {
+    min-height: 22px;
+    padding: 0 5px;
+  }
+
+  .topbar .version-update-badge > span {
+    display: none;
+  }
+
   .mobile-current-view {
     max-width: 126px;
   }
@@ -6218,6 +6248,12 @@ tbody tr.curation-row {
 }
 
 :root[data-theme="dark"] .brand-word span {
+  color: var(--matrix-primary-bright);
+}
+
+:root[data-theme="dark"] .version-update-badge {
+  border-color: rgba(255, 138, 76, 0.52);
+  background: rgba(252, 97, 33, 0.15);
   color: var(--matrix-primary-bright);
 }
 

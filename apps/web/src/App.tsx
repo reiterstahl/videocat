@@ -434,9 +434,14 @@ type MountedCompanionDisk = {
   scanRoots: string[];
 };
 
+type VersionCheckResponse = {
+  latestVersion: string | null;
+  updateAvailable: boolean;
+};
+
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.18";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.19";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -838,6 +843,7 @@ export function App() {
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -1178,6 +1184,28 @@ export function App() {
       .catch(() => setAuthenticated(false))
       .finally(() => setSessionChecked(true));
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setAvailableUpdate(null);
+      return;
+    }
+
+    let cancelled = false;
+    void api<VersionCheckResponse>(`/api/version/latest?current=${encodeURIComponent(webVersion)}`)
+      .then((response) => {
+        if (cancelled) return;
+        setAvailableUpdate(response.updateAvailable && response.latestVersion
+          ? response.latestVersion
+          : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableUpdate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -2814,6 +2842,21 @@ export function App() {
               title={companionIndicatorLabel}
               aria-label={companionIndicatorLabel}
             />
+            {availableUpdate ? (
+              <span
+                className="version-update-badge"
+                title={language === "en"
+                  ? `VideoCAT ${availableUpdate} is available on Docker Hub`
+                  : `VideoCAT ${availableUpdate} está disponible en Docker Hub`}
+                aria-label={language === "en"
+                  ? `VideoCAT ${availableUpdate} is available on Docker Hub`
+                  : `VideoCAT ${availableUpdate} está disponible en Docker Hub`}
+              >
+                <Download size={12} />
+                <b>v{availableUpdate}</b>
+                <span>disponible</span>
+              </span>
+            ) : null}
           </div>
         </button>
         <section className="view-switcher" aria-label="Secciones principales">
@@ -4923,6 +4966,7 @@ function DuplicateAssistantModal({
   const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [hoveredFrameIndex, setHoveredFrameIndex] = useState(0);
   const [previewFiles, setPreviewFiles] = useState<Record<string, VideoFile>>({});
+  const decisionPointerRef = useRef<{ fileId: string; x: number; y: number } | null>(null);
   const comparisonFiles = useMemo(
     () => files.map((file) => previewFiles[file.id] ?? file),
     [files, previewFiles]
@@ -5046,13 +5090,37 @@ function DuplicateAssistantModal({
                 ].filter(Boolean).join(" ")}
                 disabled={busy}
                 key={file.id}
-                onClick={() => onDecision(file.id)}
+                onClick={(event) => {
+                  if (event.detail === 0) onDecision(file.id);
+                }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  decisionPointerRef.current = {
+                    fileId: file.id,
+                    x: event.clientX,
+                    y: event.clientY
+                  };
+                }}
+                onPointerUp={(event) => {
+                  const start = decisionPointerRef.current;
+                  decisionPointerRef.current = null;
+                  if (!start || start.fileId !== file.id) return;
+                  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return;
+                  event.preventDefault();
+                  onDecision(file.id);
+                }}
+                onPointerCancel={() => {
+                  decisionPointerRef.current = null;
+                }}
                 onPointerEnter={(event) => {
                   if (event.pointerType === "touch") return;
                   setHoveredFileId(file.id);
                   setHoveredFrameIndex(0);
                 }}
-                onPointerLeave={() => setHoveredFileId(null)}
+                onPointerLeave={() => {
+                  decisionPointerRef.current = null;
+                  setHoveredFileId(null);
+                }}
                 onFocus={() => {
                   setHoveredFileId(file.id);
                   setHoveredFrameIndex(0);
@@ -5371,6 +5439,8 @@ function FileDetail({
   const remoteRecoveryAttemptsRef = useRef(0);
   const remoteResumeTimeRef = useRef(0);
   const remotePlayNextRef = useRef<"original" | "remux" | null>(null);
+  const remoteTransitionSessionRef = useRef<string | null>(null);
+  const remoteTransitioningRef = useRef(false);
   const remoteFullscreenAttemptedRef = useRef(false);
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
   const localFolder = folderPath(file.absolutePath);
@@ -5403,8 +5473,10 @@ function FileDetail({
   }, [remoteSessionId]);
 
   useEffect(() => () => {
-    const sessionId = remoteSessionIdRef.current;
-    if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+    const sessionIds = new Set([remoteSessionIdRef.current, remoteTransitionSessionRef.current]);
+    for (const sessionId of sessionIds) {
+      if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+    }
   }, []);
 
   useEffect(() => () => {
@@ -5514,7 +5586,9 @@ function FileDetail({
   }
 
   async function stopRemotePlayback(message = "", exitFullscreen = true) {
-    const sessionId = remoteSessionId;
+    const sessionIds = new Set([remoteSessionId, remoteTransitionSessionRef.current]);
+    remoteTransitionSessionRef.current = null;
+    remoteTransitioningRef.current = false;
     setRemoteUrl(null);
     setRemoteSessionId(null);
     setRemoteState("idle");
@@ -5533,11 +5607,13 @@ function FileDetail({
       void document.exitFullscreen().catch(() => undefined);
     }
     if (exitFullscreen) window.screen.orientation?.unlock?.();
-    if (sessionId) {
-      try {
-        await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" });
-      } catch {
-        // The short-lived session will expire even when the Companion went offline.
+    for (const sessionId of sessionIds) {
+      if (sessionId) {
+        try {
+          await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" });
+        } catch {
+          // The short-lived session will expire even when the Companion went offline.
+        }
       }
     }
   }
@@ -5562,8 +5638,23 @@ function FileDetail({
       setRemoteState("buffering");
       setRemoteMessage("Conectado al Companion. Cargando video...");
     } catch (error) {
+      const previousSessionId = remoteTransitionSessionRef.current;
+      remoteTransitionSessionRef.current = null;
+      remoteTransitioningRef.current = false;
+      setRemoteUrl(null);
+      if (previousSessionId) {
+        void api(`/api/stream-sessions/${previousSessionId}`, { method: "DELETE" }).catch(() => undefined);
+      }
       setRemoteState("error");
       setRemoteMessage(error instanceof Error ? error.message : "No se pudo iniciar la reproducción remota.");
+    }
+  }
+
+  function finishRemoteTransition() {
+    const previousSessionId = remoteTransitionSessionRef.current;
+    remoteTransitionSessionRef.current = null;
+    if (previousSessionId) {
+      void api(`/api/stream-sessions/${previousSessionId}`, { method: "DELETE" }).catch(() => undefined);
     }
   }
 
@@ -5667,23 +5758,26 @@ function FileDetail({
     }
   }
 
+  function prepareRemoteTransition(message: string) {
+    remoteTransitioningRef.current = true;
+    remoteVideoRef.current?.pause();
+    remoteTransitionSessionRef.current = remoteSessionId;
+    remoteSessionIdRef.current = null;
+    setRemoteSessionId(null);
+    setRemoteState("preparing");
+    setRemoteMessage(message);
+    setRemoteCurrentTime(0);
+    setRemoteDuration(0);
+    setRemoteControlsVisible(false);
+    remotePlayNextRef.current = remoteMode;
+  }
+
   async function moveDetail(direction: -1 | 1, continueRemotePlayback = false) {
     const move = direction === -1 ? onPrevious : onNext;
     if ((direction === -1 && !canOpenPrevious) || (direction === 1 && !canOpenNext)) return;
-    const mode = remoteMode;
     const wasRemote = Boolean(remoteSessionId || remoteUrl);
     if (continueRemotePlayback && wasRemote) {
-      const sessionId = remoteSessionId;
-      remoteSessionIdRef.current = null;
-      setRemoteUrl(null);
-      setRemoteSessionId(null);
-      setRemoteState("preparing");
-      setRemoteMessage("Preparando el siguiente video...");
-      setRemoteCurrentTime(0);
-      setRemoteDuration(0);
-      setRemoteControlsVisible(false);
-      remotePlayNextRef.current = mode;
-      if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+      prepareRemoteTransition("Preparando el siguiente video...");
     } else if (wasRemote) {
       await stopRemotePlayback();
     }
@@ -5704,20 +5798,9 @@ function FileDetail({
       return;
     }
 
-    const mode = remoteMode;
     const wasRemote = Boolean(remoteSessionId || remoteUrl);
     if (continueRemotePlayback && wasRemote) {
-      const sessionId = remoteSessionId;
-      remoteSessionIdRef.current = null;
-      setRemoteUrl(null);
-      setRemoteSessionId(null);
-      setRemoteState("preparing");
-      setRemoteMessage("Eligiendo otro video al azar...");
-      setRemoteCurrentTime(0);
-      setRemoteDuration(0);
-      setRemoteControlsVisible(false);
-      remotePlayNextRef.current = mode;
-      if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+      prepareRemoteTransition("Eligiendo otro video al azar...");
     } else if (wasRemote) {
       await stopRemotePlayback();
     }
@@ -5944,6 +6027,7 @@ function FileDetail({
                   src={remoteUrl}
                   onLoadedMetadata={(event) => {
                     const video = event.currentTarget;
+                    finishRemoteTransition();
                     setRemoteDuration(Number.isFinite(video.duration) ? video.duration : 0);
                     if (remoteResumeTimeRef.current > 0) {
                       video.currentTime = Math.min(remoteResumeTimeRef.current, video.duration || remoteResumeTimeRef.current);
@@ -5954,12 +6038,15 @@ function FileDetail({
                   onDurationChange={(event) => setRemoteDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
                   onTimeUpdate={(event) => setRemoteCurrentTime(event.currentTarget.currentTime)}
                   onPlaying={() => {
+                    remoteTransitioningRef.current = false;
                     setRemoteState("playing");
                     setRemoteMessage("");
                     scheduleRemoteControlsHide();
                   }}
                   onPause={(event) => {
-                    if (!event.currentTarget.ended && event.currentTarget.readyState > 0) setRemoteState("paused");
+                    if (!remoteTransitioningRef.current && !event.currentTarget.ended && event.currentTarget.readyState > 0) {
+                      setRemoteState("paused");
+                    }
                   }}
                   onWaiting={() => {
                     setRemoteState("buffering");
@@ -5978,9 +6065,6 @@ function FileDetail({
                     void requestRemoteFullscreen(true);
                   }}
                   onPointerUp={handleRemoteVideoPointerUp}
-                  onPointerMove={(event) => {
-                    if (event.pointerType === "mouse") revealRemoteControls();
-                  }}
                   onEnded={() => {
                     if (remoteShuffleEnabled) {
                       void moveToRandomDetail(true);
@@ -6002,6 +6086,8 @@ function FileDetail({
                     }
                     const sessionId = remoteSessionId;
                     const mediaCode = video.error?.code;
+                    finishRemoteTransition();
+                    remoteTransitioningRef.current = false;
                     setRemoteUrl(null);
                     setRemoteSessionId(null);
                     setRemoteState("error");
@@ -6013,7 +6099,7 @@ function FileDetail({
                     }
                   }}
                 />
-                {remoteState === "buffering" ? (
+                {remoteState === "buffering" || remoteState === "preparing" ? (
                   <div className="remote-loading-overlay" aria-live="polite">
                     <span className="remote-loading-spinner" />
                     <strong>{remoteMessage || "Cargando video..."}</strong>

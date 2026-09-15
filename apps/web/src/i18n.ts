@@ -27,6 +27,7 @@ const en: Record<string, string> = {
   "Mostrar catalogo completo": "Show full catalog",
   "Agente conectado": "Agent connected",
   "Agente desconectado": "Agent disconnected",
+  "disponible": "available",
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "A descargar": "To download",
