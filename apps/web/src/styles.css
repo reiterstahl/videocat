@@ -3900,6 +3900,7 @@ tbody tr.curation-row {
 
 .remote-player {
   position: relative;
+  min-height: 250px;
   margin: 14px 18px 2px;
   overflow: hidden;
   border: 1px solid #34444d;
@@ -3909,6 +3910,9 @@ tbody tr.curation-row {
 }
 
 .remote-player-header {
+  position: absolute;
+  z-index: 4;
+  inset: 0 0 auto;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -3917,6 +3921,10 @@ tbody tr.curation-row {
   padding: 8px 10px 8px 13px;
   background: #172026;
   color: #e8f0f3;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .remote-player-header > div {
@@ -3958,8 +3966,12 @@ tbody tr.curation-row {
 .remote-player video {
   display: block;
   width: 100%;
+  min-height: 250px;
   max-height: min(52dvh, 620px);
   background: #050708;
+  object-fit: contain;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .remote-preparing {
@@ -4005,7 +4017,7 @@ tbody tr.curation-row {
 .remote-loading-overlay {
   position: absolute;
   z-index: 2;
-  inset: 44px 0 58px;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4018,13 +4030,28 @@ tbody tr.curation-row {
 }
 
 .remote-quick-controls {
+  position: absolute;
+  z-index: 4;
+  inset: auto 0 0;
   min-height: 58px;
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 7px 9px;
   border-top: 1px solid #263740;
-  background: #11191e;
+  background: rgba(17, 25, 30, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: opacity 180ms ease, transform 180ms ease;
+  backdrop-filter: blur(12px);
+}
+
+.remote-player.is-controls-visible .remote-player-header,
+.remote-player.is-controls-visible .remote-quick-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .remote-quick-controls > button {
@@ -4103,23 +4130,16 @@ tbody tr.curation-row {
 }
 
 .remote-player:fullscreen .remote-player-header {
-  position: absolute;
-  z-index: 2;
-  inset: 0 0 auto;
   min-height: 40px;
   background: rgba(11, 16, 20, 0.76);
 }
 
 .remote-player:fullscreen .remote-quick-controls {
-  position: absolute;
-  z-index: 3;
-  inset: auto 0 0;
   background: rgba(11, 16, 20, 0.82);
-  backdrop-filter: blur(12px);
 }
 
 .remote-player:fullscreen .remote-loading-overlay {
-  inset: 40px 0 58px;
+  inset: 0;
 }
 
 .remote-player:fullscreen video {
@@ -4127,6 +4147,10 @@ tbody tr.curation-row {
   height: 100%;
   max-height: none;
   object-fit: contain;
+}
+
+.remote-player:fullscreen .remote-preparing {
+  min-height: 100dvh;
 }
 
 .remote-seek-feedback {
@@ -5568,6 +5592,7 @@ tbody tr.curation-row {
   }
 
   .remote-player {
+    min-height: 210px;
     margin: 12px 14px 2px;
   }
 
@@ -5600,7 +5625,7 @@ tbody tr.curation-row {
   }
 
   .remote-loading-overlay {
-    inset: 40px 0 109px;
+    inset: 0;
   }
 
   .remote-player:fullscreen .remote-quick-controls {
@@ -5617,7 +5642,7 @@ tbody tr.curation-row {
   }
 
   .remote-player:fullscreen .remote-loading-overlay {
-    inset: 40px 0 58px;
+    inset: 0;
   }
 
   .remote-playback-hint,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   AlertTriangle,
@@ -2064,7 +2065,6 @@ export function App() {
         files: group.files.map((file) => updatedById.get(file.id) ?? file)
       })));
       duplicateAssistantDirtyRef.current = true;
-      await new Promise((resolve) => window.setTimeout(resolve, 420));
       const next = advanceDuplicateAssistant(session, response.keepFile);
       setDuplicateAssistant(next);
       setDuplicateAssistantFeedback(null);
@@ -4915,26 +4915,56 @@ function DuplicateAssistantModal({
   const currentComparison = Math.min(session.totalComparisons, session.completedComparisons + 1);
   const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [hoveredFrameIndex, setHoveredFrameIndex] = useState(0);
+  const [previewFiles, setPreviewFiles] = useState<Record<string, VideoFile>>({});
+  const comparisonFiles = useMemo(
+    () => files.map((file) => previewFiles[file.id] ?? file),
+    [files, previewFiles]
+  );
+  const comparisonFileKey = files.map((file) => file.id).join(":");
 
   useEffect(() => {
-    const images = files.flatMap((file) => file.thumbnails).map((thumbnail) => thumbnailSrc(thumbnail.url) ?? thumbnail.url);
+    let cancelled = false;
+    const missing = files.filter((file) => !previewFiles[file.id]);
+    if (missing.length === 0) return;
+    void Promise.all(missing.map(async (file) => {
+      try {
+        const response = await api<{ file: VideoFile }>(`/api/files/${file.id}`);
+        return response.file;
+      } catch {
+        return file;
+      }
+    })).then((loaded) => {
+      if (cancelled) return;
+      setPreviewFiles((current) => {
+        const next = { ...current };
+        for (const file of loaded) next[file.id] = file;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [comparisonFileKey]);
+
+  useEffect(() => {
+    const images = comparisonFiles.flatMap((file) => file.thumbnails).map((thumbnail) => thumbnailSrc(thumbnail.url) ?? thumbnail.url);
     for (const source of images) {
       const image = new window.Image();
       image.src = source;
     }
-  }, [files]);
+  }, [comparisonFiles]);
 
   useEffect(() => {
     setHoveredFrameIndex(0);
     if (!hoveredFileId) return;
-    const hoveredFile = files.find((file) => file.id === hoveredFileId);
+    const hoveredFile = comparisonFiles.find((file) => file.id === hoveredFileId);
     const frames = hoveredFile?.thumbnails ?? [];
     if (frames.length < 2) return;
     const timer = window.setInterval(() => {
       setHoveredFrameIndex((current) => (current + 1) % frames.length);
     }, 700);
     return () => window.clearInterval(timer);
-  }, [files, hoveredFileId]);
+  }, [comparisonFiles, hoveredFileId]);
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
@@ -4987,8 +5017,8 @@ function DuplicateAssistantModal({
         {message ? <div className="form-error duplicate-assistant-error">{message}</div> : null}
 
         <div className="duplicate-assistant-compare">
-          {files.map((file, index) => {
-            const other = files[index === 0 ? 1 : 0];
+          {comparisonFiles.map((file, index) => {
+            const other = comparisonFiles[index === 0 ? 1 : 0];
             const recommended = recommendation.fileId === file.id;
             const selected = feedbackFileId === file.id;
             const rejected = feedbackFileId != null && !selected;
@@ -5317,11 +5347,14 @@ function FileDetail({
   const [remoteSeekFeedback, setRemoteSeekFeedback] = useState<"back" | "forward" | null>(null);
   const [remoteCurrentTime, setRemoteCurrentTime] = useState(0);
   const [remoteDuration, setRemoteDuration] = useState(0);
+  const [remoteControlsVisible, setRemoteControlsVisible] = useState(false);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remotePlayerRef = useRef<HTMLElement | null>(null);
   const remoteSessionIdRef = useRef<string | null>(null);
   const remoteTapRef = useRef<{ side: "back" | "forward"; at: number } | null>(null);
   const remoteSeekFeedbackTimerRef = useRef<number | null>(null);
+  const remoteControlsTimerRef = useRef<number | null>(null);
+  const remoteSingleTapTimerRef = useRef<number | null>(null);
   const remoteRecoveryTimerRef = useRef<number | null>(null);
   const remoteRecoveryAttemptsRef = useRef(0);
   const remoteResumeTimeRef = useRef(0);
@@ -5369,13 +5402,19 @@ function FileDetail({
     if (remoteRecoveryTimerRef.current != null) {
       window.clearTimeout(remoteRecoveryTimerRef.current);
     }
+    if (remoteControlsTimerRef.current != null) {
+      window.clearTimeout(remoteControlsTimerRef.current);
+    }
+    if (remoteSingleTapTimerRef.current != null) {
+      window.clearTimeout(remoteSingleTapTimerRef.current);
+    }
   }, []);
 
   useEffect(() => {
     const nextMode = remotePlayNextRef.current;
     if (!nextMode) return;
     remotePlayNextRef.current = null;
-    const timer = window.setTimeout(() => requestRemotePlayback(nextMode), 0);
+    const timer = window.setTimeout(() => void startRemotePlayback(nextMode, true), 0);
     return () => window.clearTimeout(timer);
   }, [file.id]);
 
@@ -5462,7 +5501,7 @@ function FileDetail({
     }
   }
 
-  async function stopRemotePlayback(message = "") {
+  async function stopRemotePlayback(message = "", exitFullscreen = true) {
     const sessionId = remoteSessionId;
     setRemoteUrl(null);
     setRemoteSessionId(null);
@@ -5470,6 +5509,7 @@ function FileDetail({
     setRemoteMessage(message);
     setRemoteCurrentTime(0);
     setRemoteDuration(0);
+    setRemoteControlsVisible(false);
     if (remoteRecoveryTimerRef.current != null) {
       window.clearTimeout(remoteRecoveryTimerRef.current);
       remoteRecoveryTimerRef.current = null;
@@ -5477,10 +5517,10 @@ function FileDetail({
     remoteFullscreenAttemptedRef.current = false;
     remoteRecoveryAttemptsRef.current = 0;
     remoteResumeTimeRef.current = 0;
-    if (document.fullscreenElement) {
+    if (exitFullscreen && document.fullscreenElement) {
       void document.exitFullscreen().catch(() => undefined);
     }
-    window.screen.orientation?.unlock?.();
+    if (exitFullscreen) window.screen.orientation?.unlock?.();
     if (sessionId) {
       try {
         await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" });
@@ -5490,13 +5530,16 @@ function FileDetail({
     }
   }
 
-  async function startRemotePlayback(mode: "original" | "remux" = "original") {
-    if (remoteState === "preparing") return;
+  async function startRemotePlayback(mode: "original" | "remux" = "original", alreadyPreparing = false) {
+    if (remoteState === "preparing" && !alreadyPreparing) return;
     if (remoteSessionId) await stopRemotePlayback();
-    remoteFullscreenAttemptedRef.current = false;
-    setRemoteState("preparing");
-    setRemoteMode(mode);
-    setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
+    if (!alreadyPreparing) remoteFullscreenAttemptedRef.current = false;
+    setRemoteControlsVisible(false);
+    if (!alreadyPreparing) {
+      setRemoteState("preparing");
+      setRemoteMode(mode);
+      setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
+    }
     try {
       const response = await api<StreamSessionResponse>("/api/stream-sessions", {
         method: "POST",
@@ -5524,24 +5567,32 @@ function FileDetail({
       setRemoteMessage(remoteAvailabilityMessage);
       return;
     }
-    void startRemotePlayback(mode);
+    flushSync(() => {
+      setRemoteState("preparing");
+      setRemoteMode(mode);
+      setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
+      setRemoteControlsVisible(false);
+    });
+    void requestRemoteFullscreen(true);
+    void startRemotePlayback(mode, true);
   }
 
   async function requestRemoteFullscreen(automatic = false) {
-    if (automatic && (remoteFullscreenAttemptedRef.current || !window.matchMedia("(max-width: 760px), (pointer: coarse)").matches)) return;
+    if (automatic && remoteFullscreenAttemptedRef.current) return;
     const video = remoteVideoRef.current;
     const player = remotePlayerRef.current;
-    if (!video || !player) return;
+    if (!player) return;
 
     remoteFullscreenAttemptedRef.current = true;
     try {
       if (player.requestFullscreen) {
         await player.requestFullscreen();
-      } else {
+      } else if (video) {
         (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
       }
     } catch {
-      // Browsers may require a direct gesture. Native controls remain available in that case.
+      remoteFullscreenAttemptedRef.current = false;
+      // Browsers may require a direct gesture. The manual fullscreen control remains available.
     }
 
     try {
@@ -5558,6 +5609,27 @@ function FileDetail({
       window.clearTimeout(remoteSeekFeedbackTimerRef.current);
     }
     remoteSeekFeedbackTimerRef.current = window.setTimeout(() => setRemoteSeekFeedback(null), 650);
+  }
+
+  function scheduleRemoteControlsHide() {
+    if (remoteControlsTimerRef.current != null) window.clearTimeout(remoteControlsTimerRef.current);
+    remoteControlsTimerRef.current = window.setTimeout(() => {
+      const video = remoteVideoRef.current;
+      if (video && !video.paused) setRemoteControlsVisible(false);
+    }, 3200);
+  }
+
+  function toggleRemoteControls() {
+    setRemoteControlsVisible((current) => {
+      const next = !current;
+      if (next) scheduleRemoteControlsHide();
+      return next;
+    });
+  }
+
+  function revealRemoteControls() {
+    setRemoteControlsVisible(true);
+    scheduleRemoteControlsHide();
   }
 
   function seekRemoteBy(seconds: number) {
@@ -5588,8 +5660,21 @@ function FileDetail({
     if ((direction === -1 && !canOpenPrevious) || (direction === 1 && !canOpenNext)) return;
     const mode = remoteMode;
     const wasRemote = Boolean(remoteSessionId || remoteUrl);
-    if (wasRemote) await stopRemotePlayback();
-    if (continueRemotePlayback && wasRemote) remotePlayNextRef.current = mode;
+    if (continueRemotePlayback && wasRemote) {
+      const sessionId = remoteSessionId;
+      remoteSessionIdRef.current = null;
+      setRemoteUrl(null);
+      setRemoteSessionId(null);
+      setRemoteState("preparing");
+      setRemoteMessage("Preparando el siguiente video...");
+      setRemoteCurrentTime(0);
+      setRemoteDuration(0);
+      setRemoteControlsVisible(false);
+      remotePlayNextRef.current = mode;
+      if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+    } else if (wasRemote) {
+      await stopRemotePlayback();
+    }
     try {
       await move();
     } catch (error) {
@@ -5600,18 +5685,26 @@ function FileDetail({
   }
 
   function handleRemoteVideoPointerUp(event: ReactPointerEvent<HTMLVideoElement>) {
-    if (event.pointerType !== "touch") return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const side = event.clientX - bounds.left < bounds.width / 2 ? "back" : "forward";
     const now = Date.now();
     const previousTap = remoteTapRef.current;
     if (!previousTap || previousTap.side !== side || now - previousTap.at > 320) {
       remoteTapRef.current = { side, at: now };
+      if (remoteSingleTapTimerRef.current != null) window.clearTimeout(remoteSingleTapTimerRef.current);
+      remoteSingleTapTimerRef.current = window.setTimeout(() => {
+        remoteTapRef.current = null;
+        toggleRemoteControls();
+      }, 320);
       return;
     }
 
     event.preventDefault();
     remoteTapRef.current = null;
+    if (remoteSingleTapTimerRef.current != null) {
+      window.clearTimeout(remoteSingleTapTimerRef.current);
+      remoteSingleTapTimerRef.current = null;
+    }
     seekRemoteBy(side === "back" ? -10 : 10);
   }
 
@@ -5766,7 +5859,7 @@ function FileDetail({
         ) : null}
 
         {remoteUrl || remoteState === "preparing" ? (
-          <section className="remote-player" aria-label="Reproducción remota" ref={remotePlayerRef}>
+          <section className={`remote-player ${remoteControlsVisible ? "is-controls-visible" : ""}`} aria-label="Reproducción remota" ref={remotePlayerRef}>
             <header className="remote-player-header">
               <div>
                 <span className={`remote-player-status is-${remoteState}`} />
@@ -5780,7 +5873,6 @@ function FileDetail({
               <>
                 <video
                   autoPlay
-                  controls
                   playsInline
                   preload="metadata"
                   ref={remoteVideoRef}
@@ -5799,6 +5891,7 @@ function FileDetail({
                   onPlaying={() => {
                     setRemoteState("playing");
                     setRemoteMessage("");
+                    scheduleRemoteControlsHide();
                   }}
                   onPause={(event) => {
                     if (!event.currentTarget.ended && event.currentTarget.readyState > 0) setRemoteState("paused");
@@ -5820,6 +5913,9 @@ function FileDetail({
                     void requestRemoteFullscreen(true);
                   }}
                   onPointerUp={handleRemoteVideoPointerUp}
+                  onPointerMove={(event) => {
+                    if (event.pointerType === "mouse") revealRemoteControls();
+                  }}
                   onEnded={() => void stopRemotePlayback("Reproducción remota finalizada.")}
                   onError={(event) => {
                     const video = event.currentTarget;
@@ -5852,7 +5948,7 @@ function FileDetail({
                     <strong>{remoteMessage || "Cargando video..."}</strong>
                   </div>
                 ) : null}
-                <div className="remote-quick-controls" aria-label="Controles rápidos del reproductor">
+                <div className="remote-quick-controls" aria-label="Controles rápidos del reproductor" onPointerDown={revealRemoteControls}>
                   <button type="button" onClick={() => seekRemoteBy(-10)} title="Retroceder 10 segundos" aria-label="Retroceder 10 segundos">
                     <RotateCcw size={20} /><span>10</span>
                   </button>
