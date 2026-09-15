@@ -37,7 +37,7 @@ The system has two parts:
 ## Features
 
 - Private web catalog with username/password login.
-- Responsive UI with dark mode, sticky navigation, search, filters and persistent pagination.
+- Responsive UI with dark mode, single-row sticky navigation, compact mobile navigation, search, filters and persistent pagination.
 - Reverse proxy support, secure cookies and custom domain deployment.
 - Resilient drive identification through `.videocat-disk.json` at the drive root.
 - Scanning still works when Windows changes the drive letter.
@@ -47,14 +47,19 @@ The system has two parts:
 - Accent-tolerant and partial search across filename and relative path.
 - Sortable table columns, configurable page size and result count.
 - Thumbnails and distributed frame gallery for each video.
-- Detail modal with keyboard navigation, full-screen image gallery and local open actions.
+- Desktop- and mobile-friendly detail modal with keyboard navigation, full-screen image gallery and local open actions.
+- Remote playback from phones and other browsers through the Companion's outbound tunnel, without exposing Windows paths or mounting drives on the server.
+- Immersive player with touch controls, double-tap seek, next-video navigation and persistent shuffle across connected drives.
+- Direct video-to-video transitions that replace the previous session and keep the player open while the next file loads.
 - Last indexed timestamp per video.
 - Folder-size value for the folder containing each video.
 - Folder usage screen to understand space distribution.
 - Duplicate detection using file size and perceptual fingerprints sampled at 15 points in each video.
 - Recognition of likely copies with different resolution, codec, bitrate or compression level.
 - Dedicated duplicate review section with confidence, match reasons and potentially recoverable space.
-- Assisted duplicate mode with side-by-side comparison, resolution/size recommendation and atomic keep/delete decisions.
+- Assisted duplicate mode with side-by-side comparison, one recommendation based on resolution/size/duration, and atomic one-click keep/delete decisions.
+- Captured frames cycle automatically while hovering over either duplicate candidate.
+- Temporary group caching plus metadata/frame preloading for the current and upcoming pairs to keep assisted review responsive.
 - Drive prioritization by recoverable duplicate space, separating files already marked for deletion from those awaiting review and showing current connection status.
 - Automatic tags based on filenames.
 - Custom multi-category labels with colors.
@@ -70,6 +75,7 @@ The system has two parts:
 - Deferred physical deletion of marked files when the drive is connected again.
 - Audit section for scan, metadata, thumbnail and delete errors.
 - Admin section with physical total/used/free space, cataloged size, counts, recent activity and per-drive cleanup.
+- Discreet update indicator beside the logo when Docker Hub contains a newer stable release.
 - Profile section to configure the security PIN and protected folder patterns.
 - PIN protection for folders matching configurable patterns.
 - Protected folders are excluded from duplicate calculations.
@@ -127,10 +133,12 @@ Main features:
 - Resolves canonical paths before opening, copying or deleting to prevent symlink and junction escapes.
 - Avoids accidentally overwriting an existing file in the download folder.
 - Offers opt-in Chromecast playback from Profile through temporary signed links scoped to one streaming session.
+- Prevents two tray-app instances from running and notifies the user when the Companion is already active.
+- Restarts the worker with progressive backoff after an unexpected exit; explicitly quitting from the tray disables that restart.
 
 ## Current Release
 
-The current Docker stack and Companion release is `v0.1.20`.
+The current Docker stack is `v0.1.21`. The current Windows Companion is `v0.1.20`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
@@ -398,6 +406,10 @@ REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
 
 Each session is tied to the authenticated user that created it, has its own correlation ID, and closes when playback stops, expires, or the Companion tunnel disconnects.
 
+On mobile browsers, VideoCAT attempts to enter full screen when playback starts. Controls stay hidden during playback and appear when the video is tapped. Double-tapping the left or right half seeks backward or forward; the next button changes files directly without returning to the detail modal. Shuffle remembers the user's last choice and selects only present videos from drives reported as connected by the Companion.
+
+When changing videos, the new request safely replaces the active session. This prevents “Companion already streaming” conflicts and preserves the immersive player while the next file is prepared.
+
 ### Optional Chromecast Playback
 
 Chromecast is disabled by default. Open `Profile`, enable `Allow Chromecast playback`, and save the profile to opt in. The official Google Cast SDK is loaded only when the Cast button is used. VideoCAT gives the receiver a temporary signed URL scoped to that session; it does not share the user's cookie or permanent credentials.
@@ -530,8 +542,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.20
-reiterstahl/videocat-web:0.1.20
+reiterstahl/videocat-server:0.1.21
+reiterstahl/videocat-web:0.1.21
 ```
 
 `latest` tags are also published:
@@ -578,8 +590,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.20 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.20 -t reiterstahl/videocat-web:0.1.20 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.21 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.21 -t reiterstahl/videocat-web:0.1.21 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -592,10 +604,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.20
+  image: reiterstahl/videocat-server:0.1.21
 
 web:
-  image: reiterstahl/videocat-web:0.1.20
+  image: reiterstahl/videocat-web:0.1.21
 ```
 
 ## Main Endpoints
@@ -615,11 +627,19 @@ Web:
 - `POST /api/auth/logout`
 - `GET /api/files`
 - `GET /api/files/:id`
+- `GET /api/playback/random`
 - `GET /api/disks`
 - `GET /api/facets`
 - `GET /api/duplicates/by-size`
 - `GET /api/duplicates/recommended-disks`
 - `POST /api/duplicates/assisted/decision`
+- `POST /api/files/batch/thumbnails/regenerate`
+- `POST /api/companions/pairing-code`
+- `GET /api/companions`
+- `POST /api/stream-sessions`
+- `GET /api/stream-sessions/:id`
+- `DELETE /api/stream-sessions/:id`
+- `GET /api/version/latest`
 - `GET /api/admin/disks/overview`
 - `GET /api/folder-usage`
 - `GET /api/audit/errors`

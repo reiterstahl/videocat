@@ -37,7 +37,7 @@ El sistema tiene dos partes:
 ## Características
 
 - Catálogo web privado con login de usuario y contraseña.
-- Interfaz responsive con modo oscuro, menú fijo, búsqueda, filtros y paginación persistente.
+- Interfaz responsive con modo oscuro, menú fijo de una sola línea, navegación móvil compacta, búsqueda, filtros y paginación persistente.
 - Soporte para reverse proxy, cookies seguras y despliegue bajo dominio propio.
 - Identificación resiliente de discos mediante `.videocat-disk.json` en la raíz del disco.
 - Escaneo aunque Windows cambie la letra de la unidad.
@@ -47,14 +47,19 @@ El sistema tiene dos partes:
 - Búsqueda tolerante a acentos y coincidencias parciales en nombre y ruta.
 - Ordenamiento por columnas, tamaño de página configurable y conteo de resultados.
 - Miniaturas y galería de fotogramas distribuidos del video.
-- Modal de detalle con navegación por teclado, galería a pantalla completa y apertura local.
+- Modal de detalle adaptado a escritorio y móvil, con navegación por teclado, galería a pantalla completa y apertura local.
+- Reproducción remota desde móviles y otros navegadores mediante un túnel saliente del Companion, sin compartir rutas de Windows ni montar los discos en el servidor.
+- Reproductor inmersivo con controles táctiles, doble toque para avanzar o retroceder, salto al siguiente video y reproducción aleatoria persistente entre discos conectados.
+- Transiciones directas entre videos que sustituyen la sesión anterior y mantienen la vista de reproducción mientras carga el siguiente archivo.
 - Campo de última fecha de indexado por video.
 - Cálculo del tamaño del folder que contiene cada video.
 - Esquema de uso por folders para entender distribución de espacio.
 - Detección de duplicados por tamaño y huellas visuales perceptuales tomadas en 15 puntos del video.
 - Reconocimiento de posibles copias con distinta resolución, códec, bitrate o nivel de compresión.
 - Sección de duplicados con nivel de confianza, motivos y espacio potencialmente recuperable.
-- Modo asistido de duplicados con comparación lado a lado, recomendación por resolución/tamaño y decisiones atómicas de mantener o borrar.
+- Modo asistido de duplicados con comparación lado a lado, recomendación única por resolución/tamaño/duración y decisiones atómicas de mantener o borrar con un clic.
+- Reproducción secuencial de los fotogramas capturados al posar el cursor sobre cada candidato.
+- Caché temporal de grupos y precarga de metadatos/fotogramas del par actual y los siguientes para acelerar el modo asistido.
 - Priorización de discos por espacio duplicado recuperable, separando lo ya marcado para borrar de lo pendiente de revisar y mostrando su estado de conexión.
 - Etiquetas automáticas basadas en nombres de archivo.
 - Categorías personalizadas con colores, asignables de forma múltiple por video.
@@ -70,6 +75,7 @@ El sistema tiene dos partes:
 - Borrado físico diferido de archivos marcados cuando el disco vuelve a conectarse.
 - Sección de auditoría para errores de escaneo, metadatos, miniaturas y borrados.
 - Sección administrativa con espacio físico total/usado/libre, tamaño catalogado, conteos, actividad reciente y limpieza por unidad.
+- Aviso discreto junto al logo cuando Docker Hub publica una versión estable más reciente.
 - Sección de perfil para configurar el PIN de seguridad y los patrones de folders protegidos.
 - Protección por PIN para folders que coincidan con patrones configurables.
 - Exclusión de carpetas protegidas del cálculo de duplicados.
@@ -128,6 +134,8 @@ Funciones principales:
 - Valida la ruta canónica antes de abrir, copiar o borrar para impedir escapes mediante enlaces o junctions.
 - Evita sobrescribir por accidente un archivo existente en la carpeta de descarga.
 - Permite habilitar Chromecast voluntariamente desde Perfil y usa enlaces temporales firmados, limitados a una sesión de reproducción.
+- Impide abrir dos instancias de la app de bandeja y avisa cuando el Companion ya está ejecutándose.
+- Reinicia el proceso de trabajo con espera progresiva si se detiene inesperadamente; salir desde la bandeja evita ese reinicio.
 
 ## Release actual
 
@@ -400,6 +408,10 @@ REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
 
 Cada sesión queda ligada al usuario autenticado que la creó, se identifica con su propio ID de correlación y se cierra al detener el reproductor, expirar o perder el túnel del Companion.
 
+En navegadores móviles, VideoCAT intenta entrar en pantalla completa al iniciar la reproducción. Los controles permanecen ocultos durante la reproducción y aparecen al tocar el video. Un doble toque en la mitad izquierda o derecha retrocede o adelanta; el botón siguiente cambia directamente de archivo sin regresar al modal de detalle. El modo aleatorio recuerda la última elección del usuario y selecciona solamente videos presentes en los discos que el Companion reporta como conectados.
+
+Cuando se cambia de video, la nueva solicitud reemplaza de forma controlada la sesión activa. Esto evita el conflicto de “Companion already streaming” y conserva la experiencia inmersiva mientras se prepara el siguiente archivo.
+
 ### Chromecast opcional
 
 Chromecast está desactivado por defecto. Para permitirlo, entra a `Perfil`, activa `Permitir reproducción en Chromecast` y guarda el perfil. El SDK oficial de Google Cast solo se carga al usar el botón Cast. VideoCAT entrega al receptor una URL temporal firmada y limitada a esa sesión; no comparte la cookie ni las credenciales permanentes del usuario.
@@ -617,11 +629,19 @@ Web:
 - `POST /api/auth/logout`
 - `GET /api/files`
 - `GET /api/files/:id`
+- `GET /api/playback/random`
 - `GET /api/disks`
 - `GET /api/facets`
 - `GET /api/duplicates/by-size`
 - `GET /api/duplicates/recommended-disks`
 - `POST /api/duplicates/assisted/decision`
+- `POST /api/files/batch/thumbnails/regenerate`
+- `POST /api/companions/pairing-code`
+- `GET /api/companions`
+- `POST /api/stream-sessions`
+- `GET /api/stream-sessions/:id`
+- `DELETE /api/stream-sessions/:id`
+- `GET /api/version/latest`
 - `GET /api/admin/disks/overview`
 - `GET /api/folder-usage`
 - `GET /api/audit/errors`
