@@ -11,6 +11,7 @@ const protectedFolderCookieName = "videocat_protected_folder";
 const jwtIssuer = "videocat";
 const webAudience = "videocat-web";
 const protectedAudience = "videocat-protected-folder";
+const castStreamAudience = "videocat-cast-stream";
 const companionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type AgentCredentialVerification = {
@@ -67,6 +68,29 @@ export function signProtectedFolderUnlock(): string {
     algorithm: "HS256",
     expiresIn: "12h"
   });
+}
+
+export function signCastStreamAccess(sessionId: string, username: string, expiresAt: Date): string {
+  const expiresIn = Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  return jwt.sign({ scope: "cast-stream", sessionId }, env.JWT_SECRET, {
+    subject: username,
+    issuer: jwtIssuer,
+    audience: castStreamAudience,
+    algorithm: "HS256",
+    expiresIn
+  });
+}
+
+export function authenticatedCastStreamUsername(token: string | undefined, sessionId: string): string | null {
+  if (!token) return null;
+  try {
+    const payload = verifyJwt(token, castStreamAudience);
+    return payload.scope === "cast-stream" && payload.sessionId === sessionId && payload.sub === env.ADMIN_USER
+      ? payload.sub
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function isProtectedFolderUnlocked(request: FastifyRequest): boolean {

@@ -55,6 +55,7 @@ El sistema tiene dos partes:
 - Reconocimiento de posibles copias con distinta resolución, códec, bitrate o nivel de compresión.
 - Sección de duplicados con nivel de confianza, motivos y espacio potencialmente recuperable.
 - Modo asistido de duplicados con comparación lado a lado, recomendación por resolución/tamaño y decisiones atómicas de mantener o borrar.
+- Priorización de discos por espacio duplicado recuperable, separando lo ya marcado para borrar de lo pendiente de revisar y mostrando su estado de conexión.
 - Etiquetas automáticas basadas en nombres de archivo.
 - Categorías personalizadas con colores, asignables de forma múltiple por video.
 - Categorías incluidas para revisión: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` y otras definidas por el usuario.
@@ -123,17 +124,19 @@ Funciones principales:
 - Reporta estado a la web para mostrar si el companion está sincronizado.
 - Genera una identidad UUID persistente por instalación y la reporta al servidor para distinguir companions durante la transición de seguridad.
 - Ejecuta borrados solo cuando el disco correcto está conectado y la ruta es segura.
+- Antes de borrar, vuelve a validar tamaño, fecha de modificación y huella visual; si la ruta contiene otro archivo, cancela el borrado y retira la marca peligrosa.
 - Valida la ruta canónica antes de abrir, copiar o borrar para impedir escapes mediante enlaces o junctions.
 - Evita sobrescribir por accidente un archivo existente en la carpeta de descarga.
+- Permite habilitar Chromecast voluntariamente desde Perfil y usa enlaces temporales firmados, limitados a una sesión de reproducción.
 
 ## Release actual
 
-La versión actual del stack Docker es `v0.1.19`. El Companion `v0.1.18` sigue siendo compatible y no necesita reconstruirse para esta actualización.
+La versión actual del stack Docker y del Companion es `v0.1.20`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.18.exe`
+- Companion Windows: `VideoCAT-Companion-0.1.20.exe`
 
 Verificación recomendada del companion:
 
@@ -144,7 +147,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.18.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.1.20.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -361,7 +364,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.18.exe
+apps\agent-windows\release\VideoCAT-Companion-0.1.20.exe
 ```
 
 Uso:
@@ -396,6 +399,12 @@ REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
 ```
 
 Cada sesión queda ligada al usuario autenticado que la creó, se identifica con su propio ID de correlación y se cierra al detener el reproductor, expirar o perder el túnel del Companion.
+
+### Chromecast opcional
+
+Chromecast está desactivado por defecto. Para permitirlo, entra a `Perfil`, activa `Permitir reproducción en Chromecast` y guarda el perfil. El SDK oficial de Google Cast solo se carga al usar el botón Cast. VideoCAT entrega al receptor una URL temporal firmada y limitada a esa sesión; no comparte la cookie ni las credenciales permanentes del usuario.
+
+El Chromecast debe poder alcanzar el dominio o IP desde el que abriste VideoCAT. La reproducción directa depende de los contenedores y codecs compatibles con el dispositivo; cuando corresponda, VideoCAT puede usar el remux temporal a MP4 descrito arriba.
 
 ## Flujo de review y borrado
 
@@ -523,8 +532,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.19
-reiterstahl/videocat-web:0.1.19
+reiterstahl/videocat-server:0.1.20
+reiterstahl/videocat-web:0.1.20
 ```
 
 También se publican etiquetas `latest`:
@@ -571,8 +580,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.19 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.19 -t reiterstahl/videocat-web:0.1.19 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.20 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.20 -t reiterstahl/videocat-web:0.1.20 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -585,10 +594,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.19
+  image: reiterstahl/videocat-server:0.1.20
 
 web:
-  image: reiterstahl/videocat-web:0.1.19
+  image: reiterstahl/videocat-web:0.1.20
 ```
 
 ## Endpoints principales
@@ -611,6 +620,7 @@ Web:
 - `GET /api/disks`
 - `GET /api/facets`
 - `GET /api/duplicates/by-size`
+- `GET /api/duplicates/recommended-disks`
 - `POST /api/duplicates/assisted/decision`
 - `GET /api/admin/disks/overview`
 - `GET /api/folder-usage`

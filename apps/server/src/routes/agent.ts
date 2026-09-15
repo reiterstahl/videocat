@@ -17,6 +17,7 @@ import { env } from "../lib/env.js";
 import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history.js";
 import { protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
+import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 
@@ -139,7 +140,7 @@ const companionHeartbeatSchema = z.object({
 });
 const deletionResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["deleted", "missing"]) }),
-  z.object({ status: z.literal("failed"), errorMessage: z.string().trim().min(1).max(4000) })
+  z.object({ status: z.enum(["failed", "identity_mismatch"]), errorMessage: z.string().trim().min(1).max(4000) })
 ]);
 const companionMountedDiskIdsKey = "companion_mounted_disk_ids";
 const expectedThumbnailKinds = Array.from({ length: 15 }, (_value, index) => `frame_${String(index + 1).padStart(2, "0")}`);
@@ -398,13 +399,25 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
             relativePath: file.relativePath
           }
         },
-        select: { id: true }
+        select: { id: true, sizeBytes: true, modifiedAt: true, curationStatus: true }
       });
 
       if (existing) {
-        await prisma.videoFile.update({
-          where: { id: existing.id },
-          data
+        const replacedAtSamePath = catalogFileIdentityChanged(existing, {
+          sizeBytes: file.sizeBytes,
+          modifiedAt: data.modifiedAt
+        });
+        const clearDeleteMark = replacedAtSamePath && existing.curationStatus === "delete";
+        await prisma.$transaction(async (tx) => {
+          await tx.videoFile.update({
+            where: { id: existing.id },
+            data: clearDeleteMark ? { ...data, curationStatus: "none", reviewedAt: null } : data
+          });
+          if (clearDeleteMark) {
+            await tx.videoFileCategory.deleteMany({
+              where: { videoFileId: existing.id, categoryKey: "delete" }
+            });
+          }
         });
         if (file.status !== "scanned") {
           await prisma.agentError.create({
@@ -538,7 +551,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         filename: true,
         relativePath: true,
         sizeBytes: true,
-        modifiedAt: true
+        modifiedAt: true,
+        durationSeconds: true,
+        visualFingerprint: true
       },
       orderBy: { relativePath: "asc" },
       take: 500
@@ -691,10 +706,21 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const headerValue = request.headers["x-videocat-companion-id"];
     const companionId = typeof headerValue === "string" ? headerValue : null;
 
-    if (body.status === "failed") {
+    if (body.status === "failed" || body.status === "identity_mismatch") {
       const recorded = await recordDeletionFailure(id, body.errorMessage, { companionId });
       if (!recorded) return reply.code(404).send({ message: "File not found" });
-      return { ok: true, removedFromCatalog: false };
+      if (body.status === "identity_mismatch") {
+        await prisma.$transaction([
+          prisma.videoFile.updateMany({
+            where: { id, curationStatus: "delete" },
+            data: { curationStatus: "none", reviewedAt: null }
+          }),
+          prisma.videoFileCategory.deleteMany({
+            where: { videoFileId: id, categoryKey: "delete" }
+          })
+        ]);
+      }
+      return { ok: true, removedFromCatalog: false, deleteMarkCleared: body.status === "identity_mismatch" };
     }
 
     const result = await finalizeDeletion(id, body.status, { companionId });

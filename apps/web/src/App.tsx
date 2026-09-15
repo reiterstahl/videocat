@@ -4,6 +4,7 @@ import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEv
 import {
   AlertTriangle,
   ArrowUpDown,
+  Cast,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -43,6 +44,7 @@ import {
 import { companionPortCandidates, formatBytes, formatDuration } from "@videocat/shared";
 import { defaultLanguage, languageLabel, normalizeLanguage, observeLocalization, translateText, type Language } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
+import { castVideo } from "./lib/chromecast";
 import {
   isBetterDuplicateMetric,
   isPendingDuplicateContender,
@@ -199,6 +201,30 @@ type RecoverableSpaceDisk = {
 type RecoverableSpaceResponse = {
   totalRecoverableBytes: number;
   disks: RecoverableSpaceDisk[];
+};
+
+type DuplicateDriveRecommendation = {
+  diskId: string;
+  diskName: string;
+  driveLetter?: string | null;
+  volumeLabel?: string | null;
+  totalBytes?: number | null;
+  connected: boolean;
+  groupCount: number;
+  fileCount: number;
+  readyFileCount: number;
+  readyBytes: number;
+  pendingFileCount: number;
+  pendingBytes: number;
+  recoverableBytes: number;
+};
+
+type DuplicateDriveRecommendationsResponse = {
+  groupCount: number;
+  totalRecoverableBytes: number;
+  totalReadyBytes: number;
+  totalPendingBytes: number;
+  disks: DuplicateDriveRecommendation[];
 };
 
 type DeletionHistoryEntry = {
@@ -363,6 +389,13 @@ type CompanionPairingCode = {
 type ProfileSecurityResponse = {
   hasPin: boolean;
   protectedFolderPatterns: string[];
+  chromecastEnabled: boolean;
+};
+
+type CastAccessResponse = {
+  path: string;
+  expiresAt: string;
+  mimeType: string;
 };
 
 type FacetResponse = {
@@ -441,7 +474,7 @@ type VersionCheckResponse = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.19";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.20";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -952,6 +985,10 @@ export function App() {
   const [duplicateAssistantFeedback, setDuplicateAssistantFeedback] = useState<string | null>(null);
   const [duplicateAssistantMessage, setDuplicateAssistantMessage] = useState("");
   const duplicateAssistantDirtyRef = useRef(false);
+  const [duplicateDriveRecommendationsOpen, setDuplicateDriveRecommendationsOpen] = useState(false);
+  const [duplicateDriveRecommendationsLoading, setDuplicateDriveRecommendationsLoading] = useState(false);
+  const [duplicateDriveRecommendationsError, setDuplicateDriveRecommendationsError] = useState("");
+  const [duplicateDriveRecommendations, setDuplicateDriveRecommendations] = useState<DuplicateDriveRecommendationsResponse | null>(null);
   const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
   const [auditErrors, setAuditErrors] = useState<AuditErrorItem[]>([]);
   const [selectedAuditError, setSelectedAuditError] = useState<AuditErrorItem | null>(null);
@@ -970,6 +1007,7 @@ export function App() {
   const [profileCurrentPin, setProfileCurrentPin] = useState("");
   const [profileNewPin, setProfileNewPin] = useState("");
   const [profilePatternsText, setProfilePatternsText] = useState("");
+  const [profileChromecastEnabled, setProfileChromecastEnabled] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
@@ -1453,17 +1491,18 @@ export function App() {
   }, [authenticated, catalogVersion, connectedDiskIds.length, diskQuery, disks.length, viewMode]);
 
   useEffect(() => {
-    if (!authenticated || viewMode !== "profile") return;
+    if (!authenticated) return;
     setProfileLoading(true);
     setProfileError("");
     api<ProfileSecurityResponse>("/api/profile/security")
       .then((response) => {
         setProfileSecurity(response);
         setProfilePatternsText(response.protectedFolderPatterns.join("\n"));
+        setProfileChromecastEnabled(response.chromecastEnabled);
       })
       .catch((error) => setProfileError(error instanceof Error ? error.message : "No se pudo cargar el perfil."))
       .finally(() => setProfileLoading(false));
-  }, [authenticated, catalogVersion, viewMode]);
+  }, [authenticated, catalogVersion]);
 
   useEffect(() => {
     if (!authenticated || viewMode !== "admin") return;
@@ -1681,6 +1720,23 @@ export function App() {
       setRecoverableSpaceError(error instanceof Error ? error.message : "No se pudo calcular el espacio a recuperar");
     } finally {
       setRecoverableSpaceLoading(false);
+    }
+  }
+
+  async function openDuplicateDriveRecommendations() {
+    setDuplicateDriveRecommendationsOpen(true);
+    setDuplicateDriveRecommendationsLoading(true);
+    setDuplicateDriveRecommendationsError("");
+    try {
+      const params = new URLSearchParams();
+      if (diskQuery) params.set("diskIds", diskQuery);
+      const suffix = params.size > 0 ? `?${params.toString()}` : "";
+      const response = await api<DuplicateDriveRecommendationsResponse>(`/api/duplicates/recommended-disks${suffix}`);
+      setDuplicateDriveRecommendations(response);
+    } catch (error) {
+      setDuplicateDriveRecommendationsError(error instanceof Error ? error.message : "No se pudieron calcular los discos prioritarios.");
+    } finally {
+      setDuplicateDriveRecommendationsLoading(false);
     }
   }
 
@@ -2735,11 +2791,13 @@ export function App() {
         body: JSON.stringify({
           currentPin: profileCurrentPin.trim(),
           newPin: nextPin,
-          protectedFolderPatterns: parseProfilePatterns()
+          protectedFolderPatterns: parseProfilePatterns(),
+          chromecastEnabled: profileChromecastEnabled
         })
       });
       setProfileSecurity(response);
       setProfilePatternsText(response.protectedFolderPatterns.join("\n"));
+      setProfileChromecastEnabled(response.chromecastEnabled);
       setProfileCurrentPin("");
       setProfileNewPin("");
       setProfileMessage("Perfil actualizado.");
@@ -3900,21 +3958,32 @@ export function App() {
 
       {viewMode === "duplicates" ? (
         <section className="results duplicates-view">
-          <div className="view-header">
+          <div className="view-header duplicates-header">
             <div>
               <strong>Potenciales duplicados</strong>
               <span>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</span>
             </div>
-            <button
-              className="primary-button duplicate-assistant-start"
-              disabled={auxLoading || pendingAssistedDuplicateGroups.length === 0}
-              onClick={openDuplicateAssistant}
-              type="button"
-            >
-              <Sparkles size={17} />
-              Iniciar modo asistido
-              <small>{pendingAssistedDuplicateGroups.length}</small>
-            </button>
+            <div className="duplicate-header-actions">
+              <button
+                className="secondary-button"
+                disabled={auxLoading || duplicateGroups.length === 0}
+                onClick={() => void openDuplicateDriveRecommendations()}
+                type="button"
+              >
+                <HardDrive size={17} />
+                {translateText("Discos prioritarios", language)}
+              </button>
+              <button
+                className="primary-button duplicate-assistant-start"
+                disabled={auxLoading || pendingAssistedDuplicateGroups.length === 0}
+                onClick={openDuplicateAssistant}
+                type="button"
+              >
+                <Sparkles size={17} />
+                Iniciar modo asistido
+                <small>{pendingAssistedDuplicateGroups.length}</small>
+              </button>
+            </div>
           </div>
           {duplicateAssistantMessage ? <div className="review-message">{duplicateAssistantMessage}</div> : null}
           {auxLoading ? <div className="loading">Cargando...</div> : null}
@@ -4271,7 +4340,7 @@ export function App() {
           <div className="view-header">
             <div>
               <strong>Perfil y seguridad</strong>
-              <span>PIN y patrones protegidos para carpetas privadas.</span>
+              <span>Seguridad, carpetas privadas y preferencias de reproducción.</span>
             </div>
           </div>
           <form className="profile-panel" onSubmit={saveProfileSecurity}>
@@ -4315,6 +4384,17 @@ export function App() {
                 placeholder={"Private\nProtected"}
               />
               <small>Un patron por linea o separados por coma. VideoCAT ocultara carpetas cuyo nombre contenga cualquiera de estos textos.</small>
+            </label>
+            <label className="profile-consent">
+              <input
+                checked={profileChromecastEnabled}
+                onChange={(event) => setProfileChromecastEnabled(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                <strong>Permitir reproducción en Chromecast</strong>
+                <small>Al activarlo, VideoCAT podrá generar enlaces temporales para que un Chromecast solicite el video a tu servidor. Google Cast solo se cargará cuando uses esta función.</small>
+              </span>
             </label>
             <div className="profile-actions">
               <button className="primary-button" disabled={profileSaving || profileLoading} type="submit">
@@ -4367,6 +4447,18 @@ export function App() {
           error={recoverableSpaceError}
           onClose={() => setRecoverableSpaceOpen(false)}
           onRefresh={() => void openRecoverableSpace()}
+        />
+      ) : null}
+
+      {duplicateDriveRecommendationsOpen ? (
+        <DuplicateDriveRecommendationsModal
+          data={duplicateDriveRecommendations}
+          language={language}
+          locale={locale}
+          loading={duplicateDriveRecommendationsLoading}
+          error={duplicateDriveRecommendationsError}
+          onClose={() => setDuplicateDriveRecommendationsOpen(false)}
+          onRefresh={() => void openDuplicateDriveRecommendations()}
         />
       ) : null}
 
@@ -4425,6 +4517,7 @@ export function App() {
           companionOnline={companionOnline}
           companionLocalOnline={companionLocalOnline}
           companionMountedDiskIds={companionMountedDiskIds}
+          chromecastEnabled={profileSecurity?.chromecastEnabled ?? false}
           onToggleCategory={(categoryKey, enabled) => toggleFileCategory(selected, categoryKey, enabled)}
           onDeleted={removeDeletedFile}
         />
@@ -4838,6 +4931,125 @@ function RecoverableSpaceModal({
               })}
             </div>
           </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DuplicateDriveRecommendationsModal({
+  data,
+  language,
+  locale,
+  loading,
+  error,
+  onClose,
+  onRefresh
+}: {
+  data: DuplicateDriveRecommendationsResponse | null;
+  language: Language;
+  locale: string;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const disks = data?.disks ?? [];
+  const maximumBytes = Math.max(1, ...disks.map((disk) => disk.recoverableBytes));
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="recoverable-panel duplicate-drive-panel">
+        <header className="recoverable-header">
+          <div>
+            <span>{translateText("Plan de liberación", language)}</span>
+            <h2>{translateText("Discos prioritarios", language)}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" title={translateText("Cerrar", language)}>
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="duplicate-drive-summary">
+          <div>
+            <span>{translateText("Listo para borrar", language)}</span>
+            <strong>{formatBytes(data?.totalReadyBytes ?? 0)}</strong>
+          </div>
+          <div>
+            <span>{translateText("Pendiente de decidir", language)}</span>
+            <strong>{formatBytes(data?.totalPendingBytes ?? 0)}</strong>
+          </div>
+          <div>
+            <span>{translateText("Potencial total", language)}</span>
+            <strong>{formatBytes(data?.totalRecoverableBytes ?? 0)}</strong>
+          </div>
+          <button className="secondary-button" onClick={onRefresh} disabled={loading} type="button">
+            {loading ? translateText("Calculando...", language) : translateText("Actualizar", language)}
+          </button>
+        </div>
+
+        <p className="duplicate-drive-explanation">
+          {translateText("La prioridad favorece archivos ya marcados para borrar y luego el mayor espacio potencial entre duplicados. No se borrará nada desde esta pantalla.", language)}
+        </p>
+        {error ? <div className="form-error">{error}</div> : null}
+
+        {loading && !data ? (
+          <div className="empty">{translateText("Calculando discos prioritarios...", language)}</div>
+        ) : disks.length === 0 ? (
+          <div className="empty">{translateText("No hay espacio duplicado atribuible a los discos seleccionados.", language)}</div>
+        ) : (
+          <div className="duplicate-drive-list" aria-label={translateText("Discos prioritarios", language)}>
+            {disks.map((disk, index) => (
+              <article className="duplicate-drive-card" key={disk.diskId}>
+                <span className="recoverable-rank">{index + 1}</span>
+                <div className="duplicate-drive-identity">
+                  <div>
+                    <strong>{disk.diskName}</strong>
+                    <span>{disk.driveLetter || disk.volumeLabel || translateText("Sin letra reportada", language)}</span>
+                  </div>
+                  <span className={`duplicate-drive-presence ${disk.connected ? "is-connected" : ""}`}>
+                    {disk.connected ? translateText("Conectado", language) : translateText("Conectar primero", language)}
+                  </span>
+                </div>
+                <div className="duplicate-drive-progress" aria-hidden="true">
+                  <span style={{ width: `${Math.max(3, (disk.recoverableBytes / maximumBytes) * 100)}%` }} />
+                </div>
+                <div className="duplicate-drive-metrics">
+                  <div>
+                    <span>{translateText("Recuperable", language)}</span>
+                    <strong>{formatBytes(disk.recoverableBytes)}</strong>
+                  </div>
+                  <div>
+                    <span>{translateText("Ya marcado", language)}</span>
+                    <strong>{formatBytes(disk.readyBytes)}</strong>
+                  </div>
+                  <div>
+                    <span>{translateText("Por revisar", language)}</span>
+                    <strong>{formatBytes(disk.pendingBytes)}</strong>
+                  </div>
+                </div>
+                <footer>
+                  {disk.groupCount.toLocaleString(locale)} {translateText("grupos", language)} · {disk.fileCount.toLocaleString(locale)} {translateText("archivos candidatos", language)}
+                </footer>
+              </article>
+            ))}
+          </div>
         )}
       </section>
     </div>
@@ -5392,6 +5604,7 @@ function FileDetail({
   companionOnline,
   companionLocalOnline,
   companionMountedDiskIds,
+  chromecastEnabled,
   onToggleCategory,
   onDeleted
 }: {
@@ -5408,6 +5621,7 @@ function FileDetail({
   companionOnline: boolean;
   companionLocalOnline: boolean;
   companionMountedDiskIds: string[];
+  chromecastEnabled: boolean;
   onToggleCategory: (categoryKey: string, enabled: boolean) => Promise<void> | void;
   onDeleted: (fileId: string) => void;
 }) {
@@ -5680,6 +5894,54 @@ function FileDetail({
     void startRemotePlayback(mode, true);
   }
 
+  async function requestChromecastPlayback() {
+    if (remoteState === "preparing") return;
+    if (!chromecastEnabled) {
+      setRemoteState("idle");
+      setRemoteMessage("Activa Chromecast en Perfil antes de compartir un flujo de video.");
+      return;
+    }
+    if (!companionOnline || !companionMountedDiskIds.includes(file.diskId)) {
+      setRemoteState("idle");
+      setRemoteMessage(remoteAvailabilityMessage);
+      return;
+    }
+
+    const mode = playbackSupport.result === "" && playbackSupport.remuxUseful ? "remux" : "original";
+    if (remoteSessionId) await stopRemotePlayback("", false);
+    setRemoteState("preparing");
+    setRemoteMode(mode);
+    setRemoteMessage("Preparando un enlace temporal para Chromecast...");
+    let sessionId: string | null = null;
+    try {
+      const response = await api<StreamSessionResponse>("/api/stream-sessions", {
+        method: "POST",
+        body: JSON.stringify({ fileId: file.id, mode })
+      });
+      sessionId = response.session.id;
+      setRemoteSessionId(sessionId);
+      const access = await api<CastAccessResponse>(`/api/stream-sessions/${sessionId}/cast-access`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      const cast = await castVideo({
+        url: new URL(access.path, window.location.origin).toString(),
+        contentType: access.mimeType,
+        title: file.filename,
+        subtitle: file.disk?.name
+      });
+      setRemoteState("playing");
+      setRemoteMessage(`Reproduciendo en ${cast.deviceName}.`);
+    } catch (error) {
+      if (sessionId) {
+        await api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+      }
+      setRemoteSessionId(null);
+      setRemoteState("error");
+      setRemoteMessage(error instanceof Error ? error.message : "No se pudo iniciar Chromecast.");
+    }
+  }
+
   async function requestRemoteFullscreen(automatic = false) {
     if (automatic && remoteFullscreenAttemptedRef.current) return;
     const video = remoteVideoRef.current;
@@ -5940,6 +6202,18 @@ function FileDetail({
               >
                 <MonitorPlay size={20} />
               </button>
+              {chromecastEnabled ? (
+                <button
+                  className={`detail-primary-action is-cast ${canStreamRemotely ? "" : "is-unavailable"}`}
+                  disabled={remoteState === "preparing"}
+                  onClick={() => void requestChromecastPlayback()}
+                  title="Reproducir en Chromecast"
+                  aria-label="Reproducir en Chromecast"
+                  type="button"
+                >
+                  <Cast size={20} />
+                </button>
+              ) : null}
               {playbackSupport.result === "" && playbackSupport.remuxUseful ? (
                 <button
                   className="detail-primary-action is-remux"

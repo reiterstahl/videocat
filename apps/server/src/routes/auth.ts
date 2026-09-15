@@ -34,7 +34,8 @@ const protectedFolderUnlockSchema = z.object({
 const profileSecuritySchema = z.object({
   currentPin: z.string().regex(/^\d{4}$/).optional().or(z.literal("")),
   newPin: z.string().regex(/^\d{4}$/).optional().or(z.literal("")),
-  protectedFolderPatterns: z.array(z.string().trim().min(1).max(80)).max(50)
+  protectedFolderPatterns: z.array(z.string().trim().min(1).max(80)).max(50),
+  chromecastEnabled: z.boolean().optional()
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -83,7 +84,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const profile = await updateProtectedSecurityProfile({
       currentPin: body.currentPin || undefined,
       newPin: body.newPin || undefined,
-      protectedFolderPatterns: normalizeProtectedPatterns(body.protectedFolderPatterns)
+      protectedFolderPatterns: normalizeProtectedPatterns(body.protectedFolderPatterns),
+      chromecastEnabled: body.chromecastEnabled
     });
     if (body.newPin) clearProtectedFolderCookie(reply);
     return profile;

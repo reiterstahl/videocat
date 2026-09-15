@@ -9,6 +9,7 @@ import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
+import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
 
@@ -2096,6 +2097,60 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         })
       }))
     };
+  });
+
+  app.get("/api/duplicates/recommended-disks", { preHandler: requireWebAuth }, async (request) => {
+    const query = diskIdsQuerySchema.parse(request.query);
+    const diskIds = commaList(query.diskIds);
+    const where = duplicateEligibleWhere(diskIds.length > 0 ? { diskId: { in: diskIds } } : {});
+    where.AND = [
+      ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
+      { sizeBytes: { gt: 0 } }
+    ];
+
+    const [files, presence] = await Promise.all([
+      prisma.videoFile.findMany({
+        where,
+        select: {
+          ...duplicateCandidateSelect,
+          diskId: true,
+          curationStatus: true,
+          categories: {
+            where: { categoryKey: { in: ["keep", "delete"] } },
+            select: { categoryKey: true }
+          },
+          disk: {
+            select: {
+              name: true,
+              driveLetter: true,
+              volumeLabel: true,
+              totalBytes: true
+            }
+          }
+        }
+      }),
+      companionPresence()
+    ]);
+
+    return recommendDuplicateDrives(
+      files.map((file) => ({
+        id: file.id,
+        filename: file.filename,
+        sizeBytes: file.sizeBytes,
+        durationSeconds: file.durationSeconds,
+        width: file.width,
+        height: file.height,
+        visualFingerprint: file.visualFingerprint,
+        diskId: file.diskId,
+        diskName: file.disk.name,
+        driveLetter: file.disk.driveLetter,
+        volumeLabel: file.disk.volumeLabel,
+        totalBytes: file.disk.totalBytes,
+        curationStatus: file.curationStatus,
+        categoryKeys: file.categories.map((category) => category.categoryKey)
+      })),
+      new Set(presence.mountedDiskIds)
+    );
   });
 
   app.post("/api/duplicates/assisted/decision", { preHandler: requireWebAuth }, async (request, reply) => {

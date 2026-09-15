@@ -557,6 +557,35 @@ test("categories, download queue and scan reconciliation work together", { skip:
     });
     assert.equal(markForDeletion.statusCode, 200);
 
+    const guardedDeleteQueue = await app.inject({
+      method: "GET",
+      url: `/api/agent/disks/${diskId}/delete-queue`,
+      headers: agentHeaders
+    });
+    assert.equal(guardedDeleteQueue.statusCode, 200);
+    const guardedEntry = guardedDeleteQueue.json().files.find((file: { id: string }) => file.id === keepFile.id);
+    assert.equal(guardedEntry.sizeBytes, 2048);
+    assert.equal(guardedEntry.modifiedAt, "2026-09-12T12:00:00.000Z");
+    assert.equal(guardedEntry.visualFingerprint, null);
+
+    const rejectedReplacement = await app.inject({
+      method: "POST",
+      url: `/api/agent/files/${keepFile.id}/deletion-result`,
+      headers: agentHeaders,
+      payload: { status: "identity_mismatch", errorMessage: "File identity changed" }
+    });
+    assert.equal(rejectedReplacement.statusCode, 200);
+    assert.equal(rejectedReplacement.json().deleteMarkCleared, true);
+    assert.equal((await prisma.videoFile.findUnique({ where: { id: keepFile.id } }))?.curationStatus, "none");
+
+    const remarkForDeletion = await app.inject({
+      method: "PATCH",
+      url: `/api/files/${keepFile.id}/curation`,
+      headers: webMutationHeaders(cookie),
+      payload: { curationStatus: "delete" }
+    });
+    assert.equal(remarkForDeletion.statusCode, 200);
+
     companionId = crypto.randomUUID();
     const connectedHeartbeat = await app.inject({
       method: "POST",

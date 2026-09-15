@@ -1,8 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticatedWebUsername, isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
+import {
+  authenticatedCastStreamUsername,
+  authenticatedWebUsername,
+  isProtectedFolderUnlocked,
+  requireWebAuth,
+  signCastStreamAccess
+} from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
-import { protectedFolderPatterns, relativePathMatchesProtectedPatterns } from "../lib/protected-settings.js";
+import {
+  chromecastStreamingEnabled,
+  protectedFolderPatterns,
+  relativePathMatchesProtectedPatterns
+} from "../lib/protected-settings.js";
 import {
   cancelCompanionStream,
   companionTunnelStatus,
@@ -15,6 +25,7 @@ import { rateLimit } from "../lib/security.js";
 
 const streamSessionSchema = z.object({ fileId: z.string().uuid(), mode: z.enum(["original", "remux"]).default("original") });
 const streamParamsSchema = z.object({ id: z.string().uuid() });
+const castStreamQuerySchema = z.object({ castToken: z.string().min(1).max(2000).optional() });
 const activeStreamStatuses = ["opening", "ready", "streaming"];
 
 function parseRange(value: string | undefined, sizeBytes: number): { start: number; end: number } | null {
@@ -241,14 +252,38 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  app.post("/api/stream-sessions/:id/cast-access", { preHandler: requireWebAuth }, async (request, reply) => {
+    const ownerUsername = authenticatedWebUsername(request);
+    if (!ownerUsername) return reply.code(401).send({ message: "Authentication required" });
+    if (!(await chromecastStreamingEnabled())) {
+      return reply.code(403).send({ message: "Chromecast streaming is disabled in your profile" });
+    }
+    const { id } = streamParamsSchema.parse(request.params);
+    const session = await sessionForOwner(id, ownerUsername);
+    if (!session || sessionExpired(session) || !activeStreamStatuses.includes(session.status) || !session.mimeType) {
+      return reply.code(404).send({ message: "Stream session unavailable" });
+    }
+    const castToken = signCastStreamAccess(session.id, ownerUsername, session.expiresAt);
+    return {
+      path: `/api/streams/${session.id}/content?castToken=${encodeURIComponent(castToken)}`,
+      expiresAt: session.expiresAt.toISOString(),
+      mimeType: session.mimeType
+    };
+  });
+
   app.route({
     method: ["GET", "HEAD"],
     url: "/api/streams/:id/content",
-    preHandler: requireWebAuth,
     handler: async (request, reply) => {
-      const ownerUsername = authenticatedWebUsername(request);
-      if (!ownerUsername) return reply.code(401).send({ message: "Authentication required" });
       const { id } = streamParamsSchema.parse(request.params);
+      const castQuery = castStreamQuerySchema.parse(request.query);
+      const webUsername = authenticatedWebUsername(request);
+      const castUsername = authenticatedCastStreamUsername(castQuery.castToken, id);
+      if (!webUsername && castUsername && !(await chromecastStreamingEnabled())) {
+        return reply.code(403).send({ message: "Chromecast streaming is disabled in your profile" });
+      }
+      const ownerUsername = webUsername ?? castUsername;
+      if (!ownerUsername) return reply.code(401).send({ message: "Authentication required" });
       const session = await sessionForOwner(id, ownerUsername);
       const expired = session ? sessionExpired(session) : false;
       if (!session || session.status === "cancelled" || session.status === "failed" || expired || session.fileSizeBytes == null || !session.mimeType) {
@@ -267,6 +302,16 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         .header("Content-Type", session.mimeType)
         .header("X-Content-Type-Options", "nosniff")
         .header("Cache-Control", "private, no-store");
+      if (castQuery.castToken) {
+        reply.header("Cross-Origin-Resource-Policy", "cross-origin");
+        const requestOrigin = typeof request.headers.origin === "string" ? request.headers.origin : null;
+        if (requestOrigin) {
+          reply
+            .header("Access-Control-Allow-Origin", requestOrigin)
+            .header("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, Content-Type")
+            .header("Vary", "Origin");
+        }
+      }
       if (request.method === "HEAD") return reply.send();
       try {
         await prisma.streamSession.update({ where: { id }, data: { lastAccessedAt: new Date() } });

@@ -13,7 +13,12 @@ process.env.TRUST_PROXY ??= "false";
 process.env.COOKIE_SECURE ??= "false";
 
 const { applySecurityHeaders, clearRateLimit, rateLimit, requireTrustedOrigin } = await import("../../apps/server/src/lib/security.ts");
-const { isValidAdminLogin, signSession } = await import("../../apps/server/src/lib/auth.ts");
+const {
+  authenticatedCastStreamUsername,
+  isValidAdminLogin,
+  signCastStreamAccess,
+  signSession
+} = await import("../../apps/server/src/lib/auth.ts");
 const { normalizeProtectedPatterns } = await import("../../apps/server/src/lib/protected-settings.ts");
 const jwt = await import("jsonwebtoken");
 
@@ -82,6 +87,14 @@ test("admin login and session tokens use the expected credentials and claims", (
     algorithms: ["HS256"]
   });
   assert.equal(typeof payload === "string" ? undefined : payload.role, "admin");
+});
+
+test("cast tokens are short-lived and scoped to one stream session", () => {
+  const sessionId = "bd13b6a7-aae4-4d93-a5c7-4873b3ae9b3e";
+  const token = signCastStreamAccess(sessionId, "admin", new Date(Date.now() + 60_000));
+  assert.equal(authenticatedCastStreamUsername(token, sessionId), "admin");
+  assert.equal(authenticatedCastStreamUsername(token, "2af81a16-fdf7-49cc-89a4-b780a1b5dc2a"), null);
+  assert.equal(authenticatedCastStreamUsername("invalid", sessionId), null);
 });
 
 test("protected folder patterns are normalized, deduplicated and bounded", () => {

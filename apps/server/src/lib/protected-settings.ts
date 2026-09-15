@@ -5,6 +5,7 @@ import { prisma } from "./prisma.js";
 
 const pinHashKey = "protected_folder_pin_hash";
 const patternsKey = "protected_folder_patterns";
+const chromecastEnabledKey = "profile_chromecast_enabled";
 
 type SettingRow = {
   value: string;
@@ -88,11 +89,20 @@ export async function isValidProtectedFolderPin(pin: string): Promise<boolean> {
   return constantTimeStringEqual(pin, env.PROTECTED_FOLDER_PIN);
 }
 
-export async function protectedSecurityProfile(): Promise<{ hasPin: boolean; protectedFolderPatterns: string[] }> {
+export async function chromecastStreamingEnabled(): Promise<boolean> {
+  return (await getSetting(chromecastEnabledKey)) === "true";
+}
+
+export async function protectedSecurityProfile(): Promise<{
+  hasPin: boolean;
+  protectedFolderPatterns: string[];
+  chromecastEnabled: boolean;
+}> {
   const storedHash = await getSetting(pinHashKey);
   return {
     hasPin: Boolean(storedHash || env.PROTECTED_FOLDER_PIN),
-    protectedFolderPatterns: await protectedFolderPatterns()
+    protectedFolderPatterns: await protectedFolderPatterns(),
+    chromecastEnabled: await chromecastStreamingEnabled()
   };
 }
 
@@ -100,7 +110,8 @@ export async function updateProtectedSecurityProfile(input: {
   currentPin?: string;
   newPin?: string;
   protectedFolderPatterns: string[];
-}): Promise<{ hasPin: boolean; protectedFolderPatterns: string[] }> {
+  chromecastEnabled?: boolean;
+}): Promise<{ hasPin: boolean; protectedFolderPatterns: string[]; chromecastEnabled: boolean }> {
   const storedHash = await getSetting(pinHashKey);
   if (input.newPin) {
     if (storedHash && (!input.currentPin || !verifyHashedPin(input.currentPin, storedHash))) {
@@ -111,6 +122,9 @@ export async function updateProtectedSecurityProfile(input: {
 
   const normalizedPatterns = normalizeProtectedPatterns(input.protectedFolderPatterns);
   await setSetting(patternsKey, JSON.stringify(normalizedPatterns));
+  if (input.chromecastEnabled !== undefined) {
+    await setSetting(chromecastEnabledKey, String(input.chromecastEnabled));
+  }
   clearProtectedSettingsCache();
   return protectedSecurityProfile();
 }

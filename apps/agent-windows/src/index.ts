@@ -28,6 +28,11 @@ import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
+import {
+  deletionFingerprintFrameIndexes,
+  validateDeletionFingerprint,
+  validateDeletionMetadata
+} from "./deletion-identity.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -133,6 +138,8 @@ type DeleteQueueFile = {
   relativePath: string;
   sizeBytes: number;
   modifiedAt?: string | null;
+  durationSeconds?: number | null;
+  visualFingerprint?: string | null;
 };
 
 type DeleteQueueResponse = {
@@ -220,7 +227,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 18;
+const companionVersion = 20;
 let downloadProcessingRunning = false;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
@@ -964,15 +971,63 @@ async function companionAgentApi<T>(url: string, init: RequestInit = {}): Promis
 
 async function reportDeletionResult(
   fileId: string,
-  status: "deleted" | "missing" | "failed",
+  status: "deleted" | "missing" | "failed" | "identity_mismatch",
   errorMessage?: string
 ): Promise<void> {
   await companionAgentApi(`/api/agent/files/${fileId}/deletion-result`, {
     method: "POST",
     body: JSON.stringify({
       status,
-      ...(status === "failed" ? { errorMessage: boundedErrorMessage(errorMessage, 4000, "Deletion failed") } : {})
+      ...(status === "failed" || status === "identity_mismatch"
+        ? { errorMessage: boundedErrorMessage(errorMessage, 4000, "Deletion failed") }
+        : {})
     })
+  });
+}
+
+async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const before = await fs.stat(target);
+  const metadata = validateDeletionMetadata(file, {
+    sizeBytes: before.size,
+    modifiedAtMs: before.mtime.getTime()
+  });
+  if (!metadata.ok) return metadata;
+
+  if (file.visualFingerprint) {
+    if (!file.durationSeconds || file.durationSeconds <= 0) {
+      return { ok: false, reason: "existe una huella visual pero falta la duracion necesaria para verificarla" };
+    }
+    const frameIndexes = deletionFingerprintFrameIndexes(file.visualFingerprint);
+    if (frameIndexes.length === 0) {
+      return { ok: false, reason: "la huella visual catalogada no se puede verificar" };
+    }
+
+    const temporaryRoot = path.join(agentStateRoot(), "delete-verification", crypto.randomUUID());
+    const observedFrames: VisualFingerprintFrame[] = [];
+    try {
+      for (const index of frameIndexes) {
+        const rawDestination = path.join(temporaryRoot, `${String(index).padStart(2, "0")}.raw`);
+        const seconds = Math.max(0.1, file.durationSeconds * (index / 16));
+        const extracted = await extractVisualHash(target, rawDestination, seconds);
+        observedFrames.push({ index, hash: extracted.hash });
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `no se pudo verificar la huella visual: ${boundedErrorMessage(error, 1000, "fingerprint verification failed")}`
+      };
+    } finally {
+      await fs.rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+
+    const fingerprint = validateDeletionFingerprint(file.visualFingerprint, observedFrames);
+    if (!fingerprint.ok) return fingerprint;
+  }
+
+  const after = await fs.stat(target);
+  return validateDeletionMetadata(file, {
+    sizeBytes: after.size,
+    modifiedAtMs: after.mtime.getTime()
   });
 }
 
@@ -1033,6 +1088,14 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
           failed += 1;
           await reportDeletionResult(file.id, "failed", `Ruta fuera de la unidad omitida: ${file.relativePath}`).catch(() => undefined);
           console.warn(`Ruta fuera de la unidad omitida: ${file.relativePath}`);
+          continue;
+        }
+        const identity = await verifyDeletionIdentity(canonicalTarget, file);
+        if (!identity.ok) {
+          const message = `Identidad del archivo modificada; borrado cancelado: ${identity.reason}`;
+          failed += 1;
+          await reportDeletionResult(file.id, "identity_mismatch", message).catch(() => undefined);
+          console.warn(`${message}. Ruta: ${file.relativePath}`);
           continue;
         }
         await deleteLocalFile(canonicalTarget);
