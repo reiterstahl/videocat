@@ -1578,10 +1578,16 @@ export function App() {
     setPassword("");
   }
 
-  async function openDetail(file: VideoFile) {
+  async function openDetail(file: Pick<VideoFile, "id">) {
     const response = await api<{ file: VideoFile; duplicates: VideoFile[] }>(`/api/files/${file.id}`);
     setSelected(response.file);
     setDuplicates(response.duplicates);
+  }
+
+  async function openRandomConnectedDetail(excludeId: string) {
+    const response = await api<{ file: VideoFile }>(`/api/playback/random?excludeId=${encodeURIComponent(excludeId)}`);
+    setSelected(response.file);
+    setDuplicates([]);
   }
 
   async function loadReviewSummary() {
@@ -4370,6 +4376,7 @@ export function App() {
           canOpenNext={canOpenNext}
           onPrevious={() => openAdjacentDetail(-1)}
           onNext={() => openAdjacentDetail(1)}
+          onRandom={(excludeId) => openRandomConnectedDetail(excludeId)}
           onClose={() => setSelected(null)}
           categories={facets.curationStatuses}
           companionOnline={companionOnline}
@@ -5311,6 +5318,7 @@ function FileDetail({
   canOpenNext,
   onPrevious,
   onNext,
+  onRandom,
   onClose,
   categories,
   companionOnline,
@@ -5326,6 +5334,7 @@ function FileDetail({
   canOpenNext: boolean;
   onPrevious: () => Promise<void> | void;
   onNext: () => Promise<void> | void;
+  onRandom: (excludeId: string) => Promise<void> | void;
   onClose: () => void;
   categories: CurationCategory[];
   companionOnline: boolean;
@@ -5348,6 +5357,9 @@ function FileDetail({
   const [remoteCurrentTime, setRemoteCurrentTime] = useState(0);
   const [remoteDuration, setRemoteDuration] = useState(0);
   const [remoteControlsVisible, setRemoteControlsVisible] = useState(false);
+  const [remoteShuffleEnabled, setRemoteShuffleEnabled] = useState(
+    () => localStorage.getItem("videocat-remote-shuffle") !== "false"
+  );
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remotePlayerRef = useRef<HTMLElement | null>(null);
   const remoteSessionIdRef = useRef<string | null>(null);
@@ -5684,6 +5696,59 @@ function FileDetail({
     }
   }
 
+  async function moveToRandomDetail(continueRemotePlayback = false) {
+    if (!companionOnline || companionMountedDiskIds.length === 0) {
+      setRemoteState("error");
+      setRemoteMessage("No hay discos conectados disponibles para elegir otro video al azar.");
+      revealRemoteControls();
+      return;
+    }
+
+    const mode = remoteMode;
+    const wasRemote = Boolean(remoteSessionId || remoteUrl);
+    if (continueRemotePlayback && wasRemote) {
+      const sessionId = remoteSessionId;
+      remoteSessionIdRef.current = null;
+      setRemoteUrl(null);
+      setRemoteSessionId(null);
+      setRemoteState("preparing");
+      setRemoteMessage("Eligiendo otro video al azar...");
+      setRemoteCurrentTime(0);
+      setRemoteDuration(0);
+      setRemoteControlsVisible(false);
+      remotePlayNextRef.current = mode;
+      if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+    } else if (wasRemote) {
+      await stopRemotePlayback();
+    }
+
+    try {
+      await onRandom(file.id);
+    } catch (error) {
+      remotePlayNextRef.current = null;
+      setRemoteState("error");
+      setRemoteMessage(error instanceof Error ? error.message : "No se pudo elegir otro video al azar.");
+      revealRemoteControls();
+    }
+  }
+
+  function toggleRemoteShuffle() {
+    setRemoteShuffleEnabled((current) => {
+      const next = !current;
+      localStorage.setItem("videocat-remote-shuffle", String(next));
+      return next;
+    });
+    revealRemoteControls();
+  }
+
+  function advanceRemotePlayback() {
+    if (remoteShuffleEnabled) {
+      void moveToRandomDetail(true);
+      return;
+    }
+    void moveDetail(1, true);
+  }
+
   function handleRemoteVideoPointerUp(event: ReactPointerEvent<HTMLVideoElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const side = event.clientX - bounds.left < bounds.width / 2 ? "back" : "forward";
@@ -5916,7 +5981,13 @@ function FileDetail({
                   onPointerMove={(event) => {
                     if (event.pointerType === "mouse") revealRemoteControls();
                   }}
-                  onEnded={() => void stopRemotePlayback("Reproducción remota finalizada.")}
+                  onEnded={() => {
+                    if (remoteShuffleEnabled) {
+                      void moveToRandomDetail(true);
+                    } else {
+                      void stopRemotePlayback("Reproducción remota finalizada.");
+                    }
+                  }}
                   onError={(event) => {
                     const video = event.currentTarget;
                     if (remoteSessionId && companionOnline && remoteRecoveryAttemptsRef.current < 1) {
@@ -5976,7 +6047,23 @@ function FileDetail({
                   <button type="button" onClick={() => void requestRemoteFullscreen()} title="Pantalla completa" aria-label="Pantalla completa">
                     <Maximize size={21} />
                   </button>
-                  <button type="button" disabled={!canOpenNext} onClick={() => void moveDetail(1, true)} title="Reproducir el siguiente video" aria-label="Reproducir el siguiente video">
+                  <button
+                    className={remoteShuffleEnabled ? "is-toggle-active" : ""}
+                    type="button"
+                    onClick={toggleRemoteShuffle}
+                    title={remoteShuffleEnabled ? "Desactivar reproducción aleatoria" : "Activar reproducción aleatoria"}
+                    aria-label={remoteShuffleEnabled ? "Desactivar reproducción aleatoria" : "Activar reproducción aleatoria"}
+                    aria-pressed={remoteShuffleEnabled}
+                  >
+                    <Shuffle size={21} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={remoteShuffleEnabled ? !companionOnline || companionMountedDiskIds.length === 0 : !canOpenNext}
+                    onClick={advanceRemotePlayback}
+                    title={remoteShuffleEnabled ? "Reproducir otro video al azar" : "Reproducir el siguiente video"}
+                    aria-label={remoteShuffleEnabled ? "Reproducir otro video al azar" : "Reproducir el siguiente video"}
+                  >
                     <SkipForward size={22} />
                   </button>
                 </div>

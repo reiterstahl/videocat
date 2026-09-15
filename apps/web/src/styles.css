@@ -4079,6 +4079,13 @@ tbody tr.curation-row {
   color: #fff;
 }
 
+.remote-quick-controls > button.is-toggle-active {
+  border-color: var(--matrix-primary);
+  background: rgba(252, 97, 33, 0.2);
+  color: var(--matrix-primary);
+  box-shadow: inset 0 0 0 1px rgba(252, 97, 33, 0.22);
+}
+
 .remote-quick-controls > button:disabled {
   opacity: 0.4;
   cursor: not-allowed;

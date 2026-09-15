@@ -25,6 +25,9 @@ const diskIdsQuerySchema = z.object({
 const reviewNextQuerySchema = diskIdsQuerySchema.extend({
   excludeId: z.string().uuid().optional()
 });
+const randomPlaybackQuerySchema = z.object({
+  excludeId: z.string().uuid().optional()
+});
 const categoryKeySchema = z.string().min(1).max(40).regex(/^[a-z0-9_-]+$/);
 const curationStatusSchema = z.union([z.literal("none"), categoryKeySchema]);
 const fileCategoryToggleSchema = z.object({
@@ -1030,6 +1033,45 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       page: query.page,
       pageSize: query.pageSize,
       total
+    };
+  });
+
+  app.get("/api/playback/random", { preHandler: requireWebAuth }, async (request, reply) => {
+    const query = randomPlaybackQuerySchema.parse(request.query);
+    const presence = await companionPresence();
+    if (!presence.online) {
+      return reply.code(409).send({ message: "Companion is offline" });
+    }
+    if (presence.mountedDiskIds.length === 0) {
+      return reply.code(409).send({ message: "No connected disks are available" });
+    }
+
+    const where: Prisma.VideoFileWhereInput = {
+      diskId: { in: presence.mountedDiskIds },
+      id: query.excludeId ? { not: query.excludeId } : undefined
+    };
+    applyHiddenPathFilter(where);
+    if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(where);
+
+    const total = await prisma.videoFile.count({ where });
+    if (total === 0) {
+      return reply.code(404).send({ message: "No other playable video is available on connected disks" });
+    }
+
+    const file = await prisma.videoFile.findFirst({
+      where,
+      include: fileIncludes(),
+      orderBy: { id: "asc" },
+      skip: Math.floor(Math.random() * total)
+    });
+    if (!file) {
+      return reply.code(404).send({ message: "No playable video is available on connected disks" });
+    }
+
+    const [fileWithCategories] = await attachCategoryKeys([file]);
+    return {
+      file: serializeFile(fileWithCategories, 0),
+      available: total
     };
   });
 
