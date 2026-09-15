@@ -23,7 +23,11 @@ import { companionStreamMaxRangeBytes } from "@videocat/shared";
 import { env } from "../lib/env.js";
 import { rateLimit } from "../lib/security.js";
 
-const streamSessionSchema = z.object({ fileId: z.string().uuid(), mode: z.enum(["original", "remux"]).default("original") });
+const streamSessionSchema = z.object({
+  fileId: z.string().uuid(),
+  mode: z.enum(["original", "remux"]).default("original"),
+  replaceSessionId: z.string().uuid().optional()
+});
 const streamParamsSchema = z.object({ id: z.string().uuid() });
 const castStreamQuerySchema = z.object({ castToken: z.string().min(1).max(2000).optional() });
 const activeStreamStatuses = ["opening", "ready", "streaming"];
@@ -109,7 +113,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     if (!ownerUsername) return reply.code(401).send({ message: "Authentication required" });
     const limit = rateLimit(`remote-stream-session:${ownerUsername}`, 30, 60 * 1000);
     if (!limit.allowed) return reply.code(429).header("Retry-After", String(limit.retryAfterSeconds)).send({ message: "Too many remote playback requests" });
-    const { fileId, mode } = streamSessionSchema.parse(request.body);
+    const { fileId, mode, replaceSessionId } = streamSessionSchema.parse(request.body);
     const file = await prisma.videoFile.findUnique({
       where: { id: fileId },
       select: {
@@ -178,6 +182,26 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     if (!candidate) return reply.code(409).send({ message: mode === "remux" ? "No Companion with optional MP4 remuxing is ready" : "No paired Companion with this disk is ready for streaming" });
 
     await expireInactiveStreams(app, candidate.installationId);
+    if (replaceSessionId) {
+      const replacedSession = await prisma.streamSession.findFirst({
+        where: {
+          id: replaceSessionId,
+          ownerUsername,
+          status: { in: activeStreamStatuses }
+        },
+        select: { id: true, companionId: true }
+      });
+      if (replacedSession) {
+        await expireStreamSession(app, replacedSession, "cancelled", "superseded");
+        app.log.info({
+          streamSessionId: replacedSession.id,
+          replacementFileId: file.id,
+          companionId: replacedSession.companionId,
+          ownerUsername,
+          requestId: request.id
+        }, "Remote stream session superseded by next playback request");
+      }
+    }
     const [activeCompanionCount, activeUserCount] = await Promise.all([
       prisma.streamSession.count({
         where: { companionId: candidate.installationId, ownerUsername, status: { in: activeStreamStatuses }, expiresAt: { gt: new Date() } }

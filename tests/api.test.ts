@@ -306,6 +306,19 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
     assert.equal(expired.json().session.status, "expired");
     const unavailable = await app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=0-1" } });
     assert.equal(unavailable.statusCode, 404);
+
+    const activeResponse = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId } });
+    assert.equal(activeResponse.statusCode, 200, activeResponse.body);
+    const activeSessionId = activeResponse.json().session.id as string;
+    const replacementResponse = await app.inject({
+      method: "POST",
+      url: "/api/stream-sessions",
+      headers: webMutationHeaders(cookie),
+      payload: { fileId, replaceSessionId: activeSessionId }
+    });
+    assert.equal(replacementResponse.statusCode, 200, replacementResponse.body);
+    assert.notEqual(replacementResponse.json().session.id, activeSessionId);
+    assert.equal((await prisma.streamSession.findUnique({ where: { id: activeSessionId } }))?.status, "cancelled");
   } finally {
     tunnel?.terminate();
     await prisma.streamSession.deleteMany({ where: { videoFileId: fileId } });

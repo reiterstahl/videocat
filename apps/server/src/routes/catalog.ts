@@ -1652,6 +1652,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
     const pendingEntries = pendingFiles.map((file) => {
       const failed = recordsByVideoId.get(file.id);
+      // A new explicit delete mark is a conscious retry. Keep the older record
+      // for audit, but show the current queue state as pending until it fails again.
+      const failedAfterLatestRequest = Boolean(
+        failed && (!file.reviewedAt || failed.attemptedAt >= file.reviewedAt)
+      );
       return {
         id: failed?.id ?? `pending-${file.id}`,
         videoFileId: file.id,
@@ -1661,11 +1666,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         filename: file.filename,
         relativePath: file.relativePath,
         sizeBytes: Number(file.sizeBytes),
-        status: failed ? "failed" : "pending",
+        status: failedAfterLatestRequest ? "failed" : "pending",
         requestedAt: file.reviewedAt ?? file.updatedAt,
-        attemptedAt: failed?.attemptedAt ?? null,
+        attemptedAt: failedAfterLatestRequest ? failed?.attemptedAt ?? null : null,
         completedAt: null,
-        errorMessage: failed?.errorMessage ?? null,
+        errorMessage: failedAfterLatestRequest ? failed?.errorMessage ?? null : null,
         connected: connectedDiskIds.has(file.diskId)
       };
     });

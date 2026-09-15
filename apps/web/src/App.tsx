@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
@@ -225,6 +225,16 @@ type DuplicateDriveRecommendationsResponse = {
   totalReadyBytes: number;
   totalPendingBytes: number;
   disks: DuplicateDriveRecommendation[];
+};
+
+type CachedDuplicateGroups = {
+  expiresAt: number;
+  groups: DuplicateGroup[];
+};
+
+type CachedDuplicateDriveRecommendations = {
+  expiresAt: number;
+  response: DuplicateDriveRecommendationsResponse;
 };
 
 type DeletionHistoryEntry = {
@@ -474,7 +484,7 @@ type VersionCheckResponse = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.20";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.21";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -985,10 +995,19 @@ export function App() {
   const [duplicateAssistantFeedback, setDuplicateAssistantFeedback] = useState<string | null>(null);
   const [duplicateAssistantMessage, setDuplicateAssistantMessage] = useState("");
   const duplicateAssistantDirtyRef = useRef(false);
+  const duplicateGroupsCacheRef = useRef<Map<string, CachedDuplicateGroups>>(new Map());
+  const duplicatePreviewFilesRef = useRef<Record<string, VideoFile>>({});
+  const duplicatePreviewRequestsRef = useRef<Map<string, Promise<VideoFile>>>(new Map());
+  const [duplicatePreviewFiles, setDuplicatePreviewFiles] = useState<Record<string, VideoFile>>({});
   const [duplicateDriveRecommendationsOpen, setDuplicateDriveRecommendationsOpen] = useState(false);
   const [duplicateDriveRecommendationsLoading, setDuplicateDriveRecommendationsLoading] = useState(false);
   const [duplicateDriveRecommendationsError, setDuplicateDriveRecommendationsError] = useState("");
   const [duplicateDriveRecommendations, setDuplicateDriveRecommendations] = useState<DuplicateDriveRecommendationsResponse | null>(null);
+  const duplicateDriveRecommendationCacheRef = useRef<Map<string, CachedDuplicateDriveRecommendations>>(new Map());
+  const duplicateDriveRecommendationRequestRef = useRef<{
+    key: string;
+    promise: Promise<DuplicateDriveRecommendationsResponse>;
+  } | null>(null);
   const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
   const [auditErrors, setAuditErrors] = useState<AuditErrorItem[]>([]);
   const [selectedAuditError, setSelectedAuditError] = useState<AuditErrorItem | null>(null);
@@ -1348,6 +1367,74 @@ export function App() {
   }, [authenticated, connectedDiskIds, disks.length]);
 
   const diskQuery = connectedDiskIds.join(",");
+  const duplicateCacheKey = `${catalogVersion}:${diskQuery || "all"}`;
+
+  const fetchDuplicatePreviewFile = useCallback((file: VideoFile): Promise<VideoFile> => {
+    const cached = duplicatePreviewFilesRef.current[file.id];
+    if (cached) return Promise.resolve(cached);
+
+    const pending = duplicatePreviewRequestsRef.current.get(file.id);
+    if (pending) return pending;
+
+    const request = api<{ file: VideoFile }>(`/api/files/${file.id}`)
+      .then((response) => response.file)
+      .catch(() => file)
+      .then((resolved) => {
+        duplicatePreviewFilesRef.current = {
+          ...duplicatePreviewFilesRef.current,
+          [resolved.id]: resolved
+        };
+        setDuplicatePreviewFiles(duplicatePreviewFilesRef.current);
+        for (const thumbnail of resolved.thumbnails) {
+          const image = new window.Image();
+          image.decoding = "async";
+          image.fetchPriority = "low";
+          image.src = thumbnailSrc(thumbnail.url) ?? thumbnail.url;
+        }
+        return resolved;
+      })
+      .finally(() => {
+        duplicatePreviewRequestsRef.current.delete(file.id);
+      });
+
+    duplicatePreviewRequestsRef.current.set(file.id, request);
+    return request;
+  }, []);
+
+  const warmDuplicatePreviewFiles = useCallback((items: VideoFile[]) => {
+    const unique = [...new Map(items.map((file) => [file.id, file])).values()];
+    void Promise.all(unique.map((file) => fetchDuplicatePreviewFile(file)));
+  }, [fetchDuplicatePreviewFile]);
+
+  const fetchDuplicateDriveRecommendations = useCallback((force = false): Promise<DuplicateDriveRecommendationsResponse> => {
+    const now = Date.now();
+    const cached = duplicateDriveRecommendationCacheRef.current.get(duplicateCacheKey);
+    if (!force && cached && cached.expiresAt > now) return Promise.resolve(cached.response);
+
+    const inFlight = duplicateDriveRecommendationRequestRef.current;
+    if (inFlight?.key === duplicateCacheKey) return inFlight.promise;
+
+    const params = new URLSearchParams();
+    if (diskQuery) params.set("diskIds", diskQuery);
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    const promise = api<DuplicateDriveRecommendationsResponse>(`/api/duplicates/recommended-disks${suffix}`)
+      .then((response) => {
+        duplicateDriveRecommendationCacheRef.current.set(duplicateCacheKey, {
+          response,
+          expiresAt: Date.now() + 2 * 60 * 1000
+        });
+        setDuplicateDriveRecommendations(response);
+        return response;
+      })
+      .finally(() => {
+        if (duplicateDriveRecommendationRequestRef.current?.key === duplicateCacheKey) {
+          duplicateDriveRecommendationRequestRef.current = null;
+        }
+      });
+
+    duplicateDriveRecommendationRequestRef.current = { key: duplicateCacheKey, promise };
+    return promise;
+  }, [diskQuery, duplicateCacheKey]);
 
   useEffect(() => {
     if (!authenticated || disks.length === 0) return;
@@ -1462,33 +1549,84 @@ export function App() {
       return;
     }
 
+    if (viewMode === "duplicates") {
+      const cached = duplicateGroupsCacheRef.current.get(duplicateCacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        setDuplicateGroups(cached.groups);
+        void fetchDuplicateDriveRecommendations().catch(() => undefined);
+        return;
+      }
+
+      let active = true;
+      setAuxLoading(true);
+      const params = new URLSearchParams();
+      if (diskQuery) params.set("diskIds", diskQuery);
+      void api<{ groups: DuplicateGroup[] }>(`/api/duplicates/by-size?${params.toString()}`)
+        .then((response) => {
+          if (!active) return;
+          duplicateGroupsCacheRef.current.set(duplicateCacheKey, {
+            groups: response.groups,
+            expiresAt: Date.now() + 2 * 60 * 1000
+          });
+          setDuplicateGroups(response.groups);
+          void fetchDuplicateDriveRecommendations().catch(() => undefined);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (active) setAuxLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     const params = new URLSearchParams();
     if (diskQuery) params.set("diskIds", diskQuery);
-
     setAuxLoading(true);
-    const endpoint =
-      viewMode === "usage"
-        ? `/api/folder-usage?${params.toString()}`
-        : viewMode === "duplicates"
-          ? `/api/duplicates/by-size?${params.toString()}`
-          : `/api/audit/errors?${params.toString()}`;
-    api<
-      | { folders: FolderUsageItem[] }
-      | { groups: DuplicateGroup[] }
-      | { summary: AuditSummaryItem[]; errors: AuditErrorItem[] }
-    >(endpoint)
+    const endpoint = viewMode === "usage"
+      ? `/api/folder-usage?${params.toString()}`
+      : `/api/audit/errors?${params.toString()}`;
+    void api<{ folders: FolderUsageItem[] } | { summary: AuditSummaryItem[]; errors: AuditErrorItem[] }>(endpoint)
       .then((response) => {
         if ("folders" in response) {
           setFolderUsage(response.folders);
-        } else if ("groups" in response) {
-          setDuplicateGroups(response.groups);
         } else {
           setAuditSummary(response.summary);
           setAuditErrors(response.errors);
         }
       })
       .finally(() => setAuxLoading(false));
-  }, [authenticated, catalogVersion, connectedDiskIds.length, diskQuery, disks.length, viewMode]);
+  }, [
+    authenticated,
+    catalogVersion,
+    connectedDiskIds.length,
+    diskQuery,
+    disks.length,
+    duplicateCacheKey,
+    fetchDuplicateDriveRecommendations,
+    viewMode
+  ]);
+
+  useEffect(() => {
+    if (!authenticated || viewMode !== "duplicates") return;
+    const upcoming = pendingAssistedDuplicateGroups
+      .slice(0, 2)
+      .flatMap((group) => group.contenders.slice(0, 2));
+    warmDuplicatePreviewFiles(upcoming);
+  }, [authenticated, pendingAssistedDuplicateGroups, viewMode, warmDuplicatePreviewFiles]);
+
+  useEffect(() => {
+    if (!duplicateAssistant) return;
+    const currentGroup = duplicateAssistant.groups[duplicateAssistant.groupIndex];
+    const nextGroup = duplicateAssistant.groups[duplicateAssistant.groupIndex + 1];
+    warmDuplicatePreviewFiles([
+      duplicateAssistant.keeper,
+      duplicateAssistant.challenger,
+      ...duplicateAssistant.remaining.slice(0, 1),
+      ...(currentGroup?.contenders.slice(0, 2) ?? []),
+      ...(nextGroup?.contenders.slice(0, 2) ?? [])
+    ]);
+  }, [duplicateAssistant, warmDuplicatePreviewFiles]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -1723,16 +1861,12 @@ export function App() {
     }
   }
 
-  async function openDuplicateDriveRecommendations() {
+  async function openDuplicateDriveRecommendations(force = false) {
     setDuplicateDriveRecommendationsOpen(true);
     setDuplicateDriveRecommendationsLoading(true);
     setDuplicateDriveRecommendationsError("");
     try {
-      const params = new URLSearchParams();
-      if (diskQuery) params.set("diskIds", diskQuery);
-      const suffix = params.size > 0 ? `?${params.toString()}` : "";
-      const response = await api<DuplicateDriveRecommendationsResponse>(`/api/duplicates/recommended-disks${suffix}`);
-      setDuplicateDriveRecommendations(response);
+      await fetchDuplicateDriveRecommendations(force);
     } catch (error) {
       setDuplicateDriveRecommendationsError(error instanceof Error ? error.message : "No se pudieron calcular los discos prioritarios.");
     } finally {
@@ -2091,6 +2225,12 @@ export function App() {
       setDuplicateAssistantMessage("No quedan grupos de duplicados pendientes de decisión.");
       return;
     }
+    warmDuplicatePreviewFiles([
+      session.keeper,
+      session.challenger,
+      ...session.remaining.slice(0, 1),
+      ...(session.groups[session.groupIndex + 1]?.contenders.slice(0, 2) ?? [])
+    ]);
     setDuplicateAssistant(session);
   }
 
@@ -4458,7 +4598,7 @@ export function App() {
           loading={duplicateDriveRecommendationsLoading}
           error={duplicateDriveRecommendationsError}
           onClose={() => setDuplicateDriveRecommendationsOpen(false)}
-          onRefresh={() => void openDuplicateDriveRecommendations()}
+          onRefresh={() => void openDuplicateDriveRecommendations(true)}
         />
       ) : null}
 
@@ -4493,6 +4633,8 @@ export function App() {
         <DuplicateAssistantModal
           session={duplicateAssistant}
           language={language}
+          prefetchedFiles={duplicatePreviewFiles}
+          resolvePreviewFile={fetchDuplicatePreviewFile}
           busy={duplicateAssistantBusy}
           feedbackFileId={duplicateAssistantFeedback}
           message={duplicateAssistantMessage}
@@ -5150,6 +5292,8 @@ function duplicateRecommendationLabel(reason: DuplicateRecommendationReason): st
 function DuplicateAssistantModal({
   session,
   language,
+  prefetchedFiles,
+  resolvePreviewFile,
   busy,
   feedbackFileId,
   message,
@@ -5159,6 +5303,8 @@ function DuplicateAssistantModal({
 }: {
   session: DuplicateAssistantSession;
   language: Language;
+  prefetchedFiles: Record<string, VideoFile>;
+  resolvePreviewFile: (file: VideoFile) => Promise<VideoFile>;
   busy: boolean;
   feedbackFileId: string | null;
   message: string;
@@ -5177,7 +5323,7 @@ function DuplicateAssistantModal({
   const currentComparison = Math.min(session.totalComparisons, session.completedComparisons + 1);
   const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [hoveredFrameIndex, setHoveredFrameIndex] = useState(0);
-  const [previewFiles, setPreviewFiles] = useState<Record<string, VideoFile>>({});
+  const [previewFiles, setPreviewFiles] = useState<Record<string, VideoFile>>(prefetchedFiles);
   const decisionPointerRef = useRef<{ fileId: string; x: number; y: number } | null>(null);
   const comparisonFiles = useMemo(
     () => files.map((file) => previewFiles[file.id] ?? file),
@@ -5186,17 +5332,14 @@ function DuplicateAssistantModal({
   const comparisonFileKey = files.map((file) => file.id).join(":");
 
   useEffect(() => {
+    setPreviewFiles((current) => ({ ...current, ...prefetchedFiles }));
+  }, [prefetchedFiles]);
+
+  useEffect(() => {
     let cancelled = false;
     const missing = files.filter((file) => !previewFiles[file.id]);
     if (missing.length === 0) return;
-    void Promise.all(missing.map(async (file) => {
-      try {
-        const response = await api<{ file: VideoFile }>(`/api/files/${file.id}`);
-        return response.file;
-      } catch {
-        return file;
-      }
-    })).then((loaded) => {
+    void Promise.all(missing.map(resolvePreviewFile)).then((loaded) => {
       if (cancelled) return;
       setPreviewFiles((current) => {
         const next = { ...current };
@@ -5207,7 +5350,7 @@ function DuplicateAssistantModal({
     return () => {
       cancelled = true;
     };
-  }, [comparisonFileKey]);
+  }, [comparisonFileKey, previewFiles, resolvePreviewFile]);
 
   useEffect(() => {
     const images = comparisonFiles.flatMap((file) => file.thumbnails).map((thumbnail) => thumbnailSrc(thumbnail.url) ?? thumbnail.url);
@@ -5677,10 +5820,12 @@ function FileDetail({
     : remoteState === "paused"
       ? "Reproducción pausada"
       : remoteState === "buffering"
-        ? "Cargando el siguiente segmento"
+        ? "Cargando video"
         : remoteMode === "remux"
           ? "Preparando MP4 temporal"
           : "Preparando reproducción segura";
+  const remoteTransitioning = remoteTransitioningRef.current;
+  const remoteLoadingLabel = remoteTransitioning ? "" : (remoteMessage || "Cargando video...");
 
   useEffect(() => {
     remoteSessionIdRef.current = remoteSessionId;
@@ -5843,9 +5988,10 @@ function FileDetail({
       setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
     }
     try {
+      const replaceSessionId = remoteTransitionSessionRef.current;
       const response = await api<StreamSessionResponse>("/api/stream-sessions", {
         method: "POST",
-        body: JSON.stringify({ fileId: file.id, mode })
+        body: JSON.stringify({ fileId: file.id, mode, ...(replaceSessionId ? { replaceSessionId } : {}) })
       });
       setRemoteSessionId(response.session.id);
       setRemoteUrl(`/api/streams/${response.session.id}/content`);
@@ -6020,14 +6166,14 @@ function FileDetail({
     }
   }
 
-  function prepareRemoteTransition(message: string) {
+  function prepareRemoteTransition() {
     remoteTransitioningRef.current = true;
     remoteVideoRef.current?.pause();
     remoteTransitionSessionRef.current = remoteSessionId;
     remoteSessionIdRef.current = null;
     setRemoteSessionId(null);
     setRemoteState("preparing");
-    setRemoteMessage(message);
+    setRemoteMessage("");
     setRemoteCurrentTime(0);
     setRemoteDuration(0);
     setRemoteControlsVisible(false);
@@ -6039,7 +6185,7 @@ function FileDetail({
     if ((direction === -1 && !canOpenPrevious) || (direction === 1 && !canOpenNext)) return;
     const wasRemote = Boolean(remoteSessionId || remoteUrl);
     if (continueRemotePlayback && wasRemote) {
-      prepareRemoteTransition("Preparando el siguiente video...");
+      prepareRemoteTransition();
     } else if (wasRemote) {
       await stopRemotePlayback();
     }
@@ -6062,7 +6208,7 @@ function FileDetail({
 
     const wasRemote = Boolean(remoteSessionId || remoteUrl);
     if (continueRemotePlayback && wasRemote) {
-      prepareRemoteTransition("Eligiendo otro video al azar...");
+      prepareRemoteTransition();
     } else if (wasRemote) {
       await stopRemotePlayback();
     }
@@ -6285,7 +6431,7 @@ function FileDetail({
             <header className="remote-player-header">
               <div>
                 <span className={`remote-player-status is-${remoteState}`} />
-                <strong>{remoteStatusLabel}</strong>
+                {!remoteTransitioning ? <strong>{remoteStatusLabel}</strong> : null}
               </div>
               <button className="remote-stop-button" onClick={() => void stopRemotePlayback("Reproducción remota detenida.")} type="button">
                 Detener
@@ -6324,7 +6470,6 @@ function FileDetail({
                   }}
                   onWaiting={() => {
                     setRemoteState("buffering");
-                    setRemoteMessage("Cargando el siguiente segmento...");
                   }}
                   onSeeking={() => {
                     setRemoteState("buffering");
@@ -6376,7 +6521,7 @@ function FileDetail({
                 {remoteState === "buffering" || remoteState === "preparing" ? (
                   <div className="remote-loading-overlay" aria-live="polite">
                     <span className="remote-loading-spinner" />
-                    <strong>{remoteMessage || "Cargando video..."}</strong>
+                    {remoteLoadingLabel ? <strong>{remoteLoadingLabel}</strong> : null}
                   </div>
                 ) : null}
                 <div className="remote-quick-controls" aria-label="Controles rápidos del reproductor" onPointerDown={revealRemoteControls}>
@@ -6431,11 +6576,13 @@ function FileDetail({
             ) : (
               <div className="remote-preparing" aria-live="polite">
                 <span className="remote-loading-spinner" />
-                <div>
-                  <strong>{remoteMode === "remux" ? "Preparando video compatible" : "Conectando con tu Companion"}</strong>
-                  <span>{file.filename}</span>
-                  <small>{remoteMessage || "Esto puede tardar unos segundos."}</small>
-                </div>
+                {!remoteTransitioning ? (
+                  <div>
+                    <strong>{remoteMode === "remux" ? "Preparando video compatible" : "Conectando con tu Companion"}</strong>
+                    <span>{file.filename}</span>
+                    <small>{remoteMessage || "Esto puede tardar unos segundos."}</small>
+                  </div>
+                ) : null}
               </div>
             )}
             {remoteSeekFeedback ? (
