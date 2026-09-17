@@ -129,6 +129,12 @@ Priority: medium, required before declaring production readiness.
 
 Definition of done: a documented, tested procedure can restore a fresh VideoCAT installation with its database, thumbnails and settings.
 
+## Consolidation Delivered
+
+The September 2026 consolidation adds the `ActionAudit` ledger, idempotency keys for destructive queue cleanup, per disk/root scan leases with generations, batch lease renewal, Review indexes, indexed UUID sampling, configurable retention, backup/verify/restore scripts, SBOM attestation and non-root application containers. See [OPERATIONS.md](OPERATIONS.md) for the operational runbook.
+
+The intentional remaining work is performance measurement with 100k/500k synthetic catalogs, a full UI ledger tab, repeated-error aggregation and a clean restore drill before every stable release.
+
 ## Recommended Order
 
 1. Automated safety net.

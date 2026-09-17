@@ -13,6 +13,7 @@ const envSchema = z.object({
   SERVER_HOST: z.string().default("0.0.0.0"),
   WEB_ORIGIN: z.string().default("http://localhost:8081,http://localhost:5173"),
   TRUST_PROXY: booleanEnv.default(true),
+  TRUST_PROXY_CIDRS: z.string().default(""),
   COOKIE_SECURE: booleanEnv.optional(),
   JWT_SECRET: z.string().min(16),
   AGENT_TOKEN: z.string().min(8),
@@ -26,7 +27,10 @@ const envSchema = z.object({
   REMOTE_STREAM_SESSION_LIFETIME_MS: z.coerce.number().int().min(60_000).max(60 * 60 * 1000).default(15 * 60 * 1000),
   REMOTE_STREAM_IDLE_TIMEOUT_MS: z.coerce.number().int().min(15_000).max(15 * 60 * 1000).default(2 * 60 * 1000),
   REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION: z.coerce.number().int().min(1).max(4).default(1),
-  REMOTE_STREAM_MAX_SESSIONS_PER_USER: z.coerce.number().int().min(1).max(8).default(2)
+  REMOTE_STREAM_MAX_SESSIONS_PER_USER: z.coerce.number().int().min(1).max(8).default(2),
+  AGENT_ERROR_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(180),
+  ACTION_AUDIT_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(365),
+  SCAN_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(180)
 });
 
 export const env = envSchema.parse(process.env);
@@ -49,6 +53,11 @@ env.WEB_ORIGIN = configuredWebOrigins.map((origin) => {
     throw new Error(`WEB_ORIGIN contains an invalid origin: ${origin}`);
   }
 }).join(",");
+
+export const trustedProxyCidrs = env.TRUST_PROXY_CIDRS
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 function assertProductionSecret(name: string, value: string, minimumLength: number, blockedValues: string[]): void {
   if (process.env.NODE_ENV !== "production") return;

@@ -129,6 +129,12 @@ Prioridad: media y necesaria antes de declarar preparación para producción.
 
 Criterio de finalización: un procedimiento documentado y probado restaura en una instalación nueva la base, miniaturas y configuración de VideoCAT.
 
+## Consolidación Entregada
+
+La consolidación de septiembre de 2026 implementa el libro `ActionAudit`, claves de idempotencia para limpiezas de cola, leases con generación por disco/root, renovación de lease en lotes, índices de Review, muestreo UUID indexado, retención configurable, scripts de respaldo/verificación/restauración, SBOM con atestación y contenedores de aplicación sin root. La referencia operativa está en [OPERATIONS.md](OPERATIONS.md).
+
+Lo pendiente deliberadamente es medir presupuestos con catálogos sintéticos de 100k/500k, exponer el ledger como pestaña de UI completa, agrupar errores repetidos y ejecutar un simulacro de restauración en una instalación vacía antes de cada release estable.
+
 ## Orden Recomendado
 
 1. Red de seguridad automatizada.

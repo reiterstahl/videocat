@@ -1,0 +1,30 @@
+name: SBOM
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: videocat.spdx.json
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: videocat.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: videocat-sbom
+          path: videocat.spdx.json
+          if-no-files-found: error

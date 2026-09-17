@@ -15,9 +15,16 @@ services:
       retries: 5
 
   server:
-    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.21}}
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.1.22}}
     restart: unless-stopped
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,6 +35,7 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8081}
       TRUST_PROXY: ${TRUST_PROXY:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a strong random value}
       AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env to a strong random value}
       PROTECTED_FOLDER_PIN: ${PROTECTED_FOLDER_PIN:?Set PROTECTED_FOLDER_PIN in .env}
@@ -36,6 +44,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       THUMBNAILS_DIR: /data/video-catalog/thumbnails
       PUBLIC_THUMBNAILS_BASE_URL: /thumbnails
+      AGENT_ERROR_RETENTION_DAYS: ${AGENT_ERROR_RETENTION_DAYS:-180}
+      ACTION_AUDIT_RETENTION_DAYS: ${ACTION_AUDIT_RETENTION_DAYS:-365}
+      SCAN_RETENTION_DAYS: ${SCAN_RETENTION_DAYS:-180}
       REMOTE_REMUX_ENABLED: ${REMOTE_REMUX_ENABLED:-false}
       REMOTE_STREAM_SESSION_LIFETIME_MS: ${REMOTE_STREAM_SESSION_LIFETIME_MS:-900000}
       REMOTE_STREAM_IDLE_TIMEOUT_MS: ${REMOTE_STREAM_IDLE_TIMEOUT_MS:-120000}
@@ -47,13 +58,22 @@ services:
       - "${SERVER_BIND_ADDR:-127.0.0.1}:${SERVER_PUBLISHED_PORT:-4001}:4000"
 
   web:
-    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.21}}
+    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.1.22}}
     restart: unless-stopped
     depends_on:
       server:
         condition: service_healthy
     ports:
-      - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PUBLISHED_PORT:-8081}:80"
+      - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PUBLISHED_PORT:-8081}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres_data:

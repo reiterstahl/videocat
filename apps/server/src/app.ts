@@ -3,7 +3,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { ZodError } from "zod";
-import { env } from "./lib/env.js";
+import { env, trustedProxyCidrs } from "./lib/env.js";
 import { applySecurityHeaders, requireTrustedOrigin } from "./lib/security.js";
 import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
@@ -19,7 +19,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     bodyLimit: 1024 * 1024 * 25,
     connectionTimeout: 10_000,
     requestTimeout: 120_000,
-    trustProxy: env.TRUST_PROXY
+    trustProxy: trustedProxyCidrs.length > 0 ? trustedProxyCidrs : env.TRUST_PROXY
   });
 
   await app.register(cors, {
@@ -34,6 +34,9 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   });
 
   app.addHook("onRequest", applySecurityHeaders);
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Request-Id", request.id);
+  });
   app.addHook("preHandler", requireTrustedOrigin);
 
   app.setErrorHandler((error, _request, reply) => {

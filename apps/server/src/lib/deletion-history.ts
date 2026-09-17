@@ -3,6 +3,7 @@ import path from "node:path";
 import { Prisma } from "@prisma/client";
 import { env } from "./env.js";
 import { prisma } from "./prisma.js";
+import { recordAction } from "./action-audit.js";
 
 export type DeletionOutcome = "deleted" | "missing";
 
@@ -87,6 +88,16 @@ export async function recordDeletionFailure(
       companionId: options.companionId ?? null
     }
   });
+  await recordAction({
+    action: "file.delete",
+    status: "failed",
+    actorType: options.companionId ? "companion" : "system",
+    actorId: options.companionId ?? null,
+    diskId: file.diskId,
+    videoFileId,
+    target: `${file.disk.name}/${file.relativePath}`,
+    errorMessage
+  });
   return true;
 }
 
@@ -141,5 +152,16 @@ export async function finalizeDeletion(
     }
   });
 
-  return removeThumbnailFiles(file.thumbnails);
+  const cleanup = await removeThumbnailFiles(file.thumbnails);
+  await recordAction({
+    action: "file.delete",
+    actorType: options.companionId ? "companion" : "system",
+    actorId: options.companionId ?? null,
+    diskId: file.diskId,
+    videoFileId,
+    target: `${file.disk.name}/${file.relativePath}`,
+    metadata: { outcome, source: options.source ?? "review" },
+    result: { removedThumbnails: cleanup.removedThumbnails, thumbnailWarnings: cleanup.thumbnailWarnings.length }
+  });
+  return cleanup;
 }

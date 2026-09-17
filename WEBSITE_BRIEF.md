@@ -15,7 +15,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - GitHub Sponsors: <https://github.com/sponsors/reiterstahl>
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
-- Stack Docker actual: `0.1.21`
+- Stack Docker actual: `0.1.22`
 - Companion Windows actual: `0.1.20`
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
@@ -423,4 +423,3 @@ Antes de publicar capturas, ocultar nombres de archivo privados, rutas personale
 4. Código fuente: <https://github.com/reiterstahl/videocat>
 5. Documentación y seguridad dentro del repositorio.
 6. GitHub Sponsors y PayPal como acciones secundarias.
-

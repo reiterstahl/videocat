@@ -89,6 +89,6 @@ COMPANION_DISABLED_DISK_IDS=
 - El estado persistente del agente se guarda por defecto en `%LOCALAPPDATA%\VideoCAT\agent-state`; `AGENT_STATE_DIR` permite cambiarlo.
 - El Companion crea `companion-identity.json` en ese directorio para mantener una identidad UUID estable por instalación. No copies ese archivo a otro equipo.
 - La credencial individual se cifra mediante Electron `safeStorage` para el usuario actual de Windows. El servidor conserva solo su hash y puede revocarla desde `Administración`.
-- El túnel actual prepara la reproducción remota segura, pero aún no transmite archivos ni acepta acciones de escritura.
+- El túnel saliente emparejado permite control remoto y reproducción remota exclusivamente de lectura. No expone un puerto entrante de Windows ni permite rutas arbitrarias: cada sesión está asociada a un archivo catalogado, una identidad de Companion y una caducidad corta.
 - El escaneo sigue respetando `.videocat-disk.json` y sus `scanRoots`.
 - La app no se configura para iniciar con Windows automáticamente todavía.

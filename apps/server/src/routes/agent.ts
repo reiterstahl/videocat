@@ -18,8 +18,29 @@ import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history
 import { protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
 import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
+import { recordAction } from "../lib/action-audit.js";
 
 const fingerprintRepairBatchLimit = 5_000;
+// Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
+const scanLeaseMs = 60 * 60 * 1000;
+
+function scanLeaseOwner(request: { headers: Record<string, string | string[] | undefined> }): string {
+  const header = request.headers["x-videocat-companion-id"];
+  return typeof header === "string" && z.string().uuid().safeParse(header).success ? header : "legacy-agent";
+}
+
+async function renewScanLease(scanId: string, diskId?: string): Promise<boolean> {
+  const updated = await prisma.scan.updateMany({
+    where: {
+      id: scanId,
+      ...(diskId ? { diskId } : {}),
+      status: "running",
+      leaseExpiresAt: { gt: new Date() }
+    },
+    data: { leaseExpiresAt: new Date(Date.now() + scanLeaseMs) }
+  });
+  return updated.count === 1;
+}
 
 function toDate(value?: string | null): Date | null {
   return value ? new Date(value) : null;
@@ -271,14 +292,38 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/agent/scan/start", { preHandler: requireAgentAuth }, async (request) => {
     const body = scanStartSchema.parse(request.body);
-    const scan = await prisma.scan.create({
-      data: {
-        diskId: body.diskId,
-        rootPath: body.rootPath,
-        status: "running"
+    const rootPath = normalizedScanRoot(body.rootPath);
+    const owner = scanLeaseOwner(request);
+    const now = new Date();
+    const scan = await prisma.$transaction(async (tx) => {
+      await tx.scan.updateMany({
+        where: { diskId: body.diskId, rootPath, status: "running", leaseExpiresAt: { lte: now } },
+        data: { status: "abandoned", finishedAt: now, leaseExpiresAt: null }
+      });
+      const active = await tx.scan.findFirst({
+        where: { diskId: body.diskId, rootPath, status: "running", leaseExpiresAt: { gt: now } },
+        orderBy: { startedAt: "desc" }
+      });
+      if (active) {
+        if (active.leaseOwner === owner) return active;
+        throw Object.assign(new Error("A reconciliation scan is already active for this disk and root"), { statusCode: 409 });
       }
+      const latest = await tx.scan.aggregate({
+        where: { diskId: body.diskId, rootPath },
+        _max: { generation: true }
+      });
+      return tx.scan.create({
+        data: {
+          diskId: body.diskId,
+          rootPath,
+          status: "running",
+          leaseOwner: owner,
+          generation: (latest._max.generation ?? 0) + 1,
+          leaseExpiresAt: new Date(Date.now() + scanLeaseMs)
+        }
+      });
     });
-    return { scan };
+    return { scan, lease: { expiresAt: scan.leaseExpiresAt, generation: scan.generation } };
   });
 
   app.get("/api/agent/disks/:id/scan-index", { preHandler: requireAgentAuth }, async (request, reply) => {
@@ -386,21 +431,19 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!scan || scan.diskId !== body.diskId) return reply.code(404).send({ message: "Scan not found for disk" });
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+    if (!await renewScanLease(body.scanId, body.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
     let errorCount = 0;
+    const existingFiles = await prisma.videoFile.findMany({
+      where: { diskId: body.diskId, relativePath: { in: body.files.map((file) => file.relativePath) } },
+      select: { id: true, relativePath: true, sizeBytes: true, modifiedAt: true, curationStatus: true }
+    });
+    const existingByPath = new Map(existingFiles.map((file) => [file.relativePath, file]));
 
     for (const file of body.files) {
       if (file.status !== "scanned") errorCount += 1;
 
       const data = videoFileData(body.diskId, body.scanId, file);
-      const existing = await prisma.videoFile.findUnique({
-        where: {
-          diskId_relativePath: {
-            diskId: body.diskId,
-            relativePath: file.relativePath
-          }
-        },
-        select: { id: true, sizeBytes: true, modifiedAt: true, curationStatus: true }
-      });
+      const existing = existingByPath.get(file.relativePath);
 
       if (existing) {
         const replacedAtSamePath = catalogFileIdentityChanged(existing, {
@@ -496,6 +539,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const scan = await prisma.scan.findUnique({ where: { id }, select: { diskId: true, status: true } });
     if (!scan) return reply.code(404).send({ message: "Scan not found" });
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+    if (!await renewScanLease(id, scan.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
 
     const paths = [...new Set(body.paths.map((value) => normalizedScanRoot(value)))];
     const reactivated = await prisma.videoFile.updateMany({
@@ -517,6 +561,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!scan || scan.diskId !== body.diskId) return reply.code(404).send({ message: "Scan not found for disk" });
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+    if (!await renewScanLease(body.scanId, body.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
     await prisma.agentError.createMany({
       data: body.errors.map((error) => ({
         diskId: body.diskId,
@@ -805,11 +850,19 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const current = await prisma.scan.findUnique({ where: { id: body.scanId } });
     if (!current) return reply.code(404).send({ message: "Scan not found" });
     if (current.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+    if (!await renewScanLease(body.scanId, current.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
 
     let markedAbsent = 0;
     if (body.reconcile) {
       const scanRoots = [...new Set(body.scanRoots.map(normalizedScanRoot))];
       if (scanRoots.length === 0) return reply.code(400).send({ message: "scanRoots are required for reconciliation" });
+      const newest = await prisma.scan.aggregate({
+        where: { diskId: current.diskId, rootPath: current.rootPath },
+        _max: { generation: true }
+      });
+      if (newest._max.generation !== current.generation) {
+        return reply.code(409).send({ message: "A newer scan generation owns reconciliation" });
+      }
       const result = await prisma.videoFile.updateMany({
         where: {
           diskId: current.diskId,
@@ -826,7 +879,16 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     const scan = await prisma.scan.update({
       where: { id: body.scanId },
-      data: { status: "finished", finishedAt: new Date() }
+      data: { status: "finished", finishedAt: new Date(), leaseExpiresAt: null }
+    });
+    await recordAction({
+      action: "scan.finish",
+      actorType: "companion",
+      actorId: current.leaseOwner,
+      diskId: current.diskId,
+      target: current.rootPath,
+      metadata: { generation: current.generation, reconciled: body.reconcile },
+      result: { fileCount: scan.fileCount, errorCount: scan.errorCount, markedAbsent }
     });
     return { scan, reconciliation: { markedAbsent } };
   });

@@ -39,11 +39,16 @@ model Scan {
   finishedAt  DateTime?
   fileCount   Int          @default(0)
   errorCount  Int          @default(0)
+  leaseOwner  String?
+  generation  Int          @default(0)
+  leaseExpiresAt DateTime?
   disk        Disk         @relation(fields: [diskId], references: [id], onDelete: Cascade)
   agentErrors AgentError[]
 
   @@index([diskId])
   @@index([status])
+  @@index([diskId, rootPath, status, leaseExpiresAt])
+  @@index([diskId, rootPath, generation])
 }
 
 model VideoFile {
@@ -101,6 +106,8 @@ model VideoFile {
   @@index([reviewedAt])
   @@index([isPresent])
   @@index([diskId, isPresent])
+  @@index([diskId, isPresent, curationStatus])
+  @@index([isPresent, curationStatus, reviewedAt])
 }
 
 model DownloadQueue {
@@ -169,6 +176,33 @@ model AgentError {
   @@index([category])
   @@index([phase])
   @@index([createdAt])
+}
+
+model ActionAudit {
+  id             String   @id @default(uuid()) @db.Uuid
+  action          String
+  status          String   @default("started")
+  actorType       String
+  actorId         String?
+  requestId       String?
+  idempotencyKey  String?  @unique
+  diskId          String?  @db.Uuid
+  videoFileId     String?  @db.Uuid
+  target          String?
+  metadata        Json?
+  result          Json?
+  errorCode       String?
+  errorMessage    String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([action, createdAt])
+  @@index([status, createdAt])
+  @@index([diskId, createdAt])
+  @@index([videoFileId, createdAt])
+  @@index([actorType, actorId, createdAt])
 }
 
 model CurationCategory {

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -12,6 +13,7 @@ import { compareDuplicateCandidates, findDuplicateGroups, type DuplicateCandidat
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
+import { recordAction, requestIdempotencyKey, runIdempotentAction } from "../lib/action-audit.js";
 
 function parseBigInt(value: number | undefined): bigint | undefined {
   return value == null ? undefined : BigInt(Math.floor(value));
@@ -57,6 +59,12 @@ const downloadPauseSchema = z.object({
 });
 const deletionHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(20).max(500).default(200)
+});
+const actionAuditQuerySchema = z.object({
+  cursor: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  action: z.string().trim().min(1).max(80).optional(),
+  status: z.enum(["started", "succeeded", "failed"]).optional()
 });
 const maximumDuplicateGroups = 80;
 const maximumDuplicateFilesPerGroup = 100;
@@ -1059,11 +1067,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ message: "No other playable video is available on connected disks" });
     }
 
+    const pivot = randomUUID();
     const file = await prisma.videoFile.findFirst({
-      where,
+      where: { AND: [where, { id: { gte: pivot } }] },
       include: fileIncludes(),
-      orderBy: { id: "asc" },
-      skip: Math.floor(Math.random() * total)
+      orderBy: { id: "asc" }
+    }) ?? await prisma.videoFile.findFirst({
+      where: { AND: [where, { id: { lt: pivot } }] },
+      include: fileIncludes(),
+      orderBy: { id: "asc" }
     });
     if (!file) {
       return reply.code(404).send({ message: "No playable video is available on connected disks" });
@@ -1241,6 +1253,57 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         scanStartedAt: error.scan?.startedAt ?? null
       }))
     };
+  });
+
+  app.get("/api/audit/actions", { preHandler: requireWebAuth }, async (request) => {
+    const query = actionAuditQuerySchema.parse(request.query);
+    const actions = await prisma.actionAudit.findMany({
+      where: {
+        ...(query.cursor ? { id: { lt: query.cursor } } : {}),
+        ...(query.action ? { action: query.action } : {}),
+        ...(query.status ? { status: query.status } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: query.limit + 1
+    });
+    const page = actions.slice(0, query.limit);
+    return {
+      actions: page.map((item) => ({
+        id: item.id,
+        action: item.action,
+        status: item.status,
+        actorType: item.actorType,
+        actorId: item.actorId,
+        requestId: item.requestId,
+        diskId: item.diskId,
+        videoFileId: item.videoFileId,
+        target: item.target,
+        metadata: item.metadata,
+        result: item.result,
+        errorCode: item.errorCode,
+        errorMessage: item.errorMessage,
+        startedAt: item.startedAt,
+        completedAt: item.completedAt,
+        createdAt: item.createdAt
+      })),
+      nextCursor: actions.length > query.limit ? page.at(-1)?.id ?? null : null
+    };
+  });
+
+  app.post("/api/admin/maintenance/prune", { preHandler: requireWebAuth }, async () => {
+    const now = Date.now();
+    const [agentErrors, auditActions, scans] = await prisma.$transaction([
+      prisma.agentError.deleteMany({ where: { createdAt: { lt: new Date(now - env.AGENT_ERROR_RETENTION_DAYS * 86_400_000) } } }),
+      prisma.actionAudit.deleteMany({ where: { createdAt: { lt: new Date(now - env.ACTION_AUDIT_RETENTION_DAYS * 86_400_000) } } }),
+      prisma.scan.deleteMany({ where: { status: { not: "running" }, finishedAt: { lt: new Date(now - env.SCAN_RETENTION_DAYS * 86_400_000) } } })
+    ]);
+    await recordAction({
+      action: "maintenance.prune",
+      actorType: "web",
+      actorId: "admin",
+      result: { agentErrors: agentErrors.count, auditActions: auditActions.count, scans: scans.count }
+    });
+    return { ok: true, removed: { agentErrors: agentErrors.count, auditActions: auditActions.count, scans: scans.count } };
   });
 
   app.patch("/api/files/:id/curation", { preHandler: requireWebAuth }, async (request, reply) => {
@@ -1761,12 +1824,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const total = await prisma.videoFile.count({ where });
     if (total === 0) return { file: null, remaining: 0 };
 
-    const skip = Math.floor(Math.random() * total);
+    const pivot = randomUUID();
     const file = await prisma.videoFile.findFirst({
-      where,
+      where: { AND: [where, { id: { gte: pivot } }] },
       include: fileIncludes(),
-      orderBy: { id: "asc" },
-      skip
+      orderBy: { id: "asc" }
+    }) ?? await prisma.videoFile.findFirst({
+      where: { AND: [where, { id: { lt: pivot } }] },
+      include: fileIncludes(),
+      orderBy: { id: "asc" }
     });
 
     return {
@@ -1915,38 +1981,57 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, requestedAt, connectedDiskCount: presence.mountedDiskCount };
   });
 
-  app.delete("/api/downloads/queue", { preHandler: requireWebAuth }, async () => {
-    const rows = await prisma.$queryRaw<Array<{ videoFileId: string }>>(Prisma.sql`
+  app.delete("/api/downloads/queue", { preHandler: requireWebAuth }, async (request) => {
+    const idempotencyKey = requestIdempotencyKey(request);
+    const { value, replayed } = await runIdempotentAction({
+      action: "download.queue.clear",
+      actorType: "web",
+      actorId: "admin",
+      requestId: request.id,
+      idempotencyKey
+    }, async () => {
+      const rows = await prisma.$queryRaw<Array<{ videoFileId: string }>>(Prisma.sql`
       SELECT "videoFileId"::text AS "videoFileId"
       FROM "DownloadQueue"
       WHERE "status" IN ('queued', 'failed')
-    `);
-    const ids = rows.map((row) => row.videoFileId);
-    if (ids.length === 0) return { ok: true, cleared: 0 };
+      `);
+      const ids = rows.map((row) => row.videoFileId);
+      if (ids.length === 0) return { ok: true, cleared: 0 };
 
-    const idSql = Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`));
-    await prisma.$transaction([
-      prisma.$executeRaw(Prisma.sql`
-        DELETE FROM "VideoFileCategory"
-        WHERE "videoFileId" IN (${idSql}) AND "categoryKey" = 'download'
-      `),
-      prisma.$executeRaw(Prisma.sql`
-        DELETE FROM "DownloadQueue"
-        WHERE "videoFileId" IN (${idSql}) AND "status" IN ('queued', 'failed')
-      `)
-    ]);
+      const idSql = Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`));
+      await prisma.$transaction([
+        prisma.$executeRaw(Prisma.sql`
+          DELETE FROM "VideoFileCategory"
+          WHERE "videoFileId" IN (${idSql}) AND "categoryKey" = 'download'
+        `),
+        prisma.$executeRaw(Prisma.sql`
+          DELETE FROM "DownloadQueue"
+          WHERE "videoFileId" IN (${idSql}) AND "status" IN ('queued', 'failed')
+        `)
+      ]);
 
-    return { ok: true, cleared: ids.length };
+      return { ok: true, cleared: ids.length };
+    });
+    return { ...value, replayed };
   });
 
-  app.delete("/api/downloads/history", { preHandler: requireWebAuth }, async () => {
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+  app.delete("/api/downloads/history", { preHandler: requireWebAuth }, async (request) => {
+    const { value, replayed } = await runIdempotentAction({
+      action: "download.history.clear",
+      actorType: "web",
+      actorId: "admin",
+      requestId: request.id,
+      idempotencyKey: requestIdempotencyKey(request)
+    }, async () => {
+      const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       DELETE FROM "DownloadQueue"
       WHERE "status" = 'done'
       RETURNING "id"::text AS "id"
-    `);
+      `);
 
-    return { ok: true, cleared: rows.length };
+      return { ok: true, cleared: rows.length };
+    });
+    return { ...value, replayed };
   });
 
   app.post("/api/downloads/queue/remove", { preHandler: requireWebAuth }, async (request) => {

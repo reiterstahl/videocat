@@ -139,7 +139,7 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual del stack Docker es `v0.1.21`. El Companion Windows vigente es `v0.1.20`.
+La versión actual del stack Docker es `v0.1.22`. El Companion Windows vigente es `v0.1.20`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
@@ -218,6 +218,8 @@ Servicios por defecto:
 - Miniaturas: volumen persistente `thumbnails_data`
 
 ## Reverse proxy
+
+Para actualizaciones, respaldo/restauración, Portainer, permisos de volúmenes existentes y configuración de proxies confiables, consulta [OPERATIONS.md](OPERATIONS.md).
 
 La forma recomendada es publicar el contenedor `web` hacia el reverse proxy. Ese contenedor sirve React y proxy interno para:
 
@@ -544,8 +546,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.21
-reiterstahl/videocat-web:0.1.21
+reiterstahl/videocat-server:0.1.22
+reiterstahl/videocat-web:0.1.22
 ```
 
 También se publican etiquetas `latest`:
@@ -592,8 +594,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.21 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.21 -t reiterstahl/videocat-web:0.1.21 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.22 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.22 -t reiterstahl/videocat-web:0.1.22 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -606,10 +608,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.21
+  image: reiterstahl/videocat-server:0.1.22
 
 web:
-  image: reiterstahl/videocat-web:0.1.21
+  image: reiterstahl/videocat-web:0.1.22
 ```
 
 ## Endpoints principales

@@ -138,7 +138,7 @@ Main features:
 
 ## Current Release
 
-The current Docker stack is `v0.1.21`. The current Windows Companion is `v0.1.20`.
+The current Docker stack is `v0.1.22`. The current Windows Companion is `v0.1.20`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
@@ -217,6 +217,8 @@ Default services:
 - Thumbnails: persistent `thumbnails_data` volume
 
 ## Reverse Proxy
+
+For upgrades, backup/restore, Portainer, existing-volume permissions and trusted proxy configuration, see [OPERATIONS.md](OPERATIONS.md).
 
 The recommended setup is to expose the `web` container to your reverse proxy. That container serves React and internally proxies:
 
@@ -542,8 +544,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.21
-reiterstahl/videocat-web:0.1.21
+reiterstahl/videocat-server:0.1.22
+reiterstahl/videocat-web:0.1.22
 ```
 
 `latest` tags are also published:
@@ -590,8 +592,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.21 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.21 -t reiterstahl/videocat-web:0.1.21 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.22 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.22 -t reiterstahl/videocat-web:0.1.22 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -604,10 +606,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.21
+  image: reiterstahl/videocat-server:0.1.22
 
 web:
-  image: reiterstahl/videocat-web:0.1.21
+  image: reiterstahl/videocat-web:0.1.22
 ```
 
 ## Main Endpoints
