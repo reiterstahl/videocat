@@ -1,0 +1,166 @@
+/*
+ * VideoCAT design tokens.
+ * Appearance: :root (light), [data-theme="dark"], [data-theme="dark"][data-surface="oled"].
+ * Accent: [data-accent] picks one of six schemes; each defines a mark color, a strong fill that keeps
+ * white text at WCAG AA, and a soft/ink pair per appearance for selected states.
+ * Density: [data-density="compact"] tightens spacing tokens.
+ */
+
+:root {
+  --vc-font: "Geist Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vc-font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --vc-bg: #f3f4f6;
+  --vc-surface: #ffffff;
+  --vc-raised: #ffffff;
+  --vc-sunken: #f6f7f9;
+  --vc-hover: #eef0f3;
+  --vc-border: #e2e5e9;
+  --vc-border-strong: #cdd2d8;
+  --vc-text: #14181c;
+  --vc-text-soft: #2b333b;
+  --vc-muted: #5b6670;
+  --vc-subtle: #7c8791;
+  --vc-danger: #b91c1c;
+  --vc-success: #15803d;
+  --vc-shadow-sm: 0 1px 2px rgba(16, 24, 32, 0.06);
+  --vc-shadow: 0 1px 2px rgba(16, 24, 32, 0.05), 0 12px 32px rgba(16, 24, 32, 0.07);
+  --vc-shadow-pop: 0 24px 64px rgba(16, 24, 32, 0.18);
+  --vc-segment-on: #ffffff;
+  --vc-segment-shadow: 0 1px 2px rgba(16, 24, 32, 0.14);
+
+  --vc-radius-sm: 8px;
+  --vc-radius: 12px;
+  --vc-radius-lg: 16px;
+
+  --vc-gap: 16px;
+  --vc-page-pad: 24px;
+  --vc-control-h: 40px;
+  --vc-cell-py: 10px;
+
+  --vc-accent: #fc6121;
+  --vc-accent-strong: #c2410c;
+  --vc-accent-soft-light: #fff0e8;
+  --vc-accent-ink-light: #8a2e07;
+  --vc-accent-soft-dark: #3a1d10;
+  --vc-accent-ink-dark: #ffb08a;
+
+  --vc-accent-soft: var(--vc-accent-soft-light);
+  --vc-accent-ink: var(--vc-accent-ink-light);
+  --vc-link: var(--vc-accent-strong);
+  --vc-focus: color-mix(in srgb, var(--vc-accent) 24%, transparent);
+
+  /* Legacy names used across styles.css; they now follow the selected scheme. */
+  --matrix-primary: var(--vc-accent);
+  --matrix-primary-strong: var(--vc-accent-strong);
+  --matrix-primary-bright: color-mix(in srgb, var(--vc-accent) 72%, #ffffff);
+  --matrix-primary-soft: var(--vc-accent-soft);
+  --matrix-primary-ink: var(--vc-accent-ink);
+  --matrix-focus: var(--vc-focus);
+  --matrix-focus-strong: color-mix(in srgb, var(--vc-accent) 40%, transparent);
+
+  color-scheme: light;
+  font-family: var(--vc-font);
+  background: var(--vc-bg);
+  color: var(--vc-text);
+}
+
+:root[data-theme="dark"] {
+  --vc-bg: #0d0f12;
+  --vc-surface: #15181c;
+  --vc-raised: #1c2025;
+  --vc-sunken: #111418;
+  --vc-hover: #1f242a;
+  --vc-border: #252a30;
+  --vc-border-strong: #363d45;
+  --vc-text: #e8ecef;
+  --vc-text-soft: #cfd6dc;
+  --vc-muted: #9aa5ae;
+  --vc-subtle: #7d8791;
+  --vc-danger: #f87171;
+  --vc-success: #4ade80;
+  --vc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vc-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --vc-shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --vc-segment-on: var(--vc-border-strong);
+  --vc-segment-shadow: none;
+
+  --vc-accent-soft: var(--vc-accent-soft-dark);
+  --vc-accent-ink: var(--vc-accent-ink-dark);
+  --vc-link: var(--vc-accent-ink-dark);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"][data-surface="oled"] {
+  --vc-bg: #000000;
+  --vc-surface: #0a0b0d;
+  --vc-raised: #121418;
+  --vc-sunken: #050607;
+  --vc-hover: #16191d;
+  --vc-border: #1c1f23;
+  --vc-border-strong: #2c3137;
+  --vc-text: #edeff2;
+  --vc-text-soft: #d0d5da;
+  --vc-muted: #8f99a3;
+  --vc-subtle: #6f7882;
+  --vc-shadow: none;
+  --vc-shadow-pop: 0 0 0 1px #2c3137, 0 24px 64px rgba(0, 0, 0, 0.8);
+}
+
+:root[data-accent="cobalto"] {
+  --vc-accent: #3b6ff5;
+  --vc-accent-strong: #2451d6;
+  --vc-accent-soft-light: #eaf0ff;
+  --vc-accent-ink-light: #1a3a9e;
+  --vc-accent-soft-dark: #16213f;
+  --vc-accent-ink-dark: #a9c0ff;
+}
+
+:root[data-accent="esmeralda"] {
+  --vc-accent: #12a37a;
+  --vc-accent-strong: #0b7a5b;
+  --vc-accent-soft-light: #e4f6ef;
+  --vc-accent-ink-light: #075c44;
+  --vc-accent-soft-dark: #0f2e25;
+  --vc-accent-ink-dark: #86ddbf;
+}
+
+:root[data-accent="uva"] {
+  --vc-accent: #8b5cf6;
+  --vc-accent-strong: #6d3fe0;
+  --vc-accent-soft-light: #f1ebff;
+  --vc-accent-ink-light: #4c23b0;
+  --vc-accent-soft-dark: #251a40;
+  --vc-accent-ink-dark: #c8b3ff;
+}
+
+:root[data-accent="rosa"] {
+  --vc-accent: #e5487a;
+  --vc-accent-strong: #c22d5e;
+  --vc-accent-soft-light: #fdeaf0;
+  --vc-accent-ink-light: #8f1c43;
+  --vc-accent-soft-dark: #3a1624;
+  --vc-accent-ink-dark: #ffa8c4;
+}
+
+:root[data-accent="grafito"] {
+  --vc-accent: #64748b;
+  --vc-accent-strong: #3f4b5b;
+  --vc-accent-soft-light: #eef1f4;
+  --vc-accent-ink-light: #2b3440;
+  --vc-accent-soft-dark: #232a33;
+  --vc-accent-ink-dark: #c3ccd8;
+}
+
+:root[data-density="compact"] {
+  --vc-gap: 12px;
+  --vc-page-pad: 16px;
+  --vc-control-h: 34px;
+  --vc-cell-py: 6px;
+}
+
+body {
+  background: var(--vc-bg);
+  color: var(--vc-text);
+}

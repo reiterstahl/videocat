@@ -30,6 +30,70 @@ const en: Record<string, string> = {
   "disponible": "available",
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
+  "Catálogo": "Catalog",
+  "Ordenar": "Sort",
+  "Por página": "Per page",
+  "Vista": "View",
+  "Cuadrícula": "Grid",
+  "Lista": "List",
+  "Seleccionar": "Select",
+  "Cerrar detalle": "Close details",
+  "Categorías": "Categories",
+  "Resolución": "Resolution",
+  "Duración": "Duration",
+  "Formato": "Format",
+  "Carpeta": "Folder",
+  "Más información": "More information",
+  "Códec": "Codec",
+  "Resultados": "Results",
+  "Quitar filtro": "Remove filter",
+  "Limpiar filtros": "Clear filters",
+  "Detalle del video": "Video details",
+  "Reproducir remotamente": "Play remotely",
+  "Buscar en el catálogo": "Search the catalog",
+  "Mostrar u ocultar filtros": "Show or hide filters",
+  "Modificados recientes": "Recently modified",
+  "Modificados antiguos": "Oldest modified",
+  "Indexados recientes": "Recently indexed",
+  "Nombre A–Z": "Name A–Z",
+  "Nombre Z–A": "Name Z–A",
+  "Más grandes": "Largest",
+  "Más pequeños": "Smallest",
+  "Más largos": "Longest",
+  "Más cortos": "Shortest",
+  "navegar ·": "browse ·",
+  "cerrar": "close",
+  "Tema e idioma": "Theme and language",
+  "Auditoría": "Audit",
+  "Administración": "Administration",
+  "Navegación": "Navigation",
+  "Cuenta": "Account",
+  "Contraer": "Collapse",
+  "Contraer barra lateral": "Collapse sidebar",
+  "Expandir barra lateral": "Expand sidebar",
+  "Tema": "Theme",
+  "Personalizar tema": "Customize theme",
+  "Apariencia": "Appearance",
+  "Sistema": "System",
+  "Claro": "Light",
+  "Oscuro": "Dark",
+  "Esquema de color": "Color scheme",
+  "Naranja CAT": "CAT Orange",
+  "Cobalto": "Cobalt",
+  "Esmeralda": "Emerald",
+  "Uva": "Grape",
+  "Rosa": "Pink",
+  "Grafito": "Graphite",
+  "Densidad": "Density",
+  "Cómoda": "Comfortable",
+  "Compacta": "Compact",
+  "Se guarda en este navegador. «Sistema» sigue la preferencia del dispositivo.": "Saved in this browser. “System” follows your device preference.",
+  "Discos para descargar": "Drives to download from",
+  "Resumen del catálogo": "Catalog summary",
+  "Revisar →": "Review →",
+  "Conectado al Companion": "Connected to the Companion",
+  "No detectado por el Companion": "Not detected by the Companion",
+  "Sin datos de capacidad": "No capacity data",
   "A descargar": "To download",
   "Duplicados": "Duplicates",
   "Iniciar modo asistido": "Start assisted mode",
@@ -386,6 +450,21 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   let match = text.match(/^(\d+) de (\d+)$/);
   if (match) return `${match[1]} of ${match[2]}`;
+
+  match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);
+  if (match) return `${match[1]} of ${match[2]} drives selected`;
+
+  match = text.match(/^Abrir (.+)$/);
+  if (match) return `Open ${match[1]}`;
+
+  match = text.match(/^Seleccionar (?!página$|cola retirable$)(.+)$/);
+  if (match) return `Select ${match[1]}`;
+
+  match = text.match(/^v([\w.-]+) disponible$/);
+  if (match) return `v${match[1]} available`;
+
+  match = text.match(/^(\d+)% usado$/);
+  if (match) return `${match[1]}% used`;
 
   match = text.match(/^de ([\d.,]+) · ([\d.,]+) archivos$/);
   if (match) return `of ${match[1]} · ${match[2]} files`;
