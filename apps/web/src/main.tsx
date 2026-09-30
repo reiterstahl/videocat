@@ -7,6 +7,7 @@ import "./theme.css";
 import "./styles.css";
 import "./shell.css";
 import "./catalog.css";
+import "./review.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

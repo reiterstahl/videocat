@@ -31,6 +31,48 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "Salir del review": "Exit review",
+  "Sesión de review": "Review session",
+  "Mantenido": "Kept",
+  "Deshacer": "Undo",
+  "en esta sesión": "this session",
+  "Video actual": "Current video",
+  "Ver fotograma en grande": "View frame full size",
+  "Fotograma anterior": "Previous frame",
+  "Pausar fotogramas": "Pause frames",
+  "Reproducir fotogramas": "Play frames",
+  "Fotograma siguiente": "Next frame",
+  "Pantalla completa": "Full screen",
+  "Fotogramas": "Frames",
+  "Saltar": "Skip",
+  "Etiquetar": "Tag",
+  "Información": "Information",
+  "Hoy": "Today",
+  "Últimos 7 días": "Last 7 days",
+  "Marcado en la sesión": "Marked this session",
+  "Siguiente · precargado": "Next · preloaded",
+  "Este es el último pendiente en los discos seleccionados.": "This is the last pending video on the selected drives.",
+  "Preparando el siguiente video…": "Preparing the next video…",
+  "Decisiones de la sesión": "Session decisions",
+  "Todavía no tomaste decisiones.": "No decisions yet.",
+  "Borrar": "Delete",
+  "mantener ·": "keep ·",
+  "borrar ·": "delete ·",
+  "saltar ·": "skip ·",
+  "deshacer ·": "undo ·",
+  "fotogramas ·": "frames ·",
+  "reproducir ·": "play ·",
+  "pantalla completa ·": "full screen ·",
+  "salir": "exit",
+  "deshacer": "undo",
+  "Espacio": "Space",
+  "Review aleatorio": "Random review",
+  "Decidí qué conservar y qué borrar, un video a la vez, en los discos seleccionados.": "Decide what to keep and what to delete, one video at a time, on the selected drives.",
+  "Progreso del review": "Review progress",
+  "Últimos revisados": "Recently reviewed",
+  "No hay otro video pendiente para mostrar.": "There is no other pending video to show.",
+  "No se pudo deshacer: el archivo ya no está en el catálogo.": "Could not undo: the file is no longer in the catalog.",
+  "No se pudo cargar otro video.": "Could not load another video.",
   "Ordenar": "Sort",
   "Por página": "Per page",
   "Vista": "View",
@@ -453,6 +495,18 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);
   if (match) return `${match[1]} of ${match[2]} drives selected`;
+
+  match = text.match(/^([\d.,\s]+) pendientes$/);
+  if (match) return `${match[1]} pending`;
+
+  match = text.match(/^([\d.,\s]+) videos? pendientes?$/);
+  if (match) return `${match[1]} pending ${match[1].trim() === "1" ? "video" : "videos"}`;
+
+  match = text.match(/^Fotograma (\d+)$/);
+  if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^Carpeta (.+)$/);
+  if (match) return `Folder ${match[1]}`;
 
   match = text.match(/^Abrir (.+)$/);
   if (match) return `Open ${match[1]}`;
