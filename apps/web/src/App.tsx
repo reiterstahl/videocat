@@ -1212,6 +1212,10 @@ export function App() {
   const extensions = useMemo(() => facets.extensions.map((item) => item.extension), [facets.extensions]);
   const maxFolderUsage = useMemo(() => Math.max(1, ...folderUsage.map((item) => item.sizeBytes)), [folderUsage]);
   const pendingAssistedDuplicateGroups = useMemo(() => assistedDuplicateGroups(duplicateGroups), [duplicateGroups]);
+  const duplicateRecoverableBytes = useMemo(
+    () => duplicateGroups.reduce((total, group) => total + group.recoverableBytes, 0),
+    [duplicateGroups]
+  );
   const maxTagCount = useMemo(() => Math.max(1, ...facets.tags.map((tag) => tag.count)), [facets.tags]);
   const folderChildren = useMemo(() => {
     const counts = new Map<string, number>();
@@ -2393,8 +2397,12 @@ export function App() {
     }
   }
 
-  function openDuplicateAssistant() {
-    const session = startDuplicateAssistantSession(pendingAssistedDuplicateGroups);
+  function openDuplicateAssistant(startGroupKey?: string) {
+    const startGroup = startGroupKey ? pendingAssistedDuplicateGroups.find((group) => group.key === startGroupKey) : undefined;
+    const orderedGroups = startGroup
+      ? [startGroup, ...pendingAssistedDuplicateGroups.filter((group) => group.key !== startGroup.key)]
+      : pendingAssistedDuplicateGroups;
+    const session = startDuplicateAssistantSession(orderedGroups);
     setDuplicateAssistantMessage("");
     setDuplicateAssistantFeedback(null);
     if (!session) {
@@ -4441,83 +4449,132 @@ export function App() {
       ) : null}
 
       {viewMode === "duplicates" ? (
-        <section className="results duplicates-view">
-          <div className="view-header duplicates-header">
-            <div>
-              <strong>Potenciales duplicados</strong>
-              <span>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</span>
+        <section className="vc-dup-home">
+          <div className="vc-review-hero">
+            <div className="vc-review-hero-text">
+              <span className="vc-overline">Duplicados probables</span>
+              <h2>{`${duplicateGroups.length.toLocaleString(locale)} ${duplicateGroups.length === 1 ? "grupo" : "grupos"} · ${formatBytes(duplicateRecoverableBytes)} recuperables`}</h2>
+              <p>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</p>
             </div>
-            <div className="duplicate-header-actions">
+            <div className="vc-review-hero-actions">
               <button
-                className="secondary-button"
-                disabled={auxLoading || duplicateGroups.length === 0}
-                onClick={() => void openDuplicateDriveRecommendations()}
-                type="button"
-              >
-                <HardDrive size={17} />
-                {translateText("Discos prioritarios", language)}
-              </button>
-              <button
-                className="primary-button duplicate-assistant-start"
+                className="vc-button is-primary is-large"
                 disabled={auxLoading || pendingAssistedDuplicateGroups.length === 0}
-                onClick={openDuplicateAssistant}
+                onClick={() => openDuplicateAssistant()}
                 type="button"
               >
-                <Sparkles size={17} />
+                <Sparkles size={18} />
                 Iniciar modo asistido
-                <small>{pendingAssistedDuplicateGroups.length}</small>
+                <span className="vc-count-badge is-inverse">{pendingAssistedDuplicateGroups.length}</span>
               </button>
             </div>
           </div>
-          {duplicateAssistantMessage ? <div className="review-message">{duplicateAssistantMessage}</div> : null}
-          {auxLoading ? <div className="loading">Cargando...</div> : null}
-          {!auxLoading && duplicateGroups.length === 0 ? (
-            <div className="empty">No hay duplicados probables para estos discos.</div>
-          ) : null}
-          <div className="duplicate-groups">
-            {duplicateGroups.map((group) => (
-              <article className="duplicate-group" key={group.key}>
-                <header className="duplicate-group-header">
-                  <div>
-                    <strong>{group.count} archivos posibles</strong>
-                    <span>{group.reasons.map((reason) => translateText(reason, language)).join(" · ")}</span>
+          {duplicateAssistantMessage ? <div className="vc-review-message" role="status">{duplicateAssistantMessage}</div> : null}
+
+          <div className="vc-dup-layout">
+            <div className="vc-dup-groups">
+              {auxLoading ? <div className="loading">Cargando...</div> : null}
+              {!auxLoading && duplicateGroups.length === 0 ? (
+                <div className="empty">No hay duplicados probables para estos discos.</div>
+              ) : null}
+              {duplicateGroups.map((group) => {
+                const pendingGroup = pendingAssistedDuplicateGroups.find((item) => item.key === group.key);
+                const recommendedId = pendingGroup?.contenders[0]?.id;
+                return (
+                  <article className="vc-dup-group" key={group.key}>
+                    <header className="vc-dup-group-header">
+                      <span
+                        className={`vc-dup-confidence is-${group.matchType}`}
+                        title={group.matchType === "visual" ? "Coincidencia visual" : group.matchType === "mixed" ? "Coincidencia mixta" : "Mismo tamaño"}
+                      >
+                        <span className="vc-meter" aria-hidden="true"><span style={{ width: `${group.confidence}%` }} /></span>
+                        <strong>{`${group.confidence}% de confianza`}</strong>
+                      </span>
+                      {group.reasons.map((reason) => (
+                        <span className="vc-dup-reason" key={reason}>{translateText(reason, language)}</span>
+                      ))}
+                      <span className="vc-toolbar-spacer" />
+                      <span className="vc-dup-recoverable">{`${formatBytes(group.recoverableBytes)} recuperables`}</span>
+                      {pendingGroup ? (
+                        <button className="vc-button is-small" onClick={() => openDuplicateAssistant(group.key)} type="button">
+                          <Sparkles size={15} />
+                          Resolver
+                        </button>
+                      ) : (
+                        <span className="vc-dup-resolved"><Check size={14} /> Resuelto</span>
+                      )}
+                    </header>
+                    <div className="vc-dup-files">
+                      {group.files.map((file) => {
+                        const badge = resolutionBadge(file);
+                        return (
+                          <button
+                            className={`vc-dup-file ${file.id === recommendedId ? "is-recommended" : ""}`}
+                            key={file.id}
+                            onClick={() => void openDetail(file)}
+                            type="button"
+                          >
+                            <span className="vc-card-thumb">
+                              {mainThumbnail(file) ? <img src={mainThumbnail(file)} alt="" loading="lazy" /> : <Image size={22} aria-hidden="true" />}
+                              {badge ? <span className="vc-card-badge is-top-right">{badge}</span> : null}
+                              {file.durationSeconds ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(file.durationSeconds)}</span> : null}
+                              {file.id === recommendedId ? <span className="vc-dup-best">Recomendado</span> : null}
+                            </span>
+                            <span className="vc-dup-file-body">
+                              <strong title={file.filename}>{file.filename}</strong>
+                              <span title={file.relativePath}>{`${file.disk?.name ?? "-"} · ${file.relativePath}`}</span>
+                              <span className="vc-dup-file-metrics">{`${formatBytes(file.sizeBytes)} · ${resolution(file)}`}</span>
+                            </span>
+                            <CategoryBadges file={file} categories={facets.curationStatuses} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <aside className="vc-dup-side" aria-label="Discos prioritarios">
+              <span className="vc-overline">Conectá primero</span>
+              {duplicateDriveRecommendations ? (
+                <>
+                  <div className="vc-dup-side-total">
+                    <strong>{formatBytes(duplicateDriveRecommendations.totalRecoverableBytes)}</strong>
+                    <span className="vc-dup-legend">
+                      <span><i className="is-ready" />{`Marcado ${formatBytes(duplicateDriveRecommendations.totalReadyBytes)}`}</span>
+                      <span><i className="is-pending" />{`Por decidir ${formatBytes(duplicateDriveRecommendations.totalPendingBytes)}`}</span>
+                    </span>
                   </div>
-                  <div className={`duplicate-confidence is-${group.matchType}`}>
-                    <strong>{group.confidence}%</strong>
-                    <span>{translateText(group.matchType === "visual" ? "Coincidencia visual" : group.matchType === "mixed" ? "Coincidencia mixta" : "Mismo tamaño", language)}</span>
-                    <small>{formatBytes(group.recoverableBytes)} {translateText("recuperables", language)}</small>
-                  </div>
-                </header>
-                <div className="duplicate-file-list">
-                  {group.files.map((file) => (
-                    <button
-                      className={[
-                        "duplicate-file-row",
-                        file.curationStatus !== "none" ? `curation-row is-${file.curationStatus}` : ""
-                      ].filter(Boolean).join(" ")}
-                      key={file.id}
-                      onClick={() => void openDetail(file)}
-                      style={categoryStyle(file.curationStatus, facets.curationStatuses)}
-                      type="button"
-                    >
-                      <div className="thumb">
-                        {mainThumbnail(file) ? <img src={mainThumbnail(file)} alt="" /> : <Image size={22} />}
-                      </div>
-                      <div className="duplicate-file-main">
-                        <strong>{file.filename}</strong>
-                        <span>{file.disk?.name ?? "-"} · {file.relativePath}</span>
-                      </div>
-                      <div className="duplicate-file-meta">
-                        <span>{formatDuration(file.durationSeconds)}</span>
-                        <span>{resolution(file)}</span>
-                        <span>{formatBytes(file.sizeBytes)}</span>
-                        <CategoryBadges file={file} categories={facets.curationStatuses} />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            ))}
+                  <ol className="vc-dup-drives">
+                    {duplicateDriveRecommendations.disks.slice(0, 6).map((disk) => {
+                      const total = Math.max(1, disk.readyBytes + disk.pendingBytes);
+                      return (
+                        <li key={disk.diskId}>
+                          <div className="vc-dup-drive-head">
+                            <strong>{disk.diskName}</strong>
+                            <span>{formatBytes(disk.recoverableBytes)}</span>
+                          </div>
+                          <span className="vc-dup-drive-bar" aria-hidden="true">
+                            <span className="is-ready" style={{ width: `${(disk.readyBytes / total) * 100}%` }} />
+                            <span className="is-pending" style={{ width: `${(disk.pendingBytes / total) * 100}%` }} />
+                          </span>
+                          <span className="vc-dup-drive-status">
+                            <span className={`vc-disk-dot ${disk.connected ? "is-mounted" : ""}`} />
+                            {disk.connected ? "Conectado" : "Desconectado"}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </>
+              ) : (
+                <span className="vc-review-muted">Calculando discos prioritarios...</span>
+              )}
+              <button className="vc-link-button" onClick={() => void openDuplicateDriveRecommendations()} type="button">
+                Ver plan completo
+              </button>
+            </aside>
           </div>
         </section>
       ) : null}
@@ -5750,7 +5807,6 @@ function DuplicateAssistantModal({
   const [hoveredFileId, setHoveredFileId] = useState<string | null>(null);
   const [hoveredFrameIndex, setHoveredFrameIndex] = useState(0);
   const [previewFiles, setPreviewFiles] = useState<Record<string, VideoFile>>(prefetchedFiles);
-  const decisionPointerRef = useRef<{ fileId: string; x: number; y: number } | null>(null);
   const comparisonFiles = useMemo(
     () => files.map((file) => previewFiles[file.id] ?? file),
     [files, previewFiles]
@@ -5800,55 +5856,62 @@ function DuplicateAssistantModal({
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !busy) onClose();
+      if (busy || isEditableTarget(event.target)) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      // Enter on a focused button already activates that button.
+      if (key === "enter" && event.target instanceof HTMLElement && event.target.closest("button, a")) return;
+      if (key === "escape") onClose();
+      else if (key === "1" || key === "arrowleft") onDecision(files[0].id);
+      else if (key === "2" || key === "arrowright") onDecision(files[1].id);
+      else if (key === "enter") onDecision(recommendation.fileId);
+      else if (key === "s") onSkip();
+      else return;
+      event.preventDefault();
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [busy, onClose]);
+  }, [busy, files, onClose, onDecision, onSkip, recommendation.fileId]);
 
   return (
-    <div
-      className="modal-backdrop duplicate-assistant-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="duplicate-assistant-title"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
-    >
-      <section className="duplicate-assistant-panel">
-        <header className="duplicate-assistant-header">
-          <div>
-            <span>
-              {language === "en"
-                ? `Group ${session.groupIndex + 1} of ${session.groups.length} · Comparison ${currentComparison} of ${session.totalComparisons}`
-                : `Grupo ${session.groupIndex + 1} de ${session.groups.length} · Comparación ${currentComparison} de ${session.totalComparisons}`}
-            </span>
-            <h2 id="duplicate-assistant-title">Revisión asistida de duplicados</h2>
-          </div>
-          <div className="duplicate-assistant-header-meta">
-            <span className={`duplicate-confidence is-${group.matchType}`}>
-              <strong>{group.confidence}%</strong>
-              <small>{group.reasons.map((reason) => translateText(reason, language)).join(" · ")}</small>
-            </span>
-            <button className="icon-button" disabled={busy} onClick={onClose} type="button" title="Cerrar">
-              <X size={20} />
-            </button>
-          </div>
-        </header>
+    <div className="vc-review vc-dup-assistant" role="dialog" aria-modal="true" aria-labelledby="duplicate-assistant-title">
+      <header className="vc-review-header">
+        <button className="vc-button" disabled={busy} onClick={onClose} type="button" aria-label="Salir del modo asistido">
+          <ChevronLeft size={17} />
+          <span className="vc-button-label">Volver</span>
+        </button>
+        <span className="vc-catmark" aria-hidden="true" />
+        <h2 className="vc-review-heading" id="duplicate-assistant-title">Duplicados · modo asistido</h2>
+        <span className="vc-review-pill">
+          {language === "en"
+            ? `Group ${session.groupIndex + 1} of ${session.groups.length} · Comparison ${currentComparison} of ${session.totalComparisons}`
+            : `Grupo ${session.groupIndex + 1} de ${session.groups.length} · Comparación ${currentComparison} de ${session.totalComparisons}`}
+        </span>
+        <div className="vc-header-spacer" />
+        <span className={`vc-dup-confidence is-${group.matchType}`}>
+          <span className="vc-meter" aria-hidden="true"><span style={{ width: `${group.confidence}%` }} /></span>
+          <strong>{`${group.confidence}%`}</strong>
+        </span>
+      </header>
+      <div
+        className="vc-dup-progress"
+        aria-label={language === "en"
+          ? `Progress ${currentComparison} of ${session.totalComparisons}`
+          : `Progreso ${currentComparison} de ${session.totalComparisons}`}
+      >
+        <span style={{ width: `${(currentComparison / Math.max(1, session.totalComparisons)) * 100}%` }} />
+      </div>
 
-        <div
-          className="duplicate-assistant-progress"
-          aria-label={language === "en"
-            ? `Progress ${currentComparison} of ${session.totalComparisons}`
-            : `Progreso ${currentComparison} de ${session.totalComparisons}`}
-        >
-          <span style={{ width: `${(currentComparison / Math.max(1, session.totalComparisons)) * 100}%` }} />
+      <div className="vc-dup-assistant-body">
+        <div className="vc-dup-reasons">
+          {group.reasons.map((reason) => (
+            <span className="vc-dup-reason" key={reason}>{translateText(reason, language)}</span>
+          ))}
+          <span className="vc-dup-recoverable">{`${formatBytes(group.recoverableBytes)} recuperables en el grupo`}</span>
         </div>
+        {message ? <div className="form-error">{message}</div> : null}
 
-        {message ? <div className="form-error duplicate-assistant-error">{message}</div> : null}
-
-        <div className="duplicate-assistant-compare">
+        <div className="vc-dup-compare">
           {comparisonFiles.map((file, index) => {
             const other = comparisonFiles[index === 0 ? 1 : 0];
             const recommended = recommendation.fileId === file.id;
@@ -5860,89 +5923,56 @@ function DuplicateAssistantModal({
               ? frames[hoveredFrameIndex % frames.length]
               : undefined;
             const thumbnail = frame ? thumbnailSrc(frame.url) ?? frame.url : mainThumbnail(file);
+            const letter = index === 0 ? "A" : "B";
             return (
-              <button
-                aria-label={`${language === "en" ? "Keep" : "Mantener"} ${file.filename}`}
+              <article
                 className={[
-                  "duplicate-assistant-choice",
+                  "vc-dup-choice",
                   recommended ? "is-recommended" : "",
                   selected ? "is-selected" : "",
                   rejected ? "is-rejected" : ""
                 ].filter(Boolean).join(" ")}
-                disabled={busy}
                 key={file.id}
-                onClick={(event) => {
-                  if (event.detail === 0) onDecision(file.id);
-                }}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  decisionPointerRef.current = {
-                    fileId: file.id,
-                    x: event.clientX,
-                    y: event.clientY
-                  };
-                }}
-                onPointerUp={(event) => {
-                  const start = decisionPointerRef.current;
-                  decisionPointerRef.current = null;
-                  if (!start || start.fileId !== file.id) return;
-                  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) return;
-                  event.preventDefault();
-                  onDecision(file.id);
-                }}
-                onPointerCancel={() => {
-                  decisionPointerRef.current = null;
-                }}
-                onPointerEnter={(event) => {
-                  if (event.pointerType === "touch") return;
-                  setHoveredFileId(file.id);
-                  setHoveredFrameIndex(0);
-                }}
-                onPointerLeave={() => {
-                  decisionPointerRef.current = null;
-                  setHoveredFileId(null);
-                }}
-                onFocus={() => {
-                  setHoveredFileId(file.id);
-                  setHoveredFrameIndex(0);
-                }}
-                onBlur={() => setHoveredFileId(null)}
-                type="button"
               >
-                <div className="duplicate-assistant-media">
+                <div className="vc-dup-choice-head">
+                  <span className="vc-dup-letter">{letter}</span>
+                  {recommended ? <span className="vc-dup-recommended">Recomendado · {duplicateRecommendationLabel(recommendation.reason)}</span> : null}
+                </div>
+                <div
+                  className="vc-dup-media"
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === "touch") return;
+                    setHoveredFileId(file.id);
+                    setHoveredFrameIndex(0);
+                  }}
+                  onPointerLeave={() => setHoveredFileId(null)}
+                >
                   {thumbnail ? (
                     <img
                       key={`${file.id}-${frame?.kind ?? "main"}-${hoveredFrameIndex}`}
-                      className={hovered && frames.length > 1 ? "is-previewing" : ""}
                       src={thumbnail}
                       alt=""
                       decoding="async"
                       fetchPriority="high"
                     />
                   ) : (
-                    <div className="duplicate-assistant-no-thumb"><Image size={36} /><span>Sin miniatura</span></div>
+                    <div className="vc-review-empty-frame"><Image size={36} /><span>Sin miniatura</span></div>
                   )}
-                  {recommended ? (
-                    <span className="duplicate-assistant-hover-action">
-                      <Check size={22} />
-                      Mantener este
-                    </span>
-                  ) : null}
                   {hovered && frames.length > 1 ? (
-                    <span className="duplicate-assistant-preview-count">
-                      {hoveredFrameIndex % frames.length + 1}/{frames.length}
-                    </span>
+                    <span className="vc-card-badge is-bottom-right is-mono">{`${hoveredFrameIndex % frames.length + 1}/${frames.length}`}</span>
+                  ) : frames.length > 1 ? (
+                    <span className="vc-card-badge is-bottom-right vc-hover-hint">Pasá el cursor para ver los fotogramas</span>
                   ) : null}
-                  {selected ? <span className="duplicate-selection-feedback"><Check size={18} /> MANTENER</span> : null}
-                  {rejected ? <span className="duplicate-selection-feedback is-delete"><Trash2 size={18} /> BORRAR</span> : null}
+                  {selected ? <span className="vc-dup-feedback is-keep"><Check size={18} /> Mantener</span> : null}
+                  {rejected ? <span className="vc-dup-feedback is-delete"><Trash2 size={18} /> Borrar</span> : null}
                 </div>
 
-                <div className="duplicate-assistant-file-copy">
+                <div className="vc-dup-choice-copy">
                   <strong title={file.filename}>{file.filename}</strong>
-                  <span title={file.relativePath}>{file.disk?.name ?? "-"} · {file.relativePath}</span>
+                  <span title={file.relativePath}>{`${file.disk?.name ?? "-"} · ${file.relativePath}`}</span>
                 </div>
 
-                <dl className="duplicate-comparison-metrics">
+                <dl className="vc-dup-metrics">
                   <div className={isBetterDuplicateMetric(file, other, "resolution") ? "is-better" : ""}>
                     <dt>Resolución</dt>
                     <dd>{resolution(file)}</dd>
@@ -5956,29 +5986,37 @@ function DuplicateAssistantModal({
                     <dd>{formatDuration(file.durationSeconds)}</dd>
                   </div>
                   <div>
-                    <dt>Video</dt>
-                    <dd>{file.videoCodec ?? "-"}</dd>
+                    <dt>Códec</dt>
+                    <dd>{[file.videoCodec, file.audioCodec].filter(Boolean).join(" · ") || "-"}</dd>
                   </div>
                 </dl>
 
-                {recommended ? (
-                  <span className="duplicate-recommendation-reason">
-                    {duplicateRecommendationLabel(recommendation.reason)}
-                  </span>
-                ) : null}
-              </button>
+                <button
+                  className={`vc-dup-keep ${recommended ? "is-primary" : ""}`}
+                  disabled={busy}
+                  onClick={() => onDecision(file.id)}
+                  type="button"
+                  aria-label={`${language === "en" ? "Keep" : "Mantener"} ${file.filename}`}
+                >
+                  <Check size={18} />
+                  {`Mantener ${letter} · borrar ${index === 0 ? "B" : "A"}`}
+                  <kbd>{index === 0 ? "1" : "2"}</kbd>
+                </button>
+              </article>
             );
           })}
         </div>
+      </div>
 
-        <footer className="duplicate-assistant-footer">
-          <span>El elegido se marcará para mantener; el otro quedará marcado para borrar.</span>
-          <button className="secondary-button" disabled={busy} onClick={onSkip} type="button">
-            Omitir este grupo
-            <ChevronRight size={17} />
-          </button>
-        </footer>
-      </section>
+      <footer className="vc-dup-footer">
+        <span>La copia elegida se marca para mantener y la otra para borrar. El borrado físico ocurre cuando el Companion procesa ese disco.</span>
+        <span className="vc-header-spacer" />
+        <span className="vc-review-keys"><kbd>Enter</kbd> recomendado · <kbd>Esc</kbd> salir</span>
+        <button className="vc-button" disabled={busy} onClick={onSkip} type="button">
+          Omitir este grupo
+          <kbd>S</kbd>
+        </button>
+      </footer>
     </div>
   );
 }

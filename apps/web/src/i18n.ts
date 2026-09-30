@@ -31,6 +31,18 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "Resolver": "Resolve",
+  "Resuelto": "Resolved",
+  "Recomendado ·": "Recommended ·",
+  "Conectá primero": "Connect first",
+  "Ver plan completo": "View full plan",
+  "Salir del modo asistido": "Exit assisted mode",
+  "Volver": "Back",
+  "Duplicados · modo asistido": "Duplicates · assisted mode",
+  "Pasá el cursor para ver los fotogramas": "Hover to preview frames",
+  "Sin miniatura": "No thumbnail",
+  "La copia elegida se marca para mantener y la otra para borrar. El borrado físico ocurre cuando el Companion procesa ese disco.": "The chosen copy is marked to keep and the other one for deletion. Physical deletion happens when the Companion processes that drive.",
+  "recomendado ·": "recommended ·",
   "Salir del review": "Exit review",
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
@@ -507,6 +519,27 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Carpeta (.+)$/);
   if (match) return `Folder ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) grupos? · (.+) recuperables$/);
+  if (match) return `${match[1]} ${match[1].trim() === "1" ? "group" : "groups"} · ${match[2]} recoverable`;
+
+  match = text.match(/^([\d.,]+ [KMGT]?B) recuperables$/);
+  if (match) return `${match[1]} recoverable`;
+
+  match = text.match(/^(.+) recuperables en el grupo$/);
+  if (match) return `${match[1]} recoverable in this group`;
+
+  match = text.match(/^(\d+)% de confianza$/);
+  if (match) return `${match[1]}% confidence`;
+
+  match = text.match(/^Mantener ([AB]) · borrar ([AB])$/);
+  if (match) return `Keep ${match[1]} · delete ${match[2]}`;
+
+  match = text.match(/^Marcado ([\d.,]+ [KMGT]?B)$/);
+  if (match) return `Marked ${match[1]}`;
+
+  match = text.match(/^Por decidir (.+)$/);
+  if (match) return `To decide ${match[1]}`;
 
   match = text.match(/^Abrir (.+)$/);
   if (match) return `Open ${match[1]}`;

@@ -691,7 +691,8 @@
 
 @media (max-width: 980px) {
   .vc-review {
-    grid-template-rows: auto;
+    grid-template-rows: none;
+    grid-auto-rows: max-content;
     overflow-y: auto;
   }
 
@@ -732,8 +733,13 @@
 
 @media (max-width: 640px) {
   .vc-review-header {
+    flex-wrap: wrap;
     gap: 8px;
     padding: 8px 12px;
+  }
+
+  .vc-review-pill {
+    white-space: normal;
   }
 
   .vc-review-session,
