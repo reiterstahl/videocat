@@ -1,0 +1,239 @@
+/* Phones and small tablets: bottom tab bar, sheets and compact summaries. */
+
+.vc-tabbar {
+  display: none;
+}
+
+.vc-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 94;
+  border: 0;
+  background: rgba(0, 0, 0, 0.42);
+  cursor: pointer;
+}
+
+.vc-sheet,
+.vc-filters.is-sheet {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 95;
+  max-height: 85vh;
+  overflow-y: auto;
+  border: 1px solid var(--vc-border);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--vc-raised);
+  box-shadow: var(--vc-shadow-pop);
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  animation: vc-sheet-in 180ms ease-out;
+}
+
+@keyframes vc-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-sheet,
+  .vc-filters.is-sheet {
+    animation: none;
+  }
+}
+
+.vc-sheet-handle {
+  width: 40px;
+  height: 4px;
+  display: block;
+  justify-self: center;
+  margin: 4px auto 10px;
+  border-radius: 2px;
+  background: var(--vc-border-strong);
+}
+
+.vc-more-sheet {
+  display: grid;
+  gap: 8px;
+}
+
+.vc-more-sheet .vc-nav-item {
+  min-height: 48px;
+  font-size: 0.98rem;
+}
+
+.vc-more-sheet .vc-companion-card {
+  margin: 0 0 4px;
+}
+
+:root .vc-filters.is-sheet {
+  gap: 14px;
+}
+
+.vc-filters.is-sheet .section-title {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  margin: 0 -16px;
+  background: var(--vc-raised);
+  padding: 4px 16px 8px;
+}
+
+.vc-sheet-close {
+  margin-left: auto;
+}
+
+.vc-sheet-footer {
+  position: sticky;
+  bottom: calc(-16px - env(safe-area-inset-bottom));
+  display: flex;
+  gap: 8px;
+  margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
+  border-top: 1px solid var(--vc-border);
+  background: var(--vc-raised);
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+}
+
+.vc-sheet-footer .vc-button {
+  height: 46px;
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .vc-tabbar {
+    position: fixed;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: 10px;
+    z-index: 60;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    border: 1px solid var(--vc-border);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--vc-raised) 92%, transparent);
+    box-shadow: var(--vc-shadow-pop);
+    padding: 6px;
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .vc-tab {
+    position: relative;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    border-radius: 16px;
+    background: transparent;
+    color: var(--vc-muted);
+    padding: 0 2px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .vc-tab span:not(.vc-tab-badge) {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vc-tab.is-active {
+    background: var(--vc-accent-soft);
+    color: var(--vc-accent-ink);
+    font-weight: 600;
+  }
+
+  .vc-tab:focus-visible {
+    outline: 2px solid var(--vc-accent);
+    outline-offset: 2px;
+  }
+
+  .vc-tab-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 22px);
+    min-width: 17px;
+    height: 17px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--vc-accent-strong);
+    color: #ffffff;
+    padding: 0 4px;
+    font-size: 0.62rem;
+    font-weight: 700;
+  }
+
+  .vc-content {
+    padding-bottom: calc(var(--vc-page-pad) + 84px + env(safe-area-inset-bottom));
+  }
+
+  .vc-detail {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 640px) {
+  .vc-kpis {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .vc-kpis::-webkit-scrollbar {
+    display: none;
+  }
+
+  .vc-kpi {
+    min-width: 132px;
+    flex: 1 0 auto;
+    padding: 8px 12px;
+  }
+
+  .vc-kpi strong {
+    font-size: 1.05rem;
+  }
+
+  .vc-disks {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .vc-disk-chip {
+    min-height: 42px;
+    padding: 4px 10px;
+  }
+
+  .vc-content {
+    gap: 12px;
+    padding-top: 12px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .vc-detail-keys,
+  .vc-review-hero-keys {
+    display: none;
+  }
+}
+
+@media (hover: none) {
+  .vc-detail-keys {
+    display: none;
+  }
+}

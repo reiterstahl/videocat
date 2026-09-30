@@ -31,6 +31,12 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "Duplicado": "Duplicate",
+  "Descargas": "Downloads",
+  "Más secciones": "More sections",
+  "Secciones": "Sections",
+  "Cerrar menú": "Close menu",
+  "Cerrar filtros": "Close filters",
   "Resolver": "Resolve",
   "Resuelto": "Resolved",
   "Recomendado ·": "Recommended ·",
@@ -540,6 +546,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Por decidir (.+)$/);
   if (match) return `To decide ${match[1]}`;
+
+  match = text.match(/^Ver ([\d.,\s]+) videos?$/);
+  if (match) return `Show ${match[1]} ${match[1].trim() === "1" ? "video" : "videos"}`;
 
   match = text.match(/^Abrir (.+)$/);
   if (match) return `Open ${match[1]}`;

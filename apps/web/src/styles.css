@@ -308,10 +308,6 @@ select:focus {
   letter-spacing: 0.08em;
 }
 
-.mobile-topnav {
-  display: none;
-}
-
 .download-header-actions {
   display: flex;
   align-items: center;
@@ -4030,72 +4026,6 @@ tbody tr.curation-row {
   }
 }
 
-@media (max-width: 1040px) {
-
-  .mobile-topnav {
-    grid-column: 2;
-    grid-row: 1;
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .mobile-menu-toggle,
-.mobile-menu-panel button {
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--vc-border-strong);
-    border-radius: 6px;
-    background: var(--vc-surface);
-    color: var(--vc-text-soft);
-    font-weight: 650;
-  }
-
-  .mobile-menu-toggle {
-    width: 42px;
-    padding: 0;
-  }
-
-  .mobile-menu-toggle.is-open {
-    border-color: var(--matrix-primary);
-    color: var(--matrix-primary-ink);
-  }
-
-  .mobile-menu-panel {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    z-index: 60;
-    width: min(270px, calc(100vw - 32px));
-    display: grid;
-    gap: 6px;
-    border: 1px solid var(--vc-border-strong);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 18px 42px rgba(13, 22, 28, 0.22);
-    padding: 8px;
-    -webkit-backdrop-filter: blur(18px) saturate(135%);
-    backdrop-filter: blur(18px) saturate(135%);
-  }
-
-  .mobile-menu-panel button {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 9px;
-    padding: 0 11px;
-  }
-
-  .mobile-menu-panel button.is-active {
-    border-color: var(--matrix-primary);
-    background: var(--matrix-primary-soft);
-    color: var(--matrix-primary-ink);
-  }
-}
 
 @media (max-width: 640px) {
 
@@ -4550,26 +4480,6 @@ tbody tr.curation-row {
 :root[data-theme="dark"] .icon-text-button {
   background: var(--vc-hover);
   color: var(--vc-text);
-}
-
-:root[data-theme="dark"] .mobile-menu-toggle,
-:root[data-theme="dark"] .mobile-menu-panel button {
-  background: var(--vc-surface);
-  border-color: var(--vc-border);
-  color: var(--vc-text);
-}
-
-:root[data-theme="dark"] .mobile-menu-panel {
-  background: rgba(15, 20, 24, 0.96);
-  border-color: rgba(61, 80, 90, 0.82);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
-}
-
-:root[data-theme="dark"] .mobile-menu-toggle.is-open,
-:root[data-theme="dark"] .mobile-menu-panel button.is-active {
-  background: var(--vc-accent-soft);
-  border-color: var(--matrix-primary-bright);
-  color: var(--vc-accent-ink);
 }
 
 :root[data-theme="dark"] .usage-tile,

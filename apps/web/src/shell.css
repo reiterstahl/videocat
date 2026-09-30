@@ -338,10 +338,6 @@
   box-shadow: 0 0 0 2px var(--vc-surface), 0 0 0 3px var(--vc-border-strong);
 }
 
-.vc-header .mobile-topnav {
-  display: none;
-}
-
 /* Theme panel */
 
 .vc-theme-anchor {
@@ -751,16 +747,6 @@
 
 /* Mobile menu (reuses the existing panel markup) */
 
-.mobile-menu-panel {
-  background: var(--vc-raised);
-  border-color: var(--vc-border);
-  box-shadow: var(--vc-shadow-pop);
-}
-
-.mobile-menu-panel .vc-nav-badge {
-  margin-left: auto;
-}
-
 @media (max-width: 900px) {
   .vc-frame,
   .vc-frame.is-sidebar-collapsed {
@@ -772,11 +758,6 @@
   }
 
   .vc-brand.is-compact {
-    display: inline-flex;
-  }
-
-  .vc-header .mobile-topnav {
-    position: relative;
     display: inline-flex;
   }
 
@@ -810,7 +791,7 @@
     right: 12px;
     left: 12px;
     width: auto;
-    max-height: calc(100vh - 84px);
+    max-height: calc(100vh - 170px);
     overflow-y: auto;
   }
 

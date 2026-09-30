@@ -548,6 +548,11 @@
 
 @media (hover: none) {
   .vc-card-check {
+    display: none;
+  }
+
+  .vc-grid.has-selection .vc-card-check {
+    display: grid;
     opacity: 1;
   }
 

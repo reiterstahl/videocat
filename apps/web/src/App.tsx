@@ -27,6 +27,7 @@ import {
   LogOut,
   Maximize,
   Menu,
+  MoreHorizontal,
   MonitorPlay,
   Moon,
   Palette,
@@ -965,7 +966,9 @@ export function App() {
   const theme = resolvedAppearance === "light" ? "light" : "dark";
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [catalogView, setCatalogView] = useState<CatalogView>(storedCatalogView);
-  const [filtersOpen, setFiltersOpen] = useState(storedFiltersOpen);
+  const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  // On phones the filters open as a sheet, so they always start closed there.
+  const [filtersOpen, setFiltersOpen] = useState(() => !window.matchMedia("(max-width: 900px)").matches && storedFiltersOpen());
   const [wideCatalog, setWideCatalog] = useState(() => window.matchMedia("(min-width: 1680px)").matches);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("videocat-sidebar-collapsed") === "true");
@@ -1295,8 +1298,29 @@ export function App() {
   }, [catalogView]);
 
   useEffect(() => {
-    localStorage.setItem("videocat-catalog-filters-open", String(filtersOpen));
-  }, [filtersOpen]);
+    if (!compactLayout) localStorage.setItem("videocat-catalog-filters-open", String(filtersOpen));
+  }, [compactLayout, filtersOpen]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 900px)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setCompactLayout(event.matches);
+      if (event.matches) setFiltersOpen(false);
+    };
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen && !(compactLayout && filtersOpen)) return;
+    function closeSheet(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setMobileMenuOpen(false);
+      if (compactLayout) setFiltersOpen(false);
+    }
+    window.addEventListener("keydown", closeSheet);
+    return () => window.removeEventListener("keydown", closeSheet);
+  }, [compactLayout, filtersOpen, mobileMenuOpen]);
 
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1680px)");
@@ -2887,6 +2911,9 @@ export function App() {
   const activeNavigationItem = navigationItems.find((item) => item.mode === viewMode) ?? navigationItems[0];
   const primaryNavigationItems = navigationItems.filter((item) => item.mode !== "admin" && item.mode !== "profile");
   const secondaryNavigationItems = navigationItems.filter((item) => item.mode === "admin" || item.mode === "profile");
+  const mobileTabModes: ViewMode[] = ["catalog", "review", "duplicates", "downloads"];
+  const mobileTabItems = mobileTabModes.flatMap((mode) => navigationItems.filter((item) => item.mode === mode));
+  const mobileMoreItems = navigationItems.filter((item) => !mobileTabModes.includes(item.mode));
 
   function switchView(mode: ViewMode): void {
     navigateToView(mode);
@@ -3418,38 +3445,6 @@ export function App() {
               />
             ) : null}
           </div>
-          <div className="mobile-topnav">
-            <button
-              className={`mobile-menu-toggle ${mobileMenuOpen ? "is-open" : ""}`}
-              type="button"
-              onClick={() => setMobileMenuOpen((open) => !open)}
-              aria-expanded={mobileMenuOpen}
-              aria-label="Abrir menu"
-              title="Menu"
-            >
-              {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
-            </button>
-            {mobileMenuOpen ? (
-              <div className="mobile-menu-panel">
-                {navigationItems.map((item) => (
-                  <button
-                    key={item.mode}
-                    className={viewMode === item.mode ? "is-active" : ""}
-                    onClick={() => switchView(item.mode)}
-                    type="button"
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                    {item.badge ? <span className="vc-nav-badge">{item.badge}</span> : null}
-                  </button>
-                ))}
-                <button onClick={logout} type="button">
-                  <LogOut size={17} />
-                  <span>Salir</span>
-                </button>
-              </div>
-            ) : null}
-          </div>
         </header>
 
         <div className="vc-content">
@@ -3572,18 +3567,33 @@ export function App() {
         className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
         style={{ "--filter-width": `${filterWidth}px` } as CSSProperties}
       >
+        {showCatalogFilters && compactLayout ? (
+          <button className="vc-sheet-scrim" type="button" aria-label="Cerrar filtros" onClick={() => setFiltersOpen(false)} />
+        ) : null}
         {showCatalogFilters ? (
-          <aside className="filters vc-filters" aria-label="Filtros">
-            <button
-              className="filter-resize-handle"
-              onPointerDown={beginFilterResize}
-              type="button"
-              title="Arrastrar para cambiar ancho"
-              aria-label="Cambiar ancho de filtros"
-            />
+          <aside
+            className={`filters vc-filters ${compactLayout ? "is-sheet" : ""}`}
+            aria-label="Filtros"
+            role={compactLayout ? "dialog" : undefined}
+            aria-modal={compactLayout ? true : undefined}
+          >
+            {compactLayout ? <span className="vc-sheet-handle" aria-hidden="true" /> : (
+              <button
+                className="filter-resize-handle"
+                onPointerDown={beginFilterResize}
+                type="button"
+                title="Arrastrar para cambiar ancho"
+                aria-label="Cambiar ancho de filtros"
+              />
+            )}
             <div className="section-title">
               <Filter size={17} />
               Filtros
+              {compactLayout ? (
+                <button className="vc-icon-button is-ghost is-small vc-sheet-close" onClick={() => setFiltersOpen(false)} type="button" aria-label="Cerrar filtros">
+                  <X size={18} />
+                </button>
+              ) : null}
             </div>
             <label>
               Extension
@@ -3736,6 +3746,16 @@ export function App() {
                 )}
               </div>
             </div>
+            {compactLayout ? (
+              <div className="vc-sheet-footer">
+                {activeCatalogFilters.length > 0 ? (
+                  <button className="vc-button" onClick={clearCatalogFilters} type="button">Limpiar filtros</button>
+                ) : null}
+                <button className="vc-button is-primary" onClick={() => setFiltersOpen(false)} type="button">
+                  {`Ver ${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}
+                </button>
+              </div>
+            ) : null}
           </aside>
         ) : null}
 
@@ -3855,7 +3875,7 @@ export function App() {
           {catalogView === "grid" ? (
             <div className="vc-grid-frame">
               {files.length > 0 ? (
-                <div className="vc-grid">
+                <div className={`vc-grid ${selectedFileIds.length > 0 ? "has-selection" : ""}`}>
                   {files.map((file) => (
                     <CatalogCard
                       key={file.id}
@@ -5091,6 +5111,77 @@ export function App() {
       ) : null}
         </div>
       </main>
+
+      <nav className="vc-tabbar" aria-label="Secciones">
+        {mobileTabItems.map((item) => (
+          <button
+            key={item.mode}
+            className={`vc-tab ${viewMode === item.mode ? "is-active" : ""}`}
+            aria-current={viewMode === item.mode ? "page" : undefined}
+            onClick={() => switchView(item.mode)}
+            type="button"
+          >
+            {item.icon}
+            <span>{item.mode === "downloads" ? "Descargas" : item.label}</span>
+            {item.badge ? <span className="vc-tab-badge">{item.badge}</span> : null}
+          </button>
+        ))}
+        <button
+          className={`vc-tab ${mobileMenuOpen || mobileMoreItems.some((item) => item.mode === viewMode) ? "is-active" : ""}`}
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-expanded={mobileMenuOpen}
+          aria-haspopup="dialog"
+          type="button"
+        >
+          <MoreHorizontal size={20} />
+          <span>Más</span>
+        </button>
+      </nav>
+
+      {mobileMenuOpen ? (
+        <>
+          <button className="vc-sheet-scrim" type="button" aria-label="Cerrar menú" onClick={() => setMobileMenuOpen(false)} />
+          <div className="vc-sheet vc-more-sheet" role="dialog" aria-modal="true" aria-label="Más secciones">
+            <span className="vc-sheet-handle" aria-hidden="true" />
+            <div className={`vc-companion-card ${companionIndicatorState}`}>
+              <span className="vc-companion-title">
+                <em className={`agent-status-dot ${companionIndicatorState}`} aria-hidden="true" />
+                <span>{companionIndicatorLabel}</span>
+              </span>
+              <span className="vc-companion-meta">{`${connectedDiskIds.length} de ${disks.length} discos seleccionados`}</span>
+            </div>
+            <nav className="vc-nav" aria-label="Más secciones">
+              {mobileMoreItems.map((item) => (
+                <button
+                  key={item.mode}
+                  className={`vc-nav-item ${viewMode === item.mode ? "is-active" : ""}`}
+                  aria-current={viewMode === item.mode ? "page" : undefined}
+                  onClick={() => switchView(item.mode)}
+                  type="button"
+                >
+                  {item.icon}
+                  <span className="vc-nav-label">{item.label}</span>
+                </button>
+              ))}
+              <button
+                className="vc-nav-item"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setThemePanelOpen(true);
+                }}
+                type="button"
+              >
+                <Palette size={18} />
+                <span className="vc-nav-label">Tema e idioma</span>
+              </button>
+              <button className="vc-nav-item" onClick={logout} type="button">
+                <LogOut size={18} />
+                <span className="vc-nav-label">Salir</span>
+              </button>
+            </nav>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -5179,6 +5270,12 @@ function CatalogCard({
         onClick={onOpen}
         onPointerMove={scrubFrames}
         onPointerLeave={() => setFrameIndex(null)}
+        onContextMenu={(event) => {
+          // A long press on touch screens starts or extends the bulk selection.
+          if (!selectable || !window.matchMedia("(hover: none)").matches) return;
+          event.preventDefault();
+          onToggleSelect();
+        }}
         aria-label={`Abrir ${file.filename}`}
       >
         <span className="vc-card-thumb">
@@ -5187,7 +5284,7 @@ function CatalogCard({
           {availability === "offline" || file.isProbableDuplicate ? (
             <span className="vc-card-flags">
               {availability === "offline" ? <span className="vc-card-badge is-light">Desconectado</span> : null}
-              {file.isProbableDuplicate ? <span className="vc-card-badge is-warning">Duplicado probable</span> : null}
+              {file.isProbableDuplicate ? <span className="vc-card-badge is-warning" title="Duplicado probable">Duplicado</span> : null}
             </span>
           ) : null}
           {file.durationSeconds ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(file.durationSeconds)}</span> : null}

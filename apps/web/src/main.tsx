@@ -9,6 +9,7 @@ import "./shell.css";
 import "./catalog.css";
 import "./review.css";
 import "./duplicates.css";
+import "./mobile.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
