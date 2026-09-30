@@ -2,10 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
+import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
 
 type DiskMarker = {
   schemaVersion: 1;
@@ -290,6 +291,8 @@ function normalizeConfig(values: Record<string, string>): Record<ConfigKey, stri
     const value = String(values[key] ?? "").trim();
     return [key, value || configDefaults[key] || ""];
   })) as Record<ConfigKey, string>;
+  // The local listener only accepts authenticated requests, so an empty or weak token is replaced.
+  if (normalized.COMPANION_TOKEN.length < minimumCompanionTokenLength) normalized.COMPANION_TOKEN = generateCompanionToken();
   normalized.COMPANION_MONITORED_TARGETS = serializeTargets(parseTargets(normalized.COMPANION_MONITORED_TARGETS));
   normalized.COMPANION_DISABLED_DISK_IDS = normalized.COMPANION_DISABLED_DISK_IDS
     .split(",")
@@ -697,6 +700,7 @@ function configHtml(): string {
     button:disabled { opacity: 0.6; cursor: wait; }
     .required { color: #fc6121; }
     .hint { color: #b1c4ce; font-size: 12px; font-weight: 700; }
+    .token-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     #status { min-height: 18px; color: #93d8af; font-size: 13px; font-weight: 800; }
     #status.is-error { color: #ffb4a4; }
     #status.is-info { color: #b1c4ce; }
@@ -770,6 +774,18 @@ function configHtml(): string {
       </section>
 
       <section class="settings-section">
+        <div class="section-head"><div><h2>Token del navegador</h2><p class="hint">Las acciones locales (abrir, copiar, borrar) solo se aceptan con este token. Copialo y pegalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div></div>
+        <div class="settings-section-grid">
+          <label class="full">COMPANION_TOKEN<input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
+          <div class="full token-actions">
+            <button type="button" id="copyToken" class="primary">Copiar token</button>
+            <button type="button" id="toggleToken" class="ghost">Mostrar</button>
+            <span class="hint">Si lo borras y guardas, se genera uno nuevo y habra que pegarlo otra vez en el navegador.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <div class="section-head"><div><h2>Archivos y herramientas</h2><p class="hint">Destino de las copias y rutas opcionales de FFmpeg.</p></div></div>
         <div class="settings-section-grid">
           <label class="full">COMPANION_DOWNLOAD_DIR<input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
@@ -783,7 +799,6 @@ function configHtml(): string {
         <summary>Opciones avanzadas</summary>
         <div class="settings-section-grid">
           <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
-          <label>COMPANION_TOKEN<input name="COMPANION_TOKEN" type="password" /></label>
           <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>
           <label>COMPANION_DISK_POLL_MS<input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
           <label>COMPANION_SCAN_POLL_MS<input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
@@ -1033,6 +1048,16 @@ function configHtml(): string {
 
     void loadConfig();
     document.getElementById("close").addEventListener("click", () => window.videocatConfig?.close());
+    document.getElementById("toggleToken").addEventListener("click", (event) => {
+      const input = document.getElementById("companionToken");
+      const reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      event.currentTarget.textContent = reveal ? "Ocultar" : "Mostrar";
+    });
+    document.getElementById("copyToken").addEventListener("click", async () => {
+      const copied = window.videocatConfig?.copyToken ? await window.videocatConfig.copyToken() : false;
+      setStatus(copied ? "Token copiado. Pegalo en VideoCAT › Perfil › Companion local." : "Guarda la configuracion para generar el token.", copied ? "success" : "error");
+    });
     document.getElementById("pair").addEventListener("click", async () => {
       if (!window.videocatConfig?.pair) return;
       const code = String(pairCode.value || "").trim();
@@ -1368,15 +1393,33 @@ function updateMenu(): void {
   ]));
 }
 
+async function ensureCompanionToken(): Promise<void> {
+  if ((process.env.COMPANION_TOKEN?.trim().length ?? 0) >= minimumCompanionTokenLength) return;
+  try {
+    await saveConfig(normalizeConfig(currentConfig()));
+  } catch (error) {
+    // Keep the generated token for this run even if the settings file cannot be written.
+    process.env.COMPANION_TOKEN = generateCompanionToken();
+    console.error("No se pudo guardar COMPANION_TOKEN:", error instanceof Error ? error.message : error);
+  }
+}
+
 async function main(): Promise<void> {
   await app.whenReady();
   app.setAppUserModelId("app.videocat.companion");
   if (duplicateLaunchPending) notifyAlreadyRunning();
   app.setLoginItemSettings({ openAtLogin: false });
   await loadEnvFile();
+  await ensureCompanionToken();
   await loadStoredCredential();
 
   ipcMain.handle("config:load", () => currentConfig());
+  ipcMain.handle("config:copy-token", () => {
+    const token = process.env.COMPANION_TOKEN?.trim();
+    if (!token) return false;
+    clipboard.writeText(token);
+    return true;
+  });
   ipcMain.handle("config:pairing-status", () => pairingStatus());
   ipcMain.handle("config:pair", (_event, code: string, values: Record<string, string>) => pairCompanion(code, values));
   ipcMain.handle("config:choose-folder", async () => {

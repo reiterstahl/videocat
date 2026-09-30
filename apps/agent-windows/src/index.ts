@@ -28,6 +28,7 @@ import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
+import { isLocalRequestAuthorized } from "./local-auth.js";
 import {
   deletionFingerprintFrameIndexes,
   validateDeletionFingerprint,
@@ -859,16 +860,7 @@ function isCompanionOriginAllowed(origin: string | undefined, allowedOrigins: Se
 }
 
 function isCompanionTokenAllowed(request: http.IncomingMessage): boolean {
-  const expected = process.env.COMPANION_TOKEN;
-  if (!expected) return true;
-  const headerToken = request.headers["x-videocat-companion-token"];
-  const bearer = request.headers.authorization?.replace(/^Bearer\s+/i, "");
-  const token = typeof headerToken === "string" ? headerToken : bearer;
-  if (!token) return false;
-  return crypto.timingSafeEqual(
-    crypto.createHash("sha256").update(token).digest(),
-    crypto.createHash("sha256").update(expected).digest()
-  );
+  return isLocalRequestAuthorized(process.env.COMPANION_TOKEN, request.headers);
 }
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
@@ -1583,7 +1575,9 @@ async function runCompanion(): Promise<void> {
 
   console.log(`VideoCAT Companion escuchando en http://${host}:${selectedPort}${selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})`}.`);
   console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
-  console.log(process.env.COMPANION_TOKEN ? "Token local requerido por este companion; configuralo tambien en este navegador, no en el servidor." : "Token local opcional no configurado; continuando sin token.");
+  console.log(process.env.COMPANION_TOKEN?.trim()
+    ? "Token local requerido por este companion; configuralo en Perfil del navegador, no en el servidor."
+    : "COMPANION_TOKEN no configurado: el listener local solo responde /health y rechaza todas las acciones.");
   await reportMediaToolAvailability();
   await startCompanionDiskWatcher();
   const credential = process.env.VIDEOCAT_AGENT_CREDENTIAL?.trim();

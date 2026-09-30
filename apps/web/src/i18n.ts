@@ -31,6 +31,26 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "La reproducción remota requiere un Companion sincronizado con el servidor. Ábrelo en la PC donde está conectado el disco.": "Remote playback requires a Companion synced with the server. Open it on the PC where the drive is connected.",
+  "El Companion está activo, pero este disco no fue reportado como conectado. Conéctalo y actualiza los discos desde el Companion.": "The Companion is running, but this drive was not reported as connected. Connect it and refresh the drives from the Companion.",
+  "El formato original no es compatible con este navegador. Usa el botón MP4 para preparar una copia temporal compatible.": "The original format is not supported by this browser. Use the MP4 button to prepare a compatible temporary copy.",
+  "Este navegador no puede reproducir el formato original de este video.": "This browser cannot play this video's original format.",
+  "Reproduciendo remotamente": "Playing remotely",
+  "Reproducción pausada": "Playback paused",
+  "Ruta relativa": "Relative path",
+  "Ruta absoluta escaneada": "Scanned absolute path",
+  "Tamano exacto": "Exact size",
+  "Tamano del folder": "Folder size",
+  "Companion local": "Local Companion",
+  "Sin token en este navegador": "No token in this browser",
+  "Token guardado en este navegador": "Token saved in this browser",
+  "Abrir, copiar y borrar archivos en esta PC requiere el token del Companion. Copialo desde la bandeja de Windows (Configuración › Token del navegador) y pegalo acá. Se guarda solo en este navegador.": "Opening, copying and deleting files on this PC requires the Companion token. Copy it from the Windows tray (Settings › Browser token) and paste it here. It is stored only in this browser.",
+  "Token del Companion": "Companion token",
+  "Guardar token": "Save token",
+  "Pegá el token del Companion": "Paste the Companion token",
+  "Token del Companion guardado en este navegador.": "Companion token saved in this browser.",
+  "Token del Companion quitado de este navegador.": "Companion token removed from this browser.",
+  "Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.": "The Companion token is missing or invalid. Paste it in Profile › Local Companion.",
   "Duplicado": "Duplicate",
   "Descargas": "Downloads",
   "Más secciones": "More sections",
@@ -546,6 +566,24 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Por decidir (.+)$/);
   if (match) return `To decide ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) seleccionados?( en cola)?$/);
+  if (match) return `${match[1]} selected${match[2] ? " in queue" : ""}`;
+
+  match = text.match(/^(\d+) en esta página$/);
+  if (match) return `${match[1]} on this page`;
+
+  match = text.match(/^Ordenar por (.+)$/);
+  if (match) return `Sort by ${translateText(match[1], language).toLowerCase()}`;
+
+  match = text.match(/^de ([\d.,]+ [KMGT]?B)$/);
+  if (match) return `of ${match[1]}`;
+
+  match = text.match(/^([\d.,]+)% del total$/);
+  if (match) return `${match[1]}% of total`;
+
+  match = text.match(/^([\d.,\s]+) video\(s\) en cola\. Falta el token del Companion o no es válido: pegalo en Perfil › Companion local\.$/);
+  if (match) return `${match[1]} video(s) queued. The Companion token is missing or invalid: paste it in Profile › Local Companion.`;
 
   match = text.match(/^Ver ([\d.,\s]+) videos?$/);
   if (match) return `Show ${match[1]} ${match[1].trim() === "1" ? "video" : "videos"}`;

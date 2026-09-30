@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("videocatConfig", {
     ipcRenderer.invoke("config:pairing-status") as Promise<TrayPairingStatus>,
   pair: (code: string, values: TrayConfig): Promise<TrayPairingResult> =>
     ipcRenderer.invoke("config:pair", code, values) as Promise<TrayPairingResult>,
+  copyToken: (): Promise<boolean> => ipcRenderer.invoke("config:copy-token") as Promise<boolean>,
   close: (): void => ipcRenderer.send("config:close")
 });
 

@@ -186,6 +186,57 @@
   .vc-detail {
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
+
+  /* Bulk actions dock above the tab bar and scroll sideways instead of wrapping. */
+  .bulk-actions {
+    position: fixed;
+    right: 10px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    left: 10px;
+    z-index: 61;
+    min-height: 0;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    border-color: color-mix(in srgb, var(--vc-accent) 45%, var(--vc-border));
+    border-radius: 18px;
+    background: var(--vc-raised);
+    box-shadow: var(--vc-shadow-pop);
+    padding: 8px;
+    scrollbar-width: none;
+  }
+
+  .bulk-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bulk-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .bulk-actions strong {
+    padding-left: 6px;
+    white-space: nowrap;
+  }
+
+  .bulk-actions > span {
+    display: none;
+  }
+
+  .bulk-actions select {
+    width: auto;
+    min-width: 150px;
+    min-height: 40px;
+  }
+
+  .bulk-actions button {
+    min-height: 40px;
+    white-space: nowrap;
+  }
+
+  .vc-content:has(.bulk-actions) {
+    padding-bottom: calc(var(--vc-page-pad) + 150px + env(safe-area-inset-bottom));
+  }
 }
 
 @media (max-width: 640px) {

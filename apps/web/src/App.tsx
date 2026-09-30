@@ -493,7 +493,7 @@ type VersionCheckResponse = {
 
 const logoUrl = "/logo.png";
 const logoWhiteUrl = "/logo_white.png";
-const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.1.22";
+const webVersion = import.meta.env.VITE_VIDEOCAT_VERSION || "0.2.0";
 const githubProfileUrl = "https://github.com/reiterstahl";
 const githubSponsorsUrl = "https://github.com/sponsors/reiterstahl";
 const paypalDonateUrl = "https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY";
@@ -965,6 +965,8 @@ export function App() {
   const resolvedAppearance = resolveAppearance(themePreferences.appearance, prefersDark);
   const theme = resolvedAppearance === "light" ? "light" : "dark";
   const [themePanelOpen, setThemePanelOpen] = useState(false);
+  const [companionTokenInput, setCompanionTokenInput] = useState("");
+  const [companionTokenSaved, setCompanionTokenSaved] = useState(() => Boolean(localStorage.getItem("videocat-companion-token")));
   const [catalogView, setCatalogView] = useState<CatalogView>(storedCatalogView);
   const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 900px)").matches);
   // On phones the filters open as a sheet, so they always start closed there.
@@ -1373,6 +1375,21 @@ export function App() {
   }
 
   const closeThemePanel = useCallback(() => setThemePanelOpen(false), []);
+
+  function saveCompanionToken() {
+    const token = companionTokenInput.trim();
+    if (!token) return;
+    localStorage.setItem("videocat-companion-token", token);
+    setCompanionTokenInput("");
+    setCompanionTokenSaved(true);
+    setProfileMessage("Token del Companion guardado en este navegador.");
+  }
+
+  function clearCompanionToken() {
+    localStorage.removeItem("videocat-companion-token");
+    setCompanionTokenSaved(false);
+    setProfileMessage("Token del Companion quitado de este navegador.");
+  }
 
   useEffect(() => {
     api("/api/auth/me")
@@ -2125,7 +2142,7 @@ export function App() {
         reason?: string;
       };
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setBulkMessage(`${queued.queued} video(s) en cola. El token local del companion no es valido.`);
+        setBulkMessage(`${queued.queued} video(s) en cola. Falta el token del Companion o no es válido: pegalo en Perfil › Companion local.`);
       } else if (result.busy) {
         setBulkMessage(`${queued.queued} video(s) en cola. El companion terminara primero el escaneo actual.`);
       } else if (response.ok && result.ok && result.accepted) {
@@ -2306,7 +2323,7 @@ export function App() {
       const result = await response.json().catch(() => ({ ok: false, reason: "open_failed" })) as CompanionProcessDownloadsResponse;
       if (!response.ok || !result.ok) {
         const message = result.reason === "forbidden"
-          ? "Token local no valido para el companion."
+          ? "Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local."
           : result.reason === "not_available"
             ? "Companion no disponible."
             : result.detail ?? "No se pudo procesar la cola.";
@@ -2713,7 +2730,7 @@ export function App() {
       const response = await fetch(`http://127.0.0.1:${port}/mounted-disks`, { headers });
       const result = await response.json().catch(() => ({ ok: false, disks: [] })) as { ok?: boolean; disks?: MountedCompanionDisk[]; reason?: string };
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setConnectedMessage("Token local no valido");
+        setConnectedMessage("Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.");
         return;
       }
       if (!response.ok || !result.ok) {
@@ -3812,8 +3829,8 @@ export function App() {
 
           {selectedFileIds.length > 0 ? (
             <div className="bulk-actions">
-              <strong>{selectedFileIds.length.toLocaleString(locale)} seleccionado(s)</strong>
-              <span>{visibleSelectedCount} en esta página</span>
+              <strong>{`${selectedFileIds.length.toLocaleString(locale)} ${selectedFileIds.length === 1 ? "seleccionado" : "seleccionados"}`}</strong>
+              <span>{`${visibleSelectedCount} en esta página`}</span>
               <select value={bulkCategoryKey} onChange={(event) => setBulkCategoryKey(event.target.value)}>
                 <option value="">Elegir etiqueta</option>
                 {facets.curationStatuses.map((category) => (
@@ -3984,7 +4001,7 @@ export function App() {
                 onChange={(event) => handlePageInput(event.target.value)}
                 type="number"
               />
-              <span>de {pageCount} · {total} archivos</span>
+              <span>{`de ${pageCount} · ${total} archivos`}</span>
             </label>
             <button disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>
               Siguiente
@@ -4374,7 +4391,7 @@ export function App() {
 
           {selectedDownloadQueueIds.length > 0 ? (
             <div className="bulk-actions download-bulk-actions">
-              <strong>{selectedDownloadQueueIds.length.toLocaleString(locale)} seleccionado(s) en cola</strong>
+              <strong>{`${selectedDownloadQueueIds.length.toLocaleString(locale)} ${selectedDownloadQueueIds.length === 1 ? "seleccionado" : "seleccionados"} en cola`}</strong>
               <span>Solo se pueden retirar pendientes o fallidos.</span>
               <button
                 className="danger-button"
@@ -4964,6 +4981,35 @@ export function App() {
               </button>
             </div>
           </form>
+          <section className="profile-panel vc-token-panel" aria-labelledby="companion-token-title">
+            <div className="vc-token-head">
+              <strong id="companion-token-title">Companion local</strong>
+              <span className={`vc-token-state ${companionTokenSaved ? "is-set" : ""}`}>
+                {companionTokenSaved ? "Token guardado en este navegador" : "Sin token en este navegador"}
+              </span>
+            </div>
+            <p className="vc-token-help">
+              Abrir, copiar y borrar archivos en esta PC requiere el token del Companion. Copialo desde la bandeja de Windows (Configuración › Token del navegador) y pegalo acá. Se guarda solo en este navegador.
+            </p>
+            <div className="vc-token-row">
+              <label className="vc-visually-hidden" htmlFor="companion-token-input">Token del Companion</label>
+              <input
+                id="companion-token-input"
+                value={companionTokenInput}
+                onChange={(event) => setCompanionTokenInput(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Pegá el token del Companion"
+                type="password"
+              />
+              <button className="vc-button is-primary" disabled={!companionTokenInput.trim()} onClick={saveCompanionToken} type="button">
+                Guardar token
+              </button>
+              {companionTokenSaved ? (
+                <button className="vc-button" onClick={clearCompanionToken} type="button">Quitar</button>
+              ) : null}
+            </div>
+          </section>
         </section>
       ) : null}
 
@@ -5623,7 +5669,7 @@ function RecoverableSpaceModal({
                   <div className="recoverable-card-main">
                     <strong>{disk.diskName}</strong>
                     <span>
-                      {disk.driveLetter || "-"} · {disk.fileCount.toLocaleString(locale)} archivo(s) · {disk.volumeLabel || "Sin etiqueta"}
+                      {`${disk.driveLetter || "-"} · ${disk.fileCount.toLocaleString(locale)} archivo(s) · ${disk.volumeLabel || "Sin etiqueta"}`}
                     </span>
                   </div>
                   <div className="recoverable-card-space">
@@ -5642,7 +5688,7 @@ function RecoverableSpaceModal({
                   <div className="recoverable-bar-row" key={disk.diskId}>
                     <div className="recoverable-bar-label">
                       <strong>{disk.diskName}</strong>
-                      <span>{share.toFixed(1)}% del total</span>
+                      <span>{`${share.toFixed(1)}% del total`}</span>
                     </div>
                     <div className="recoverable-bar-track">
                       <div className="recoverable-bar-fill" style={{ width: `${relativeWidth}%` }} />
@@ -6644,7 +6690,7 @@ function FileDetail({
       const result = await response.json().catch(() => ({ ok: false, reason: "open_failed" })) as CompanionResponse;
 
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setCompanionMessage("Token local no valido");
+        setCompanionMessage("Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.");
       } else if (result.ok) {
         if (action === "delete-file") {
           try {
