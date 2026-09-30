@@ -37,7 +37,10 @@ El sistema tiene dos partes:
 ## Características
 
 - Catálogo web privado con login de usuario y contraseña.
-- Interfaz responsive con modo oscuro, menú fijo de una sola línea, navegación móvil compacta, búsqueda, filtros y paginación persistente.
+- Interfaz responsive con barra lateral contraíble y barra de pestañas inferior en móviles, con filtros y menú en hojas desplegables.
+- Temas: apariencia clara, oscura, OLED o del sistema; seis esquemas de color y densidad cómoda o compacta, guardados por navegador.
+- Catálogo en cuadrícula o lista, búsqueda con `Ctrl K`, chips de filtros activos y panel lateral de detalle.
+- Review inmersivo a pantalla completa con atajos de teclado (mantener, borrar, saltar, deshacer y etiquetas numeradas).
 - Soporte para reverse proxy, cookies seguras y despliegue bajo dominio propio.
 - Identificación resiliente de discos mediante `.videocat-disk.json` en la raíz del disco.
 - Escaneo aunque Windows cambie la letra de la unidad.
@@ -139,12 +142,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual del stack Docker es `v0.1.22`. El Companion Windows vigente es `v0.1.20`.
+La versión actual del stack Docker es `v0.2.0`. El Companion Windows vigente es `v0.2.0`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.1.20.exe`
+- Companion Windows: `VideoCAT-Companion-0.2.0.exe`, publicado como asset del release [v0.2.0](https://github.com/reiterstahl/videocat/releases/tag/v0.2.0)
 
 Verificación recomendada del companion:
 
@@ -155,7 +158,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.20.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.2.0.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -300,8 +303,9 @@ COMPANION_REMOTE_REMUX_ENABLED=false
 # Normalmente se editan desde la ventana de configuracion del companion.
 COMPANION_MONITORED_TARGETS=[]
 COMPANION_DISABLED_DISK_IDS=
-# Opcional: si se define, la web debe enviar el mismo token local.
-# COMPANION_TOKEN=replace-with-local-token
+# Obligatorio para las acciones locales. La app de bandeja lo genera si falta;
+# pégalo en VideoCAT › Perfil › Companion local de cada navegador de esta PC.
+COMPANION_TOKEN=replace-with-local-token
 ```
 
 Modo asistido:
@@ -374,7 +378,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.20.exe
+apps\agent-windows\release\VideoCAT-Companion-0.2.0.exe
 ```
 
 Uso:
@@ -441,7 +445,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 - El Nginx incluido ya reenvía WebSocket. Un reverse proxy externo debe permitir los encabezados `Upgrade` y `Connection` para `/api/agent/tunnel`.
 - El servidor guarda únicamente el hash de cada credencial. `AGENT_TOKEN` sigue disponible temporalmente para clientes heredados durante la transición.
 - Cada instalación mantiene una identidad UUID persistente en su directorio de estado.
-- El companion local puede protegerse con `COMPANION_TOKEN`.
+- El listener local del Companion solo responde `/health` sin autenticación. Abrir, copiar, borrar y procesar colas exige `COMPANION_TOKEN`; la app de bandeja genera uno aleatorio si falta y la web lo guarda desde Perfil › Companion local.
 - Las sesiones JWT restringen explícitamente el algoritmo de firma y caducan a las 12 horas.
 - Las operaciones web que modifican datos validan su origen contra `WEB_ORIGIN`.
 - La API utiliza límites de cuerpo y tiempo, rate limiting acotado y respuestas sensibles sin caché.
@@ -459,7 +463,7 @@ Si usas `Mostrar conectados`, Review selecciona videos aleatorios solo de los di
 
 `PROTECTED_FOLDER_PATTERNS` es una lista separada por comas. Para una instalación pública o genérica puedes usar valores como `Private,Protected`. Para una instalación privada, define ahí los fragmentos reales de nombre de carpeta que quieres proteger sin modificar el código.
 
-Consulta [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada, [ROADMAP.es.md](ROADMAP.es.md) para conocer el plan de endurecimiento y fiabilidad pendiente y [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md) para la propuesta de reproducción remota segura.
+Consulta [SECURITY.md](SECURITY.md) para reportar vulnerabilidades de forma privada, [ROADMAP.es.md](ROADMAP.es.md) para conocer el plan de endurecimiento y fiabilidad pendiente [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md) para la propuesta de reproducción remota segura y [UI_REDESIGN_PLAN.es.md](UI_REDESIGN_PLAN.es.md) para el rediseño de la interfaz.
 
 ## Backups
 
@@ -546,8 +550,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.1.22
-reiterstahl/videocat-web:0.1.22
+reiterstahl/videocat-server:0.2.0
+reiterstahl/videocat-web:0.2.0
 ```
 
 También se publican etiquetas `latest`:
@@ -594,8 +598,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.22 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.22 -t reiterstahl/videocat-web:0.1.22 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.0 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.0 -t reiterstahl/videocat-web:0.2.0 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -608,10 +612,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.22
+  image: reiterstahl/videocat-server:0.2.0
 
 web:
-  image: reiterstahl/videocat-web:0.1.22
+  image: reiterstahl/videocat-web:0.2.0
 ```
 
 ## Endpoints principales

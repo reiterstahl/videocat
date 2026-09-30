@@ -15,8 +15,8 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - GitHub Sponsors: <https://github.com/sponsors/reiterstahl>
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
-- Stack Docker actual: `0.1.22`
-- Companion Windows actual: `0.1.20`
+- Stack Docker actual: `0.2.0`
+- Companion Windows actual: `0.2.0`
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 
@@ -96,8 +96,10 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 ### Catálogo
 
 - Login con usuario y contraseña.
-- Interfaz responsive en español e inglés.
-- Modo claro y oscuro.
+- Interfaz responsive en español e inglés, con barra lateral en escritorio y barra de pestañas inferior en móviles.
+- Apariencia clara, oscura, OLED o del sistema, seis esquemas de color y densidad cómoda o compacta.
+- Catálogo en cuadrícula o lista, búsqueda con `Ctrl K` y panel lateral de detalle.
+- Review inmersivo con atajos de teclado y deshacer; duplicados con comparación asistida A/B.
 - Menú sticky de una sola línea y menú compacto en móvil.
 - URLs independientes para cada sección.
 - Selección rápida de discos y filtro de discos conectados.

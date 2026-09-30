@@ -49,10 +49,10 @@ Priority: high. Resolves the optional local token and shared `AGENT_TOKEN` risks
 - [x] Give every agent a name, last-seen timestamp, allowed capabilities and revocation controls.
 - [x] Replace the shared `AGENT_TOKEN` with per-agent credentials while accepting the legacy token during the transition.
 - [ ] Remove legacy `AGENT_TOKEN` authentication once every companion is paired.
-- [ ] Require authentication for every companion endpoint other than minimal health discovery. Today `COMPANION_TOKEN` is optional and requests without an `Origin` header bypass the origin check.
+- [x] Require authentication for every companion endpoint other than `/health`. Since `v0.2.0` `COMPANION_TOKEN` is mandatory: the tray app generates it and the web stores it from Profile.
 - [ ] Evaluate server-mediated, signed action queues for commands initiated from another device. The outbound tunnel already carries streaming orders; open, copy and delete still use the local listener or polling.
 
-Status: pairing, encrypted per-agent credentials, capabilities and revocation have shipped since `v0.1.14` (see [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md)). Hardening the local listener and retiring the shared token remain.
+Status: pairing, encrypted per-agent credentials, capabilities and revocation have shipped since `v0.1.14` (see [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md)). Since `v0.2.0` the local listener requires a token; retiring the shared token remains.
 
 Definition of done: an administrator can pair, inspect and revoke one companion without rotating credentials for every other agent, and no destructive local endpoint relies only on browser origin.
 
@@ -142,7 +142,7 @@ Definition of done: a documented, tested procedure can restore a fresh VideoCAT 
 
 The September 2026 consolidation adds the `ActionAudit` ledger, idempotency keys for destructive queue cleanup, per disk/root scan leases with generations, batch lease renewal, Review indexes, indexed UUID sampling, configurable retention, backup/verify/restore scripts, SBOM attestation and non-root application containers. See [OPERATIONS.md](OPERATIONS.md) for the operational runbook.
 
-Remaining work is marked in each phase. The most relevant items are mandatory authentication on the companion's local listener, an audit tab in the UI, concurrent-scan tests, bulk ingestion, 100k/500k performance budgets, repeated-error aggregation, backup encryption and a clean restore drill before every stable release.
+Remaining work is marked in each phase. The most relevant items are an audit tab in the UI, concurrent-scan tests, bulk ingestion, 100k/500k performance budgets, repeated-error aggregation, backup encryption and a clean restore drill before every stable release.
 
 ## Recommended Order
 

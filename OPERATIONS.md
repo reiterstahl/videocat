@@ -15,6 +15,12 @@ The runtime uses non-root application containers. Fresh thumbnail volumes receiv
 docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-videocat} --filter label=com.docker.compose.volume=thumbnails_data | head -n1)":/data alpine:3.21 chown -R 1000:1000 /data
 ```
 
+## Upgrading to 0.2.0
+
+- Install Windows Companion 0.2.0 on every PC. On first start it generates `COMPANION_TOKEN` if none exists.
+- Open the Companion settings, use **Copiar token** and paste it in VideoCAT › Profile › Local Companion in each browser that opens, copies or deletes files on that PC. Until then, those local actions answer "token missing or invalid"; remote playback, scans and queues through the server keep working.
+- Theme, density and language preferences are stored per browser; earlier light/dark choices are kept.
+
 ## Backup
 
 ```bash

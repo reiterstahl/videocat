@@ -37,7 +37,10 @@ The system has two parts:
 ## Features
 
 - Private web catalog with username/password login.
-- Responsive UI with dark mode, single-row sticky navigation, compact mobile navigation, search, filters and persistent pagination.
+- Responsive UI with a collapsible sidebar and a bottom tab bar on phones, with filters and menus in bottom sheets.
+- Themes: light, dark, OLED or system appearance; six color schemes and comfortable or compact density, stored per browser.
+- Catalog in grid or list view, `Ctrl K` search, active filter chips and a side detail panel.
+- Immersive full-screen Review with keyboard shortcuts (keep, delete, skip, undo and numbered tags).
 - Reverse proxy support, secure cookies and custom domain deployment.
 - Resilient drive identification through `.videocat-disk.json` at the drive root.
 - Scanning still works when Windows changes the drive letter.
@@ -138,12 +141,12 @@ Main features:
 
 ## Current Release
 
-The current Docker stack is `v0.1.22`. The current Windows Companion is `v0.1.20`.
+The current Docker stack is `v0.2.0`. The current Windows Companion is `v0.2.0`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.1.20.exe`
+- Windows Companion: `VideoCAT-Companion-0.2.0.exe`, published as an asset of release [v0.2.0](https://github.com/reiterstahl/videocat/releases/tag/v0.2.0)
 
 Recommended companion verification:
 
@@ -154,7 +157,7 @@ SHA-256 and MD5 checksums for the executable are published as assets in the corr
 On Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.1.20.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.2.0.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -298,8 +301,9 @@ COMPANION_REMOTE_REMUX_ENABLED=false
 # Usually edited from the companion configuration window.
 COMPANION_MONITORED_TARGETS=[]
 COMPANION_DISABLED_DISK_IDS=
-# Optional: if set, the web app must send the same local token.
-# COMPANION_TOKEN=replace-with-local-token
+# Required for local actions. The tray app generates it when missing;
+# paste it in VideoCAT › Profile › Local Companion in each browser on this PC.
+COMPANION_TOKEN=replace-with-local-token
 ```
 
 Wizard mode:
@@ -372,7 +376,7 @@ npm run package:tray -w @videocat/agent-windows
 The executable is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.1.20.exe
+apps\agent-windows\release\VideoCAT-Companion-0.2.0.exe
 ```
 
 Usage:
@@ -439,7 +443,7 @@ If you use `Mostrar conectados`, Review picks random videos only from the select
 - The bundled Nginx proxy already forwards WebSocket traffic. An external reverse proxy must allow `Upgrade` and `Connection` headers for `/api/agent/tunnel`.
 - The server stores only credential hashes. `AGENT_TOKEN` remains temporarily available for legacy clients during the transition.
 - Each installation keeps a persistent UUID identity in its state directory.
-- The local companion can be protected with `COMPANION_TOKEN`.
+- The Companion local listener only answers `/health` without authentication. Opening, copying, deleting and queue processing require `COMPANION_TOKEN`; the tray app generates a random one when missing and the web stores it from Profile › Local Companion.
 - Session JWTs explicitly restrict the signing algorithm and expire after 12 hours.
 - State-changing web operations validate their origin against `WEB_ORIGIN`.
 - The API enforces body and time limits, bounded rate limiting and no-store responses for sensitive data.
@@ -457,7 +461,7 @@ If you use `Mostrar conectados`, Review picks random videos only from the select
 
 `PROTECTED_FOLDER_PATTERNS` is a comma-separated list. For a public or generic installation, use values such as `Private,Protected`. For a private deployment, set it to the real folder-name fragments you want to protect without changing the code.
 
-See [SECURITY.md](SECURITY.md) for private vulnerability reporting, [ROADMAP.md](ROADMAP.md) for the remaining security and reliability plan, and [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) for the secure remote playback proposal.
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting, [ROADMAP.md](ROADMAP.md) for the remaining security and reliability plan, [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) for the secure remote playback proposal and [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md) for the interface redesign.
 
 ## Backups
 
@@ -544,8 +548,8 @@ http://localhost:8081
 Official images:
 
 ```text
-reiterstahl/videocat-server:0.1.22
-reiterstahl/videocat-web:0.1.22
+reiterstahl/videocat-server:0.2.0
+reiterstahl/videocat-web:0.2.0
 ```
 
 `latest` tags are also published:
@@ -592,8 +596,8 @@ docker compose -f docker-compose.hub.yml up -d
 To publish new official images:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.1.22 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.1.22 -t reiterstahl/videocat-web:0.1.22 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.0 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.0 -t reiterstahl/videocat-web:0.2.0 -t reiterstahl/videocat-web:latest --push .
 ```
 
 The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
@@ -606,10 +610,10 @@ The Docker Hub compose file uses:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.1.22
+  image: reiterstahl/videocat-server:0.2.0
 
 web:
-  image: reiterstahl/videocat-web:0.1.22
+  image: reiterstahl/videocat-web:0.2.0
 ```
 
 ## Main Endpoints

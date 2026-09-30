@@ -20,5 +20,5 @@ Include the affected component and version, deployment topology, reproduction st
 - Keep the API port bound to `127.0.0.1` and publish only the web reverse proxy.
 - Use HTTPS with `COOKIE_SECURE=true` for every non-local deployment.
 - Set `WEB_ORIGIN` to the exact origins that serve the VideoCAT interface.
-- On each Windows Companion (tray settings or `apps/agent-windows/.env`, not the server `.env`), configure `COMPANION_ALLOWED_ORIGINS` narrowly and set `COMPANION_TOKEN` to protect browser-to-companion actions. See `apps/agent-windows/.env.example`.
+- On each Windows Companion (tray settings or `apps/agent-windows/.env`, not the server `.env`), configure `COMPANION_ALLOWED_ORIGINS` narrowly. `COMPANION_TOKEN` is mandatory since 0.2.0: the tray app generates it when missing, every local action requires it, and each browser stores it from Profile › Local Companion. See `apps/agent-windows/.env.example`.
 - Back up PostgreSQL and thumbnails before upgrades.

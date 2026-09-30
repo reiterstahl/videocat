@@ -49,10 +49,10 @@ Prioridad: alta. Resuelve el token local opcional y el `AGENT_TOKEN` compartido.
 - [x] Dar a cada agente nombre, última conexión, capacidades permitidas y controles de revocación.
 - [x] Sustituir `AGENT_TOKEN` por credenciales por agente, aceptando el token anterior durante la transición.
 - [ ] Retirar la autenticación heredada con `AGENT_TOKEN` una vez que todos los companions estén emparejados.
-- [ ] Exigir autenticación en todos los endpoints locales salvo el mínimo necesario para descubrir el estado. Hoy `COMPANION_TOKEN` es opcional y las solicitudes sin cabecera `Origin` no se filtran por origen.
+- [x] Exigir autenticación en todos los endpoints locales salvo `/health`. Desde `v0.2.0` `COMPANION_TOKEN` es obligatorio: la app de bandeja lo genera y la web lo guarda desde Perfil.
 - [ ] Evaluar una cola de acciones firmadas en el servidor para órdenes iniciadas desde otro dispositivo. El túnel saliente ya transporta órdenes de streaming; abrir, copiar y borrar siguen usando el listener local o el sondeo.
 
-Estado: el emparejamiento, las credenciales individuales cifradas, las capacidades y la revocación están entregados desde `v0.1.14` (ver [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md)). Queda endurecer el listener local y retirar el token compartido.
+Estado: el emparejamiento, las credenciales individuales cifradas, las capacidades y la revocación están entregados desde `v0.1.14` (ver [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md)). Desde `v0.2.0` el listener local exige token; queda retirar el token compartido.
 
 Criterio de finalización: un administrador puede emparejar, inspeccionar y revocar un companion sin rotar las credenciales de los demás, y ningún endpoint destructivo depende únicamente del origen del navegador.
 
@@ -142,7 +142,7 @@ Criterio de finalización: un procedimiento documentado y probado restaura en un
 
 La consolidación de septiembre de 2026 implementa el libro `ActionAudit`, claves de idempotencia para limpiezas de cola, leases con generación por disco/root, renovación de lease en lotes, índices de Review, muestreo UUID indexado, retención configurable, scripts de respaldo/verificación/restauración, SBOM con atestación y contenedores de aplicación sin root. La referencia operativa está en [OPERATIONS.md](OPERATIONS.md).
 
-Lo pendiente queda marcado en cada fase. Los puntos más relevantes son la autenticación obligatoria del listener local del companion, la pestaña de auditoría en la interfaz, las pruebas de escaneos concurrentes, la ingesta en lote, los presupuestos de rendimiento con 100k/500k videos, la agrupación de errores, el cifrado de respaldos y un simulacro de restauración antes de cada release estable.
+Lo pendiente queda marcado en cada fase. Los puntos más relevantes son la pestaña de auditoría en la interfaz, las pruebas de escaneos concurrentes, la ingesta en lote, los presupuestos de rendimiento con 100k/500k videos, la agrupación de errores, el cifrado de respaldos y un simulacro de restauración antes de cada release estable.
 
 ## Orden Recomendado
 
