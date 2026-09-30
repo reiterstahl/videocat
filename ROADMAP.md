@@ -44,14 +44,15 @@ Definition of done: authentication, protected folders, queue transitions and des
 Priority: high. Resolves the optional local token and shared `AGENT_TOKEN` risks.
 
 - [x] Generate and persist a cryptographically random identity for each companion installation.
-- [ ] Add a short-lived, one-time pairing code displayed by the companion.
-- [ ] Store only hashed agent credentials on the server and protect local secrets with Windows Credential Manager or DPAPI.
-- [ ] Give every agent a name, last-seen timestamp, allowed capabilities and revocation controls.
-- [ ] Replace the shared `AGENT_TOKEN` with per-agent credentials while accepting the legacy token for one transition release.
-- [ ] Require authentication for every companion endpoint other than minimal health discovery.
-- [ ] Evaluate server-mediated, signed action queues for commands initiated from another device.
+- [x] Pair through a short-lived, one-time code (10 minutes, rate-limited per IP).
+- [x] Store only hashed agent credentials on the server and protect local secrets with DPAPI (Electron `safeStorage`).
+- [x] Give every agent a name, last-seen timestamp, allowed capabilities and revocation controls.
+- [x] Replace the shared `AGENT_TOKEN` with per-agent credentials while accepting the legacy token during the transition.
+- [ ] Remove legacy `AGENT_TOKEN` authentication once every companion is paired.
+- [ ] Require authentication for every companion endpoint other than minimal health discovery. Today `COMPANION_TOKEN` is optional and requests without an `Origin` header bypass the origin check.
+- [ ] Evaluate server-mediated, signed action queues for commands initiated from another device. The outbound tunnel already carries streaming orders; open, copy and delete still use the local listener or polling.
 
-Current incremental delivery: the companion stores an installation UUID in its state directory, sends it with every server call, and reports an optional name, version, mounted disks and last-seen timestamp. The server can revoke that identity without invalidating the legacy `AGENT_TOKEN` yet. Temporary pairing codes, per-agent credentials and protected secret storage remain for the next delivery.
+Status: pairing, encrypted per-agent credentials, capabilities and revocation have shipped since `v0.1.14` (see [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md)). Hardening the local listener and retiring the shared token remain.
 
 Definition of done: an administrator can pair, inspect and revoke one companion without rotating credentials for every other agent, and no destructive local endpoint relies only on browser origin.
 
@@ -59,11 +60,14 @@ Definition of done: an administrator can pair, inspect and revoke one companion 
 
 Priority: high for destructive operations.
 
-- [ ] Add an append-only action ledger for delete, copy, queue cancellation, thumbnail repair and catalog removal.
-- [ ] Record actor, agent, request ID, target, timestamps, outcome and a sanitized error.
-- [ ] Add idempotency keys so retries cannot execute a destructive operation twice.
-- [ ] Provide searchable audit views and retention/export controls.
-- [ ] Never store agent secrets or unnecessary absolute personal paths in logs.
+- [x] Add the append-only `ActionAudit` ledger. It already records file deletion, scan completion, download queue/history cleanup and maintenance pruning.
+- [ ] Extend the ledger to copy, queue cancellation, thumbnail repair and catalog removal.
+- [x] Record actor, agent, request ID, target, timestamps, outcome and a sanitized error.
+- [x] Add idempotency keys for destructive queue cleanup.
+- [ ] Extend idempotency keys to every other destructive operation.
+- [x] Configurable retention (`ACTION_AUDIT_RETENTION_DAYS`) with administrative cleanup.
+- [ ] Provide a searchable, exportable audit tab in the UI.
+- [ ] Never store agent secrets or unnecessary absolute personal paths in logs. Needs review: the `scan.finish` target stores the scanned root path.
 
 Definition of done: every physical or catalog-destructive action can be traced from request to final outcome and safely retried.
 
@@ -71,10 +75,10 @@ Definition of done: every physical or catalog-destructive action can be traced f
 
 Priority: medium-high. Protects catalog correctness when scans overlap.
 
-- [ ] Allow only one active reconciliation lease per disk and monitored root.
-- [ ] Add lease owner, generation and expiry fields to scans.
-- [ ] Renew leases during long scans and recover abandoned leases safely.
-- [ ] Permit only the newest successful generation to mark files absent.
+- [x] Allow only one active reconciliation lease per disk and monitored root.
+- [x] Add lease owner, generation and expiry fields to scans.
+- [x] Renew leases during long scans and recover abandoned leases safely.
+- [x] Permit only the newest generation to mark files absent.
 - [ ] Add tests for concurrent, interrupted and resumed scans.
 
 Definition of done: an old or interrupted scan cannot hide files reported by a newer scan.
@@ -83,12 +87,12 @@ Definition of done: an old or interrupted scan cannot hide files reported by a n
 
 Priority: medium-high. Requires careful volume migration.
 
-- [ ] Run the API as an unprivileged user with a read-only root filesystem where practical.
-- [ ] Run the web image with unprivileged Nginx on an internal high port.
-- [ ] Grant write access only to the thumbnail directory and required temporary paths.
-- [ ] Drop Linux capabilities, enable `no-new-privileges` and document compatible Portainer settings.
-- [ ] Support explicit trusted-proxy addresses or CIDRs so direct clients cannot spoof forwarded IP headers.
-- [ ] Provide and test a one-time ownership migration for existing thumbnail volumes.
+- [x] Run the API as an unprivileged user (`node`) with a read-only root filesystem.
+- [x] Run the web image with unprivileged Nginx on an internal high port (`8080`).
+- [x] Grant write access only to the thumbnail directory and required temporary paths.
+- [x] Drop Linux capabilities, enable `no-new-privileges` and document compatible Portainer settings.
+- [x] Support explicit trusted-proxy addresses or CIDRs (`TRUST_PROXY_CIDRS`).
+- [ ] Automate and test the ownership migration for existing thumbnail volumes. A manual `chown` is documented in [OPERATIONS.md](OPERATIONS.md).
 
 Definition of done: both application containers run without root, existing installations upgrade without losing thumbnails, and healthchecks continue to pass.
 
@@ -96,10 +100,12 @@ Definition of done: both application containers run without root, existing insta
 
 Priority: medium.
 
-- [ ] Replace per-file ingestion round trips with bounded transactions and bulk upserts.
-- [ ] Add indexes based on measured query plans for review, folders, categories and duplicates.
+- [ ] Replace per-file ingestion round trips with bounded transactions and bulk upserts. Ingestion still creates or updates each video individually.
+- [x] Add Review indexes.
+- [ ] Add indexes based on measured query plans for folders, categories and duplicates.
 - [ ] Move expensive facet aggregation into SQL or cached summaries.
-- [ ] Replace `ORDER BY random()` on large tables with a scalable sampling strategy.
+- [x] Replace `ORDER BY random()` in Review with indexed UUID-pivot sampling.
+- [ ] Apply the same sampling to the random `To download` selection, which still uses `ORDER BY random() LIMIT 2000`.
 - [ ] Add representative performance fixtures and budgets for 25k, 100k and 500k files.
 
 Definition of done: scan throughput and primary web queries stay within documented budgets without unbounded memory growth.
@@ -108,11 +114,12 @@ Definition of done: scan throughput and primary web queries stay within document
 
 Priority: medium.
 
-- [ ] Define retention separately for agent errors, scan history and successful action logs.
-- [ ] Add pagination, age/category filters and administrative cleanup.
+- [x] Define retention separately for agent errors, scan history and action logs (`AGENT_ERROR_RETENTION_DAYS`, `SCAN_RETENTION_DAYS`, `ACTION_AUDIT_RETENTION_DAYS`).
+- [x] Administrative cleanup through `POST /api/admin/maintenance/prune`.
+- [ ] Add pagination and age/category filters to the audit view.
 - [ ] Aggregate repeated errors without losing first/last occurrence and count.
-- [ ] Add structured request and correlation IDs across server and companion logs.
-- [ ] Publish health and queue diagnostics without exposing secrets or file contents.
+- [ ] Add structured request and correlation IDs across server and companion logs. Only remote streaming correlates `requestId` today.
+- [ ] Publish health and queue diagnostics without exposing secrets or file contents. `GET /api/health` only returns `ok`.
 
 Definition of done: diagnostic data remains useful over time while database growth is predictable and controllable.
 
@@ -120,11 +127,13 @@ Definition of done: diagnostic data remains useful over time while database grow
 
 Priority: medium, required before declaring production readiness.
 
-- [ ] Provide supported backup scripts for PostgreSQL, thumbnails and deployment configuration.
-- [ ] Encrypt backups that contain file paths or private metadata.
-- [ ] Document Portainer and plain Docker Compose procedures.
-- [ ] Add version compatibility checks and a restore validation command.
-- [ ] Produce SBOMs and sign release artifacts and container images in the publishing workflow.
+- [x] Provide supported backup scripts for PostgreSQL, thumbnails and deployment configuration (`scripts/backup.sh`, `backup.ps1`, `restore.sh`).
+- [ ] Encrypt backups that contain file paths or private metadata. The scripts do not encrypt; this is left to the administrator today.
+- [x] Document Portainer and plain Docker Compose procedures.
+- [x] Add a backup validation command (`scripts/verify-backup.sh`, checksum-based).
+- [ ] Add version compatibility checks on restore.
+- [x] Produce SBOMs with artifact attestation from the tag workflow.
+- [ ] Sign container images in the publishing workflow.
 - [ ] Perform and document a clean restore drill before each stable release.
 
 Definition of done: a documented, tested procedure can restore a fresh VideoCAT installation with its database, thumbnails and settings.
@@ -133,7 +142,7 @@ Definition of done: a documented, tested procedure can restore a fresh VideoCAT 
 
 The September 2026 consolidation adds the `ActionAudit` ledger, idempotency keys for destructive queue cleanup, per disk/root scan leases with generations, batch lease renewal, Review indexes, indexed UUID sampling, configurable retention, backup/verify/restore scripts, SBOM attestation and non-root application containers. See [OPERATIONS.md](OPERATIONS.md) for the operational runbook.
 
-The intentional remaining work is performance measurement with 100k/500k synthetic catalogs, a full UI ledger tab, repeated-error aggregation and a clean restore drill before every stable release.
+Remaining work is marked in each phase. The most relevant items are mandatory authentication on the companion's local listener, an audit tab in the UI, concurrent-scan tests, bulk ingestion, 100k/500k performance budgets, repeated-error aggregation, backup encryption and a clean restore drill before every stable release.
 
 ## Recommended Order
 

@@ -18,3 +18,5 @@ companion/*.msi
 companion/*.zip
 companion/*.blockmap
 migration/
+companion/*.sha256
+companion/*.md5
