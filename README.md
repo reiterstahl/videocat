@@ -144,12 +144,12 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual del stack Docker es `v0.2.0`. El Companion Windows vigente es `v0.2.0`.
+La versión actual del stack Docker es `v0.2.1`. El Companion Windows vigente es `v0.2.1`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.2.0.exe`, publicado como asset del release [v0.2.0](https://github.com/reiterstahl/videocat/releases/tag/v0.2.0)
+- Companion Windows: `VideoCAT-Companion-0.2.1.exe`, publicado como asset del release [v0.2.1](https://github.com/reiterstahl/videocat/releases/tag/v0.2.1)
 
 Verificación recomendada del companion:
 
@@ -160,7 +160,7 @@ Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del releas
 En Windows:
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.2.0.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-0.2.1.exe -Algorithm SHA256
 ```
 
 ## Stack
@@ -380,7 +380,7 @@ npm run package:tray -w @videocat/agent-windows
 El ejecutable queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.2.0.exe
+apps\agent-windows\release\VideoCAT-Companion-0.2.1.exe
 ```
 
 Uso:
@@ -561,8 +561,8 @@ http://localhost:8081
 Imágenes oficiales:
 
 ```text
-reiterstahl/videocat-server:0.2.0
-reiterstahl/videocat-web:0.2.0
+reiterstahl/videocat-server:0.2.1
+reiterstahl/videocat-web:0.2.1
 ```
 
 También se publican etiquetas `latest`:
@@ -609,8 +609,8 @@ docker compose -f docker-compose.hub.yml up -d
 Para publicar nuevas imágenes oficiales:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.0 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.0 -t reiterstahl/videocat-web:0.2.0 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.1 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.1 -t reiterstahl/videocat-web:0.2.1 -t reiterstahl/videocat-web:latest --push .
 ```
 
 El `docker-compose.yml` principal sigue construyendo localmente con `build`, útil para desarrollo:
@@ -623,10 +623,10 @@ El compose de Docker Hub usa:
 
 ```yaml
 server:
-  image: reiterstahl/videocat-server:0.2.0
+  image: reiterstahl/videocat-server:0.2.1
 
 web:
-  image: reiterstahl/videocat-web:0.2.0
+  image: reiterstahl/videocat-web:0.2.1
 ```
 
 ## Endpoints principales
