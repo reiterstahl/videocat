@@ -1,8 +1,16 @@
+import type { ReactNode } from "react";
 import type { Disk, VideoFile } from "../types";
 
 export type SortBy = "filename" | "sizeBytes" | "durationSeconds" | "modifiedAt" | "createdAt";
 
 export type SortDirection = "asc" | "desc";
+
+export type NavigationItem = {
+  mode: ViewMode;
+  label: string;
+  icon: ReactNode;
+  badge?: string;
+};
 
 export type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "audit" | "admin" | "profile";
 
@@ -378,7 +386,7 @@ export type VersionCheckResponse = {
   updateAvailable: boolean;
 };
 
-export type CatalogView = "grid" | "list";
+export type CatalogLayout = "grid" | "list";
 
 export type ReviewDecision = "keep" | "delete";
 

@@ -547,7 +547,7 @@ select:focus {
 }
 
 .transfer-chart-grid {
-  stroke: #2a3941;
+  stroke: var(--vc-border);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -558,7 +558,7 @@ select:focus {
 
 .transfer-chart-line {
   fill: none;
-  stroke: var(--matrix-primary-bright);
+  stroke: var(--vc-accent);
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.5;

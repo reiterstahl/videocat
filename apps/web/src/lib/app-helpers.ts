@@ -13,7 +13,7 @@ import {
 import type {
   AssistedDuplicateGroup,
   BrowserPlaybackSupport,
-  CatalogView,
+  CatalogLayout,
   CurationCategory,
   DownloadQueueEntry,
   DuplicateAssistantSession,
@@ -53,7 +53,7 @@ export function browserPlaybackSupport(file: VideoFile): BrowserPlaybackSupport 
   };
 }
 
-export function storedCatalogView(): CatalogView {
+export function storedCatalogLayout(): CatalogLayout {
   return localStorage.getItem("videocat-catalog-view") === "list" ? "list" : "grid";
 }
 

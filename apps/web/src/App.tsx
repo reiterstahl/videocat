@@ -1,7 +1,5 @@
 import {
-  type CSSProperties,
   type FormEvent,
-  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -10,112 +8,65 @@ import {
   useState
 } from "react";
 import {
-  AlertTriangle,
-  Cast,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Copy,
-  Database,
   Download,
-  Filter,
-  FolderOpen,
-  Github,
-  HardDrive,
-  Heart,
-  History,
-  Image,
   LayoutGrid,
-  List,
   ListChecks,
-  Lock,
-  LogOut,
   Moon,
-  MoreHorizontal,
-  Palette,
-  Pause,
   PieChart,
-  Play,
-  Search,
   Server,
   Shield,
   Shuffle,
-  SlidersHorizontal,
-  Sparkles,
   Sun,
-  Trash2,
-  User,
-  X
+  User
 } from "lucide-react";
-import { formatBytes, formatDuration } from "@videocat/shared";
-import { CatalogCard } from "./components/CatalogCard";
-import { CategoryBadges } from "./components/CategoryBadges";
+import { formatBytes } from "@videocat/shared";
+import { AppHeader } from "./components/AppHeader";
+import { AppSidebar } from "./components/AppSidebar";
+import { CatalogContext } from "./components/CatalogContext";
 import { ClearDownloadHistoryConfirmModal } from "./components/ClearDownloadHistoryConfirmModal";
 import { DeletionHistoryModal } from "./components/DeletionHistoryModal";
 import { DuplicateAssistantModal } from "./components/DuplicateAssistantModal";
 import { DuplicateDriveRecommendationsModal } from "./components/DuplicateDriveRecommendationsModal";
 import { FileDetail } from "./components/FileDetail";
-import { Info } from "./components/Info";
+import { MobileNav } from "./components/MobileNav";
 import { ProtectedPinModal } from "./components/ProtectedPinModal";
 import { RecoverableSpaceModal } from "./components/RecoverableSpaceModal";
 import { ReviewSession } from "./components/ReviewSession";
-import { SortHeader } from "./components/SortHeader";
-import { ThemePanel } from "./components/ThemePanel";
-import { TransferSpeedChart } from "./components/TransferSpeedChart";
 import { WaterRippleBackdrop } from "./components/WaterRippleBackdrop";
-import { type Language, languageLabel, normalizeLanguage, observeLocalization, translateText } from "./i18n";
+import { useCompanionStatus } from "./hooks/useCompanionStatus";
+import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useThemePreferences } from "./hooks/useThemePreferences";
+import { type Language, languageLabel, normalizeLanguage, observeLocalization } from "./i18n";
 import { api, thumbnailSrc } from "./lib/api";
 import {
-  catalogSortOptions,
   defaultCategoryColor,
-  githubProfileUrl,
-  githubSponsorsUrl,
-  logoUrl,
-  logoWhiteUrl,
   maxFilterWidth,
   minFilterWidth,
   pageSizeOptions,
-  paypalDonateUrl,
   viewPaths,
   webVersion
 } from "./lib/app-config";
 import {
   assistedDuplicateGroups,
   categoryLabel,
-  categoryStyle,
-  dateLabel,
-  diskUsagePercent,
   downloadProgressPercent,
-  downloadStatusLabel,
   formatCount,
-  localCompanionPortCandidates,
-  mainThumbnail,
   nextSelectedFolders,
   parentFolder,
-  resolution,
-  resolutionBadge,
   startDuplicateAssistantSession,
-  storedCatalogView,
+  storedCatalogLayout,
   storedFiltersOpen,
   storedFilterWidth,
   storedLanguage,
   storedPageSize,
-  tagHue,
-  transferEtaLabel,
   viewModeFromPath,
   visibleFolderOptions
 } from "./lib/app-helpers";
 import type {
-  AdminDiskOverview,
-  AdminPurgeResponse,
-  AuditErrorItem,
-  AuditSummaryItem,
   CachedDuplicateDriveRecommendations,
   CachedDuplicateGroups,
-  CatalogView,
-  CompanionAdminItem,
-  CompanionPairingCode,
+  CatalogLayout,
   CompanionProcessDownloadsResponse,
   CompanionStatusResponse,
   CurationCategory,
@@ -129,8 +80,8 @@ import type {
   DuplicateGroup,
   FacetResponse,
   FileResponse,
-  FolderUsageItem,
   MountedCompanionDisk,
+  NavigationItem,
   ProfileSecurityResponse,
   ProtectedPinPrompt,
   RandomDownloadResponse,
@@ -143,34 +94,41 @@ import type {
   VersionCheckResponse,
   ViewMode
 } from "./lib/app-types";
-import {
-  applyTheme,
-  readThemePreferences,
-  resolveAppearance,
-  saveThemePreferences,
-  type ThemePreferences
-} from "./lib/theme";
 import type { Disk, Stats, VideoFile } from "./types";
+import { AdminView } from "./views/AdminView";
+import { AuditView } from "./views/AuditView";
+import { CatalogView } from "./views/CatalogView";
+import { DownloadsView } from "./views/DownloadsView";
+import { DuplicatesView } from "./views/DuplicatesView";
+import { ProfileView } from "./views/ProfileView";
+import { ReviewHomeView } from "./views/ReviewHomeView";
+import { UsageView } from "./views/UsageView";
 
 export function App() {
-  const [themePreferences, setThemePreferences] = useState<ThemePreferences>(readThemePreferences);
-  const [prefersDark, setPrefersDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const resolvedAppearance = resolveAppearance(themePreferences.appearance, prefersDark);
-  const theme = resolvedAppearance === "light" ? "light" : "dark";
+  const { themePreferences, resolvedAppearance, theme, toggleTheme, updateThemePreferences } = useThemePreferences();
   const [themePanelOpen, setThemePanelOpen] = useState(false);
-  const [companionTokenInput, setCompanionTokenInput] = useState("");
-  const [companionTokenSaved, setCompanionTokenSaved] = useState(() => Boolean(localStorage.getItem("videocat-companion-token")));
-  const [catalogView, setCatalogView] = useState<CatalogView>(storedCatalogView);
-  const [compactLayout, setCompactLayout] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+  const [catalogView, setCatalogView] = useState<CatalogLayout>(storedCatalogLayout);
+  const compactLayout = useMediaQuery("(max-width: 900px)");
   // On phones the filters open as a sheet, so they always start closed there.
   const [filtersOpen, setFiltersOpen] = useState(() => !window.matchMedia("(max-width: 900px)").matches && storedFiltersOpen());
-  const [wideCatalog, setWideCatalog] = useState(() => window.matchMedia("(min-width: 1680px)").matches);
+  const wideCatalog = useMediaQuery("(min-width: 1680px)");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("videocat-sidebar-collapsed") === "true");
   const [language, setLanguage] = useState<Language>(storedLanguage);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const {
+    companionMountedDiskIds,
+    setCompanionMountedDiskIds,
+    companionMountedDiskCount,
+    setCompanionMountedDiskCount,
+    companionLocalOnline,
+    companionOnline,
+    setCompanionOnline,
+    companionVersion,
+    setCompanionVersion
+  } = useCompanionStatus(authenticated);
   const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
@@ -251,8 +209,6 @@ export function App() {
   const [selectedDownloadQueueIds, setSelectedDownloadQueueIds] = useState<string[]>([]);
   const [downloadMessage, setDownloadMessage] = useState("");
   const [randomDownloadGb, setRandomDownloadGb] = useState("10");
-  const [companionMountedDiskIds, setCompanionMountedDiskIds] = useState<string[]>([]);
-  const [companionMountedDiskCount, setCompanionMountedDiskCount] = useState(0);
   const [downloadDiskIds, setDownloadDiskIds] = useState<string[]>([]);
   const [downloadFacets, setDownloadFacets] = useState<FacetResponse>({
     folders: [],
@@ -273,7 +229,6 @@ export function App() {
     timestamp: number;
   } | null>(null);
   const previousMountedDiskIdsRef = useRef<Set<string>>(new Set());
-  const [folderUsage, setFolderUsage] = useState<FolderUsageItem[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [duplicateAssistant, setDuplicateAssistant] = useState<DuplicateAssistantSession | null>(null);
   const [duplicateAssistantBusy, setDuplicateAssistantBusy] = useState(false);
@@ -293,34 +248,11 @@ export function App() {
     key: string;
     promise: Promise<DuplicateDriveRecommendationsResponse>;
   } | null>(null);
-  const [auditSummary, setAuditSummary] = useState<AuditSummaryItem[]>([]);
-  const [auditErrors, setAuditErrors] = useState<AuditErrorItem[]>([]);
-  const [selectedAuditError, setSelectedAuditError] = useState<AuditErrorItem | null>(null);
   const [auxLoading, setAuxLoading] = useState(false);
   const [filterWidth, setFilterWidth] = useState(storedFilterWidth);
-  const [adminBusyDiskId, setAdminBusyDiskId] = useState<string | null>(null);
-  const [adminDiskOverview, setAdminDiskOverview] = useState<AdminDiskOverview[]>([]);
-  const [adminCompanions, setAdminCompanions] = useState<CompanionAdminItem[]>([]);
-  const [companionPairingCode, setCompanionPairingCode] = useState<CompanionPairingCode | null>(null);
-  const [companionAdminBusy, setCompanionAdminBusy] = useState(false);
-  const [pendingCompanionRevocation, setPendingCompanionRevocation] = useState<string | null>(null);
-  const [adminOverviewLoading, setAdminOverviewLoading] = useState(false);
-  const [adminMessage, setAdminMessage] = useState("");
-  const [adminError, setAdminError] = useState("");
   const [profileSecurity, setProfileSecurity] = useState<ProfileSecurityResponse | null>(null);
-  const [profileCurrentPin, setProfileCurrentPin] = useState("");
-  const [profileNewPin, setProfileNewPin] = useState("");
-  const [profilePatternsText, setProfilePatternsText] = useState("");
-  const [profileChromecastEnabled, setProfileChromecastEnabled] = useState(false);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
-  const [profileError, setProfileError] = useState("");
   const [detectingConnected, setDetectingConnected] = useState(false);
   const [connectedMessage, setConnectedMessage] = useState("");
-  const [companionLocalOnline, setCompanionLocalOnline] = useState(false);
-  const [companionOnline, setCompanionOnline] = useState(false);
-  const [companionVersion, setCompanionVersion] = useState(0);
   const locale = language === "en" ? "en-US" : "es-CR";
 
   function navigateToView(mode: ViewMode, replace = false): void {
@@ -408,7 +340,6 @@ export function App() {
   }
 
   const extensions = useMemo(() => facets.extensions.map((item) => item.extension), [facets.extensions]);
-  const maxFolderUsage = useMemo(() => Math.max(1, ...folderUsage.map((item) => item.sizeBytes)), [folderUsage]);
   const pendingAssistedDuplicateGroups = useMemo(() => assistedDuplicateGroups(duplicateGroups), [duplicateGroups]);
   const duplicateRecoverableBytes = useMemo(
     () => duplicateGroups.reduce((total, group) => total + group.recoverableBytes, 0),
@@ -472,19 +403,6 @@ export function App() {
           : `${downloadConnectedDisks.length} disco(s) conectado(s) disponible(s) para descargar.`;
 
   useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
-  }, []);
-
-  useEffect(() => {
-    applyTheme(resolvedAppearance, themePreferences);
-    saveThemePreferences(themePreferences);
-    document.querySelector<HTMLLinkElement>("link[rel='icon']")?.setAttribute("href", theme === "dark" ? logoWhiteUrl : logoUrl);
-  }, [resolvedAppearance, theme, themePreferences]);
-
-  useEffect(() => {
     localStorage.setItem("videocat-sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
@@ -497,14 +415,8 @@ export function App() {
   }, [compactLayout, filtersOpen]);
 
   useEffect(() => {
-    const query = window.matchMedia("(max-width: 900px)");
-    const handleChange = (event: MediaQueryListEvent) => {
-      setCompactLayout(event.matches);
-      if (event.matches) setFiltersOpen(false);
-    };
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
-  }, []);
+    if (compactLayout) setFiltersOpen(false);
+  }, [compactLayout]);
 
   useEffect(() => {
     if (!mobileMenuOpen && !(compactLayout && filtersOpen)) return;
@@ -516,13 +428,6 @@ export function App() {
     window.addEventListener("keydown", closeSheet);
     return () => window.removeEventListener("keydown", closeSheet);
   }, [compactLayout, filtersOpen, mobileMenuOpen]);
-
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1680px)");
-    const handleChange = (event: MediaQueryListEvent) => setWideCatalog(event.matches);
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
-  }, []);
 
   useEffect(() => {
     function focusCatalogSearch(event: KeyboardEvent) {
@@ -545,7 +450,7 @@ export function App() {
     localStorage.setItem("videocat-language", language);
     const root = document.querySelector(".login-screen, .vc-frame");
     return root ? observeLocalization(root, language) : undefined;
-  }, [language, sessionChecked, authenticated, viewMode, catalogVersion, files, downloadSummary, reviewPending, reviewRecent, auditErrors, duplicateGroups, folderUsage]);
+  }, [language, sessionChecked, authenticated, viewMode, catalogVersion, files, downloadSummary, reviewPending, reviewRecent, duplicateGroups]);
 
   useEffect(() => {
     localStorage.setItem("videocat-page-size", String(pageSize));
@@ -559,30 +464,8 @@ export function App() {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
-  function toggleTheme() {
-    setThemePreferences((current) => ({ ...current, appearance: theme === "dark" ? "light" : "dark" }));
-  }
-
-  function updateThemePreferences(changes: Partial<ThemePreferences>) {
-    setThemePreferences((current) => ({ ...current, ...changes }));
-  }
-
   const closeThemePanel = useCallback(() => setThemePanelOpen(false), []);
 
-  function saveCompanionToken() {
-    const token = companionTokenInput.trim();
-    if (!token) return;
-    localStorage.setItem("videocat-companion-token", token);
-    setCompanionTokenInput("");
-    setCompanionTokenSaved(true);
-    setProfileMessage("Token del Companion guardado en este navegador.");
-  }
-
-  function clearCompanionToken() {
-    localStorage.removeItem("videocat-companion-token");
-    setCompanionTokenSaved(false);
-    setProfileMessage("Token del Companion quitado de este navegador.");
-  }
 
   useEffect(() => {
     api("/api/auth/me")
@@ -628,71 +511,6 @@ export function App() {
       })
     ]);
   }, [authenticated, catalogVersion, protectedUnlockVersion]);
-
-  useEffect(() => {
-    if (!authenticated) {
-      setCompanionLocalOnline(false);
-      setCompanionOnline(false);
-      setCompanionVersion(0);
-      setCompanionMountedDiskCount(0);
-      setCompanionMountedDiskIds([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function checkCompanionHealth() {
-      const storedPort = localStorage.getItem("videocat-companion-port");
-      const ports = localCompanionPortCandidates(storedPort);
-      let localOnline = false;
-
-      for (const port of ports) {
-        try {
-          const response = await fetch(`http://127.0.0.1:${port}/health`, {
-            cache: "no-store",
-            signal: AbortSignal.timeout(700)
-          });
-          const result = await response.json().catch(() => ({ ok: false })) as { ok?: boolean; app?: string };
-          if (response.ok && result.ok === true && result.app === "videocat-companion") {
-            localStorage.setItem("videocat-companion-port", port);
-            localOnline = true;
-            break;
-          }
-        } catch {
-          // Try the next known port before marking the companion offline.
-        }
-      }
-
-      if (!cancelled) setCompanionLocalOnline(localOnline);
-
-      try {
-        const status = await api<CompanionStatusResponse>("/api/companion/status");
-        if (!cancelled) {
-          setCompanionOnline(status.online);
-          setCompanionVersion(status.online ? (status.version ?? 0) : 0);
-          setCompanionMountedDiskCount(status.online ? (status.mountedDiskCount ?? 0) : 0);
-          setCompanionMountedDiskIds(status.online ? (status.mountedDiskIds ?? []) : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setCompanionOnline(false);
-          setCompanionVersion(0);
-          setCompanionMountedDiskCount(0);
-          setCompanionMountedDiskIds([]);
-        }
-      }
-    }
-
-    void checkCompanionHealth();
-    const interval = window.setInterval(() => {
-      void checkCompanionHealth();
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [authenticated]);
 
   useEffect(() => {
     const availableIds = companionMountedDiskIds.filter((id) => disks.some((disk) => disk.id === id));
@@ -889,16 +707,13 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!authenticated || viewMode === "catalog" || viewMode === "review" || viewMode === "downloads" || viewMode === "admin" || viewMode === "profile") return;
+    if (!authenticated || viewMode !== "duplicates") return;
     if (disks.length > 0 && connectedDiskIds.length === 0) {
-      setFolderUsage([]);
       setDuplicateGroups([]);
-      setAuditSummary([]);
-      setAuditErrors([]);
       return;
     }
 
-    if (viewMode === "duplicates") {
+    {
       const cached = duplicateGroupsCacheRef.current.get(duplicateCacheKey);
       if (cached && cached.expiresAt > Date.now()) {
         setDuplicateGroups(cached.groups);
@@ -928,23 +743,6 @@ export function App() {
         active = false;
       };
     }
-
-    const params = new URLSearchParams();
-    if (diskQuery) params.set("diskIds", diskQuery);
-    setAuxLoading(true);
-    const endpoint = viewMode === "usage"
-      ? `/api/folder-usage?${params.toString()}`
-      : `/api/audit/errors?${params.toString()}`;
-    void api<{ folders: FolderUsageItem[] } | { summary: AuditSummaryItem[]; errors: AuditErrorItem[] }>(endpoint)
-      .then((response) => {
-        if ("folders" in response) {
-          setFolderUsage(response.folders);
-        } else {
-          setAuditSummary(response.summary);
-          setAuditErrors(response.errors);
-        }
-      })
-      .finally(() => setAuxLoading(false));
   }, [
     authenticated,
     catalogVersion,
@@ -979,33 +777,10 @@ export function App() {
 
   useEffect(() => {
     if (!authenticated) return;
-    setProfileLoading(true);
-    setProfileError("");
     api<ProfileSecurityResponse>("/api/profile/security")
-      .then((response) => {
-        setProfileSecurity(response);
-        setProfilePatternsText(response.protectedFolderPatterns.join("\n"));
-        setProfileChromecastEnabled(response.chromecastEnabled);
-      })
-      .catch((error) => setProfileError(error instanceof Error ? error.message : "No se pudo cargar el perfil."))
-      .finally(() => setProfileLoading(false));
+      .then(setProfileSecurity)
+      .catch(() => setProfileSecurity(null));
   }, [authenticated, catalogVersion]);
-
-  useEffect(() => {
-    if (!authenticated || viewMode !== "admin") return;
-    void loadAdminDiskOverview();
-  }, [authenticated, catalogVersion, viewMode]);
-
-  useEffect(() => {
-    if (!selectedAuditError) return;
-
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setSelectedAuditError(null);
-    }
-
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedAuditError]);
 
   useEffect(() => {
     if (!authenticated || viewMode !== "review") return;
@@ -2071,6 +1846,17 @@ export function App() {
     setPage(1);
   }
 
+  function openFolderInCatalog(folder: string) {
+    const parts = folder.split("/").filter(Boolean);
+    const ancestors = parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join("/"));
+    setSelectedFolders([folder]);
+    setExpandedFolders((current) => [...new Set([...current, ...ancestors])]);
+    setFolderSearch("");
+    setPage(1);
+    setSelected(null);
+    navigateToView("catalog");
+  }
+
   function clearCatalogFilters() {
     setExtension("");
     setSelectedFolders([]);
@@ -2097,6 +1883,8 @@ export function App() {
     ...selectedTags.map((tag) => ({ key: `tag:${tag}`, label: `#${tag}`, onRemove: () => toggleTag(tag) }))
   ];
   const showCatalogFilters = filtersOpen && (!selected || wideCatalog);
+  // Drive selection and catalog totals only matter for views that read the catalog.
+  const showCatalogContext = viewMode !== "admin" && viewMode !== "profile";
   const shortcutLabel = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
 
   function showFullCatalog() {
@@ -2108,7 +1896,7 @@ export function App() {
   }
 
   const queuedDownloadCount = (downloadSummary?.counts.queued ?? 0) + (downloadSummary?.counts.downloading ?? 0);
-  const navigationItems: Array<{ mode: ViewMode; label: string; icon: ReactNode; badge?: string }> = [
+  const navigationItems: NavigationItem[] = [
     { mode: "catalog", label: "Catálogo", icon: <LayoutGrid size={18} /> },
     { mode: "review", label: "Review", icon: <Shuffle size={18} /> },
     { mode: "downloads", label: "A descargar", icon: <Download size={18} />, badge: queuedDownloadCount > 0 ? formatCount(queuedDownloadCount) : undefined },
@@ -2259,146 +2047,18 @@ export function App() {
     setPage(1);
   }
 
-  async function purgeDiskCatalog(disk: Disk) {
-    const firstConfirmation = window.confirm(
-      language === "en"
-        ? `This will remove all indexed VideoCAT content for "${disk.name}".\n\n` +
-          "It includes cataloged videos, generated thumbnails, scans and audit errors for this drive. " +
-          "It does not delete files from the external hard drive.\n\nContinue?"
-        : `Esto eliminara de VideoCAT todo el contenido indexado para "${disk.name}".\n\n` +
-          "Incluye videos catalogados, miniaturas generadas, escaneos y errores de auditoria de esa unidad. " +
-          "No borra archivos del disco duro externo.\n\nQuieres continuar?"
-    );
-    if (!firstConfirmation) return;
-
-    const typed = window.prompt(
-      language === "en"
-        ? `To confirm cleaning "${disk.name}", type BORRAR:`
-        : `Para confirmar la limpieza de "${disk.name}", escribe BORRAR:`
-    );
-    if (typed !== "BORRAR") return;
-
-    setAdminBusyDiskId(disk.id);
-    setAdminMessage("");
-    setAdminError("");
-    try {
-      const response = await api<AdminPurgeResponse>(`/api/admin/disks/${disk.id}/catalog`, { method: "DELETE" });
-      setSelected((current) => (current?.diskId === disk.id ? null : current));
-      setDuplicates((current) => current.filter((file) => file.diskId !== disk.id));
-      setFiles((current) => current.filter((file) => file.diskId !== disk.id));
-      setPage(1);
-      setCatalogVersion((value) => value + 1);
-      setAdminMessage(
-        `Unidad "${response.disk.name}" limpia: ${response.deleted.files} videos, ` +
-        `${response.deleted.thumbnails} miniaturas, ${response.deleted.errors} errores y ` +
-        `${response.deleted.scans} escaneos eliminados.` +
-        (response.thumbnailFilesRemoved ? "" : ` Aviso: ${response.thumbnailFileWarning ?? "no se pudieron eliminar algunos archivos de miniaturas"}.`)
-      );
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "No se pudo limpiar la unidad");
-    } finally {
-      setAdminBusyDiskId(null);
-    }
+  function handleDiskPurged(disk: Disk) {
+    setSelected((current) => (current?.diskId === disk.id ? null : current));
+    setDuplicates((current) => current.filter((file) => file.diskId !== disk.id));
+    setFiles((current) => current.filter((file) => file.diskId !== disk.id));
+    setPage(1);
+    setCatalogVersion((value) => value + 1);
   }
 
-  async function loadAdminDiskOverview() {
-    setAdminOverviewLoading(true);
-    setAdminError("");
-    try {
-      const [overview, companions] = await Promise.all([
-        api<{ disks: AdminDiskOverview[] }>("/api/admin/disks/overview"),
-        api<{ companions: CompanionAdminItem[] }>("/api/companions")
-      ]);
-      setAdminDiskOverview(overview.disks);
-      setAdminCompanions(companions.companions);
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "No se pudo cargar el estado de las unidades");
-    } finally {
-      setAdminOverviewLoading(false);
-    }
-  }
-
-  async function createCompanionPairingCode() {
-    setCompanionAdminBusy(true);
-    setAdminError("");
-    try {
-      const result = await api<CompanionPairingCode>("/api/companions/pairing-code", {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-      setCompanionPairingCode(result);
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "No se pudo generar el codigo de emparejamiento");
-    } finally {
-      setCompanionAdminBusy(false);
-    }
-  }
-
-  async function revokeCompanion(id: string) {
-    setCompanionAdminBusy(true);
-    setAdminError("");
-    try {
-      await api(`/api/companions/${id}/revoke`, { method: "POST", body: JSON.stringify({}) });
-      setPendingCompanionRevocation(null);
-      setCompanionPairingCode(null);
-      await loadAdminDiskOverview();
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "No se pudo revocar el Companion");
-    } finally {
-      setCompanionAdminBusy(false);
-    }
-  }
-
-  function parseProfilePatterns(): string[] {
-    const seen = new Set<string>();
-    return profilePatternsText
-      .split(/[\n,]+/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .filter((item) => {
-        const normalized = item.toLowerCase();
-        if (seen.has(normalized)) return false;
-        seen.add(normalized);
-        return true;
-      })
-      .slice(0, 50);
-  }
-
-  async function saveProfileSecurity(event: FormEvent) {
-    event.preventDefault();
-    const nextPin = profileNewPin.trim();
-    if (nextPin && !/^\d{4}$/.test(nextPin)) {
-      setProfileError("El nuevo PIN debe tener 4 digitos.");
-      return;
-    }
-
-    setProfileSaving(true);
-    setProfileMessage("");
-    setProfileError("");
-    try {
-      const response = await api<ProfileSecurityResponse>("/api/profile/security", {
-        method: "PATCH",
-        body: JSON.stringify({
-          currentPin: profileCurrentPin.trim(),
-          newPin: nextPin,
-          protectedFolderPatterns: parseProfilePatterns(),
-          chromecastEnabled: profileChromecastEnabled
-        })
-      });
-      setProfileSecurity(response);
-      setProfilePatternsText(response.protectedFolderPatterns.join("\n"));
-      setProfileChromecastEnabled(response.chromecastEnabled);
-      setProfileCurrentPin("");
-      setProfileNewPin("");
-      setProfileMessage("Perfil actualizado.");
-      setProtectedUnlockVersion((value) => value + 1);
-      setCatalogVersion((value) => value + 1);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo guardar el perfil.";
-      setProfileError(message === "Current PIN is incorrect" ? "PIN actual incorrecto." : message);
-    } finally {
-      setProfileSaving(false);
-    }
+  function handleSecuritySaved(security: ProfileSecurityResponse) {
+    setProfileSecurity(security);
+    setProtectedUnlockVersion((value) => value + 1);
+    setCatalogVersion((value) => value + 1);
   }
 
   function beginFilterResize(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -2479,1765 +2139,310 @@ export function App() {
 
   return (
     <div className={`vc-frame ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
-      <aside className="vc-sidebar" aria-label="Navegación">
-        <button className="vc-brand" onClick={showFullCatalog} type="button" title="Mostrar catalogo completo">
-          <span className="vc-catmark" aria-hidden="true" />
-          <span className="vc-brand-word">Video<span>CAT</span></span>
-          <small className="vc-brand-version">v{webVersion}</small>
-        </button>
-        {availableUpdate ? (
-          <span
-            className="vc-update-badge"
-            title={language === "en"
-              ? `VideoCAT ${availableUpdate} is available on Docker Hub`
-              : `VideoCAT ${availableUpdate} está disponible en Docker Hub`}
-          >
-            <Download size={13} />
-            <span className="vc-nav-label">{`v${availableUpdate} disponible`}</span>
-          </span>
-        ) : null}
-        <nav className="vc-nav" aria-label="Secciones principales">
-          {primaryNavigationItems.map((item) => (
-            <button
-              key={item.mode}
-              className={`vc-nav-item ${viewMode === item.mode ? "is-active" : ""}`}
-              aria-current={viewMode === item.mode ? "page" : undefined}
-              onClick={() => switchView(item.mode)}
-              type="button"
-              title={sidebarCollapsed ? translateText(item.label, language) : undefined}
-            >
-              {item.icon}
-              <span className="vc-nav-label">{item.label}</span>
-              {item.badge ? <span className="vc-nav-badge">{item.badge}</span> : null}
-            </button>
-          ))}
-        </nav>
-        <div className="vc-sidebar-spacer" />
-        <div className="vc-support">
-          <div className="support-links" aria-label="Apoyar VideoCAT">
-            <span>
-              <Heart size={14} />
-              Apoyar VideoCAT
-            </span>
-            <a href={githubProfileUrl} target="_blank" rel="noreferrer" title="Perfil de GitHub">
-              <Github size={14} />
-              GitHub
-            </a>
-            {githubSponsorsUrl ? (
-              <a href={githubSponsorsUrl} target="_blank" rel="noreferrer">
-                GitHub Sponsors
-              </a>
-            ) : (
-              <span className="support-link-disabled" title="Configura VITE_GITHUB_SPONSORS_URL">
-                GitHub Sponsors
-              </span>
-            )}
-            {paypalDonateUrl ? (
-              <a href={paypalDonateUrl} target="_blank" rel="noreferrer">
-                PayPal
-              </a>
-            ) : (
-              <span className="support-link-disabled" title="Configura VITE_PAYPAL_DONATE_URL">
-                PayPal
-              </span>
-            )}
-          </div>
-        </div>
-        <div className={`vc-companion-card ${companionIndicatorState}`} title={companionIndicatorLabel}>
-          <span className="vc-companion-title">
-            <em className={`agent-status-dot ${companionIndicatorState}`} aria-hidden="true" />
-            <span className="vc-nav-label">{companionIndicatorLabel}</span>
-          </span>
-          <span className="vc-companion-meta vc-nav-label">
-            {`${connectedDiskIds.length} de ${disks.length} discos seleccionados`}
-          </span>
-        </div>
-        <nav className="vc-nav" aria-label="Cuenta">
-          {secondaryNavigationItems.map((item) => (
-            <button
-              key={item.mode}
-              className={`vc-nav-item ${viewMode === item.mode ? "is-active" : ""}`}
-              aria-current={viewMode === item.mode ? "page" : undefined}
-              onClick={() => switchView(item.mode)}
-              type="button"
-              title={sidebarCollapsed ? translateText(item.label, language) : undefined}
-            >
-              {item.icon}
-              <span className="vc-nav-label">{item.label}</span>
-            </button>
-          ))}
-          <button className="vc-nav-item" onClick={logout} type="button" title={sidebarCollapsed ? translateText("Salir", language) : undefined}>
-            <LogOut size={18} />
-            <span className="vc-nav-label">Salir</span>
-          </button>
-          <button
-            className="vc-nav-item vc-collapse-button"
-            onClick={() => setSidebarCollapsed((current) => !current)}
-            type="button"
-            aria-label={sidebarCollapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
-            aria-expanded={!sidebarCollapsed}
-          >
-            <ChevronLeft size={18} />
-            <span className="vc-nav-label">Contraer</span>
-          </button>
-        </nav>
-      </aside>
+      <AppSidebar
+        {...{
+          availableUpdate,
+          companionIndicatorLabel,
+          companionIndicatorState,
+          connectedDiskIds,
+          disks,
+          language,
+          logout,
+          primaryNavigationItems,
+          secondaryNavigationItems,
+          setSidebarCollapsed,
+          showFullCatalog,
+          sidebarCollapsed,
+          switchView,
+          viewMode
+        }}
+      />
 
       <main className="vc-main">
-        <header className="vc-header">
-          <button className="vc-brand is-compact" onClick={showFullCatalog} type="button" title="Mostrar catalogo completo">
-            <span className="vc-catmark" aria-hidden="true" />
-            <em className={`agent-status-dot ${companionIndicatorState}`} title={companionIndicatorLabel} aria-label={companionIndicatorLabel} />
-          </button>
-          <h1 className="vc-page-title">{activeNavigationItem.label}</h1>
-          {viewMode === "catalog" ? (
-            <>
-              <label className="vc-search">
-                <Search size={17} aria-hidden="true" />
-                <span className="vc-visually-hidden">Buscar en el catálogo</span>
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  value={q}
-                  onChange={(event) => { setQ(event.target.value); setPage(1); }}
-                  placeholder="Buscar por nombre o ruta"
-                />
-                <kbd>{shortcutLabel}</kbd>
-              </label>
-              <button
-                className="vc-button"
-                type="button"
-                aria-pressed={showCatalogFilters}
-                onClick={() => {
-                  // With a narrow layout the detail panel hides the filters; showing them closes the detail.
-                  if (filtersOpen && !showCatalogFilters) setSelected(null);
-                  else setFiltersOpen((open) => !open);
-                }}
-                title="Mostrar u ocultar filtros"
-              >
-                <SlidersHorizontal size={17} />
-                <span className="vc-button-label">Filtros</span>
-                {activeCatalogFilters.length > 0 ? <span className="vc-count-badge">{activeCatalogFilters.length}</span> : null}
-              </button>
-            </>
-          ) : null}
-          <div className="vc-header-spacer" />
-          <button
-            className="vc-icon-button vc-mode-toggle"
-            onClick={toggleTheme}
-            type="button"
-            title="Cambiar tema"
-            aria-label="Cambiar tema"
-          >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <div className="vc-theme-anchor">
-            <button
-              className="vc-button"
-              type="button"
-              data-theme-trigger
-              aria-expanded={themePanelOpen}
-              aria-haspopup="dialog"
-              onClick={() => setThemePanelOpen((open) => !open)}
-            >
-              <Palette size={18} />
-              <span className="vc-button-label">Tema</span>
-              <span className="vc-accent-dot" aria-hidden="true" />
-            </button>
-            {themePanelOpen ? (
-              <ThemePanel
-                preferences={themePreferences}
-                resolvedAppearance={resolvedAppearance}
-                onChange={updateThemePreferences}
-                onClose={closeThemePanel}
-                language={language}
-                onLanguageChange={setLanguage}
-              />
-            ) : null}
-          </div>
-        </header>
+        <AppHeader
+          {...{
+            activeCatalogFilters,
+            activeNavigationItem,
+            closeThemePanel,
+            companionIndicatorLabel,
+            companionIndicatorState,
+            filtersOpen,
+            language,
+            q,
+            resolvedAppearance,
+            searchInputRef,
+            setFiltersOpen,
+            setLanguage,
+            setPage,
+            setQ,
+            setSelected,
+            setThemePanelOpen,
+            shortcutLabel,
+            showCatalogFilters,
+            showFullCatalog,
+            theme,
+            themePanelOpen,
+            themePreferences,
+            toggleTheme,
+            updateThemePreferences,
+            viewMode
+          }}
+        />
 
         <div className="vc-content">
-      <section className={`vc-disks ${connectedPanelCollapsed ? "is-collapsed" : ""}`} aria-label="Discos">
-        <div className="vc-disks-heading">
-          <HardDrive size={17} aria-hidden="true" />
-          <strong>{viewMode === "downloads" ? "Discos para descargar" : "Discos"}</strong>
-          <span className="vc-disks-count">{`${panelSelectedDiskIds.length} de ${panelDisks.length}`}</span>
-          {!connectedPanelCollapsed ? (
-            <div className="vc-disks-actions">
-              {viewMode !== "downloads" ? (
-                <button
-                  className="vc-chip-button is-primary"
-                  disabled={detectingConnected}
-                  onClick={() => void showMountedDisksFromCompanion()}
-                  type="button"
-                >
-                  {detectingConnected ? "Detectando..." : "Mostrar conectados"}
-                </button>
-              ) : null}
-              <button
-                className="vc-chip-button"
-                disabled={panelDisks.length === 0 || panelSelectedDiskIds.length === panelDisks.length}
-                onClick={selectAllPanelDisks}
-                type="button"
-              >
-                Todos
-              </button>
-              <button
-                className="vc-chip-button"
-                disabled={panelSelectedDiskIds.length === 0}
-                onClick={selectNoPanelDisks}
-                type="button"
-              >
-                Ninguno
-              </button>
-            </div>
-          ) : null}
-          <button
-            className="vc-icon-button is-ghost is-small"
-            onClick={() => setConnectedPanelCollapsed((current) => !current)}
-            type="button"
-            title={connectedPanelCollapsed ? "Expandir discos conectados" : "Colapsar discos conectados"}
-            aria-label={connectedPanelCollapsed ? "Expandir discos conectados" : "Colapsar discos conectados"}
-            aria-expanded={!connectedPanelCollapsed}
-          >
-            {connectedPanelCollapsed ? <ChevronRight size={17} /> : <ChevronDown size={17} />}
-          </button>
-        </div>
-        {!connectedPanelCollapsed ? (
-          <>
-            {viewMode === "downloads" ? (
-              <div className={`vc-disks-message ${companionOnline && !companionNeedsUpdate ? "is-online" : companionLocalOnline || companionOnline ? "is-warning" : "is-offline"}`}>
-                {downloadConnectionMessage}
-              </div>
-            ) : connectedMessage ? (
-              <div className="vc-disks-message">{connectedMessage}</div>
-            ) : null}
-            <div className="vc-disk-strip">
-              {panelDisks.map((disk) => {
-                const active = panelSelectedDiskIds.includes(disk.id);
-                const mounted = companionMountedDiskIds.includes(disk.id);
-                const usage = diskUsagePercent(disk);
-                return (
-                  <button
-                    key={disk.id}
-                    className={`vc-disk-chip ${active ? "is-active" : ""}`}
-                    aria-pressed={active}
-                    onClick={() => togglePanelDisk(disk.id)}
-                    type="button"
-                  >
-                    <span className={`vc-disk-dot ${mounted ? "is-mounted" : ""}`} title={mounted ? "Conectado al Companion" : "No detectado por el Companion"} />
-                    <span className="vc-disk-text">
-                      <span className="vc-disk-name">{disk.name}</span>
-                      <span className="vc-disk-meta">
-                        {[disk.driveLetter, disk.totalBytes ? formatBytes(disk.totalBytes) : null].filter(Boolean).join(" · ") || (mounted ? "Conectado" : "Sin datos de capacidad")}
-                      </span>
-                    </span>
-                    {usage !== null ? (
-                      <span className="vc-disk-usage" title={`${usage}% usado`}>
-                        <span className="vc-disk-bar"><span className={usage >= 85 ? "is-high" : ""} style={{ width: `${usage}%` }} /></span>
-                        <span className="vc-disk-percent">{usage}%</span>
-                      </span>
-                    ) : null}
-                    {active ? <Check className="vc-disk-check" size={15} aria-hidden="true" /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-      </section>
-
-      <section className="vc-kpis" aria-label="Resumen del catálogo">
-        <div className="vc-kpi">
-          <span>Discos</span>
-          <strong>{formatCount(stats?.diskCount ?? 0)}</strong>
-        </div>
-        <div className="vc-kpi">
-          <span>Videos</span>
-          <strong>{formatCount(stats?.fileCount ?? 0)}</strong>
-        </div>
-        <div className="vc-kpi">
-          <span>Bytes catalogados</span>
-          <strong>{formatBytes(stats?.totalBytes ?? 0)}</strong>
-        </div>
-        <div className="vc-kpi">
-          <span>Duplicados probables</span>
-          <strong>
-            {formatCount(stats?.duplicateGroupCount ?? 0)}
-            {(stats?.duplicateGroupCount ?? 0) > 0 ? (
-              <button className="vc-kpi-link" type="button" onClick={() => switchView("duplicates")}>Revisar →</button>
-            ) : null}
-          </strong>
-        </div>
-      </section>
+      {showCatalogContext ? (
+        <CatalogContext
+          {...{
+            companionLocalOnline,
+            companionMountedDiskIds,
+            companionNeedsUpdate,
+            companionOnline,
+            connectedMessage,
+            connectedPanelCollapsed,
+            detectingConnected,
+            disks,
+            downloadConnectionMessage,
+            panelDisks,
+            panelSelectedDiskIds,
+            selectAllPanelDisks,
+            selectNoPanelDisks,
+            setConnectedPanelCollapsed,
+            showMountedDisksFromCompanion,
+            stats,
+            switchView,
+            togglePanelDisk,
+            viewMode
+          }}
+        />
+      ) : null}
 
       {viewMode === "catalog" ? (
-      <section
-        className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
-        style={{ "--filter-width": `${filterWidth}px` } as CSSProperties}
-      >
-        {showCatalogFilters && compactLayout ? (
-          <button className="vc-sheet-scrim" type="button" aria-label="Cerrar filtros" onClick={() => setFiltersOpen(false)} />
-        ) : null}
-        {showCatalogFilters ? (
-          <aside
-            className={`filters vc-filters ${compactLayout ? "is-sheet" : ""}`}
-            aria-label="Filtros"
-            role={compactLayout ? "dialog" : undefined}
-            aria-modal={compactLayout ? true : undefined}
-          >
-            {compactLayout ? <span className="vc-sheet-handle" aria-hidden="true" /> : (
-              <button
-                className="filter-resize-handle"
-                onPointerDown={beginFilterResize}
-                type="button"
-                title="Arrastrar para cambiar ancho"
-                aria-label="Cambiar ancho de filtros"
-              />
-            )}
-            <div className="section-title">
-              <Filter size={17} />
-              Filtros
-              {compactLayout ? (
-                <button className="vc-icon-button is-ghost is-small vc-sheet-close" onClick={() => setFiltersOpen(false)} type="button" aria-label="Cerrar filtros">
-                  <X size={18} />
-                </button>
-              ) : null}
-            </div>
-            <label>
-              Extension
-              <select value={extension} onChange={(event) => { setExtension(event.target.value); setPage(1); }}>
-                <option value="">Todas</option>
-                {extensions.map((item) => {
-                  const count = facets.extensions.find((extensionItem) => extensionItem.extension === item)?.count ?? 0;
-                  return (
-                  <option key={item} value={item}>
-                    {item} ({count})
-                  </option>
-                  );
-                })}
-              </select>
-            </label>
-            <div className="facet-block">
-              <div className="facet-title">Carpetas</div>
-              <div className="folder-search">
-                <Search size={15} />
-                <input
-                  value={folderSearch}
-                  onChange={(event) => setFolderSearch(event.target.value)}
-                  placeholder="Buscar carpeta"
-                />
-                {folderSearch ? (
-                  <button onClick={() => setFolderSearch("")} type="button" title="Limpiar busqueda de carpetas">
-                    <X size={14} />
-                  </button>
-                ) : null}
-              </div>
-              <div className="folder-list">
-                {visibleFolders.length > 0 ? (
-                  visibleFolders.map((folder) => (
-                    <div
-                      key={folder.path}
-                      className={`folder-option ${selectedFolders.includes(folder.path) ? "is-active" : ""}`}
-                      style={{ "--folder-depth": folder.depth } as CSSProperties}
-                      title={folder.path}
-                    >
-                      <button
-                        className="folder-expander"
-                        onClick={() => toggleFolderExpansion(folder.path)}
-                        disabled={!folder.hasChildren}
-                        type="button"
-                        title={folder.isExpanded ? "Colapsar carpeta" : "Expandir carpeta"}
-                      >
-                        {folder.hasChildren ? (
-                          folder.isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />
-                        ) : null}
-                      </button>
-                      <button className="folder-select" onClick={() => toggleFolder(folder.path)} type="button">
-                        {folder.locked ? <Lock size={15} /> : <FolderOpen size={15} />}
-                        <span>{folder.label}</span>
-                        <small>{folder.count}</small>
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="facet-empty">{folderSearch ? "Sin coincidencias de carpeta." : "Sin carpetas para estos discos."}</div>
-                )}
-              </div>
-            </div>
-            <label className="check-row">
-              <input
-                type="checkbox"
-                checked={duplicateOnly}
-                onChange={(event) => { setDuplicateOnly(event.target.checked); setPage(1); }}
-              />
-              Duplicados probables
-            </label>
-            <div className="facet-block">
-              <div className="facet-title">Categorias</div>
-              <div className="curation-filter-list">
-                <button
-                  className={`curation-filter is-none ${curationStatus === "" ? "is-active" : ""}`}
-                  onClick={() => { setCurationStatus(""); setPage(1); }}
-                  type="button"
-                >
-                  <span>Todas</span>
-                </button>
-                {facets.curationStatuses.map((item) => (
-                  <div className="curation-filter-row" key={item.key}>
-                    <button
-                      className={`curation-filter ${curationStatus === item.key ? "is-active" : ""}`}
-                      style={categoryStyle(item.key, facets.curationStatuses)}
-                      onClick={() => { setCurationStatus(item.key); setPage(1); }}
-                      type="button"
-                    >
-                      <span>{item.label}</span>
-                      <small>{item.count}</small>
-                    </button>
-                    {!item.builtIn ? (
-                      <button
-                        className="category-delete-button"
-                        onClick={() => deleteCategory(item)}
-                        type="button"
-                        title={`Eliminar ${item.label}`}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <form className="category-create-form" onSubmit={createCategory}>
-                <input
-                  value={newCategoryLabel}
-                  onChange={(event) => setNewCategoryLabel(event.target.value)}
-                  maxLength={32}
-                  placeholder="Nueva categoria"
-                />
-                <input
-                  className="category-color-input"
-                  value={newCategoryColor}
-                  onChange={(event) => setNewCategoryColor(event.target.value)}
-                  type="color"
-                  title="Color"
-                />
-                <button disabled={categorySubmitting || !newCategoryLabel.trim()} type="submit">
-                  Crear
-                </button>
-              </form>
-              {categoryError ? <div className="form-error compact-error">{categoryError}</div> : null}
-            </div>
-            <div className="facet-block tags-block">
-              <div className="facet-title">Etiquetas</div>
-              <div className="tag-list">
-                {facets.tags.length > 0 ? (
-                  facets.tags.map((item) => {
-                    const hue = tagHue(item.tag);
-                    const relevance = 0.88 + Math.min(0.28, item.count / maxTagCount / 3);
-                    return (
-                      <button
-                        key={item.tag}
-                        className={`tag-chip ${selectedTags.includes(item.tag) ? "is-active" : ""}`}
-                        style={{
-                          "--tag-hue": hue,
-                          "--tag-scale": relevance
-                        } as CSSProperties}
-                        onClick={() => toggleTag(item.tag)}
-                        type="button"
-                      >
-                        <span>{item.tag}</span>
-                        <small>{item.count}</small>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="facet-empty">Sin etiquetas repetidas.</div>
-                )}
-              </div>
-            </div>
-            {compactLayout ? (
-              <div className="vc-sheet-footer">
-                {activeCatalogFilters.length > 0 ? (
-                  <button className="vc-button" onClick={clearCatalogFilters} type="button">Limpiar filtros</button>
-                ) : null}
-                <button className="vc-button is-primary" onClick={() => setFiltersOpen(false)} type="button">
-                  {`Ver ${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}
-                </button>
-              </div>
-            ) : null}
-          </aside>
-        ) : null}
-
-        <section className="vc-results" aria-label="Resultados">
-          <div className="vc-results-toolbar">
-            <span className="vc-results-count">
-              <strong>{`${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}</strong>
-            </span>
-            {activeCatalogFilters.map((filter) => (
-              <button key={filter.key} className="vc-filter-chip" onClick={filter.onRemove} type="button" title="Quitar filtro">
-                <span>{filter.label}</span>
-                <X size={13} aria-hidden="true" />
-              </button>
-            ))}
-            {activeCatalogFilters.length > 1 ? (
-              <button className="vc-link-button" onClick={clearCatalogFilters} type="button">Limpiar filtros</button>
-            ) : null}
-            <div className="vc-toolbar-spacer" />
-            <label className="vc-inline-field">
-              <span>Ordenar</span>
-              <select
-                value={`${sortBy}:${sortDirection}`}
-                onChange={(event) => {
-                  const [field, direction] = event.target.value.split(":") as [SortBy, SortDirection];
-                  setSortBy(field);
-                  setSortDirection(direction);
-                  setPage(1);
-                }}
-              >
-                {catalogSortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="vc-inline-field">
-              <span>Por página</span>
-              <select value={pageSize} onChange={(event) => handlePageSizeChange(event.target.value)}>
-                {pageSizeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="vc-segmented is-icons" role="group" aria-label="Vista">
-              <button type="button" aria-pressed={catalogView === "grid"} onClick={() => setCatalogView("grid")} title="Cuadrícula" aria-label="Cuadrícula">
-                <LayoutGrid size={16} />
-              </button>
-              <button type="button" aria-pressed={catalogView === "list"} onClick={() => setCatalogView("list")} title="Lista" aria-label="Lista">
-                <List size={16} />
-              </button>
-            </div>
-          </div>
-
-          {selectedFileIds.length > 0 ? (
-            <div className="bulk-actions">
-              <strong>{`${selectedFileIds.length.toLocaleString(locale)} ${selectedFileIds.length === 1 ? "seleccionado" : "seleccionados"}`}</strong>
-              <span>{`${visibleSelectedCount} en esta página`}</span>
-              <select value={bulkCategoryKey} onChange={(event) => setBulkCategoryKey(event.target.value)}>
-                <option value="">Elegir etiqueta</option>
-                {facets.curationStatuses.map((category) => (
-                  <option key={category.key} value={category.key}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="secondary-button"
-                disabled={!bulkCategoryKey || bulkBusy}
-                onClick={() => void applyBulkCategory(bulkCategoryKey, true)}
-                type="button"
-              >
-                Añadir
-              </button>
-              <button
-                className="secondary-button"
-                disabled={!bulkCategoryKey || bulkBusy}
-                onClick={() => void applyBulkCategory(bulkCategoryKey, false)}
-                type="button"
-              >
-                Quitar
-              </button>
-              <button
-                className="danger-button"
-                disabled={bulkBusy}
-                onClick={() => void applyBulkCategory("delete", true)}
-                type="button"
-              >
-                Marcar para borrar
-              </button>
-              <button
-                className="secondary-button is-download"
-                disabled={bulkBusy}
-                onClick={() => void queueSelectedDownloads()}
-                type="button"
-              >
-                <Download size={16} />
-                A descargar
-              </button>
-              <button
-                className="secondary-button"
-                disabled={bulkBusy}
-                onClick={() => void regenerateSelectedThumbnails()}
-                type="button"
-              >
-                <Image size={16} />
-                Regenerar miniaturas
-              </button>
-              <button className="ghost-button" disabled={bulkBusy} onClick={clearFileSelection} type="button">
-                Limpiar
-              </button>
-            </div>
-          ) : null}
-          {bulkMessage ? <div className="bulk-message">{bulkMessage}</div> : null}
-
-
-          {catalogView === "grid" ? (
-            <div className="vc-grid-frame">
-              {files.length > 0 ? (
-                <div className={`vc-grid ${selectedFileIds.length > 0 ? "has-selection" : ""}`}>
-                  {files.map((file) => (
-                    <CatalogCard
-                      key={file.id}
-                      file={file}
-                      categories={facets.curationStatuses}
-                      active={selected?.id === file.id}
-                      checked={selectedFileIdSet.has(file.id)}
-                      availability={!companionOnline ? "unknown" : companionMountedDiskIds.includes(file.diskId) ? "mounted" : "offline"}
-                      onOpen={() => void openDetail(file)}
-                      onToggleSelect={() => toggleFileSelection(file.id)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {loading ? <div className="loading">Cargando...</div> : null}
-              {!loading && files.length === 0 ? <div className="empty">No hay archivos para estos filtros.</div> : null}
-            </div>
-          ) : (
-            <div className="table-frame catalog-table-frame">
-              <table className="catalog-table">
-                <thead>
-                  <tr>
-                    <th className="select-column">
-                      <input
-                        aria-label="Seleccionar página"
-                        checked={allVisibleSelected}
-                        disabled={files.length === 0}
-                        onChange={(event) => toggleVisibleSelection(event.target.checked)}
-                        type="checkbox"
-                      />
-                    </th>
-                    <th><SortHeader label="Archivo" field="filename" sortBy={sortBy} sortDirection={sortDirection} onSort={changeSort} /></th>
-                    <th>Disco</th>
-                    <th>Ruta</th>
-                    <th><SortHeader label="Tamaño" field="sizeBytes" sortBy={sortBy} sortDirection={sortDirection} onSort={changeSort} /></th>
-                    <th><SortHeader label="Duración" field="durationSeconds" sortBy={sortBy} sortDirection={sortDirection} onSort={changeSort} /></th>
-                    <th>Resolución</th>
-                    <th>Códec</th>
-                    <th><SortHeader label="Modificado" field="modifiedAt" sortBy={sortBy} sortDirection={sortDirection} onSort={changeSort} /></th>
-                    <th>Indexado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((file) => (
-                    <tr
-                      key={file.id}
-                      className={[
-                        file.isProbableDuplicate ? "duplicate-highlight" : "",
-                        file.curationStatus !== "none" ? `curation-row is-${file.curationStatus}` : "",
-                        selectedFileIdSet.has(file.id) ? "is-selected" : "",
-                        selected?.id === file.id ? "is-open" : ""
-                      ].filter(Boolean).join(" ")}
-                      style={categoryStyle(file.curationStatus, facets.curationStatuses)}
-                      onClick={() => void openDetail(file)}
-                    >
-                      <td className="select-column" onClick={(event) => event.stopPropagation()}>
-                        <input
-                          aria-label={`Seleccionar ${file.filename}`}
-                          checked={selectedFileIdSet.has(file.id)}
-                          onChange={() => toggleFileSelection(file.id)}
-                          type="checkbox"
-                        />
-                      </td>
-                      <td data-label="Archivo">
-                        <div className="file-cell">
-                          <div className="thumb">
-                            {mainThumbnail(file) ? <img src={mainThumbnail(file)} alt="" /> : <Image size={22} />}
-                          </div>
-                          <div>
-                            <strong>{file.filename}</strong>
-                            <span>
-                              {file.extension} {file.isProbableDuplicate ? "Duplicado probable" : ""}
-                            </span>
-                            <CategoryBadges file={file} categories={facets.curationStatuses} />
-                          </div>
-                        </div>
-                      </td>
-                      <td data-label="Disco">{file.disk?.name ?? "-"}</td>
-                      <td className="path-cell" data-label="Ruta">{file.relativePath}</td>
-                      <td data-label="Tamaño">{formatBytes(file.sizeBytes)}</td>
-                      <td data-label="Duración">{formatDuration(file.durationSeconds)}</td>
-                      <td data-label="Resolución">{resolution(file)}</td>
-                      <td data-label="Codec">{file.videoCodec ?? "-"}</td>
-                      <td data-label="Modificado">{dateLabel(file.modifiedAt, locale)}</td>
-                      <td data-label="Indexado">{dateLabel(file.lastIndexedAt, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {loading ? <div className="loading">Cargando...</div> : null}
-              {!loading && files.length === 0 ? <div className="empty">No hay archivos para estos filtros.</div> : null}
-            </div>
-
-          )}
-
-          <div className="pagination">
-            <button disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
-              Anterior
-            </button>
-            <label className="page-jump">
-              <span>Pagina</span>
-              <input
-                value={page}
-                min={1}
-                max={pageCount}
-                onChange={(event) => handlePageInput(event.target.value)}
-                type="number"
-              />
-              <span>{`de ${pageCount} · ${total} archivos`}</span>
-            </label>
-            <button disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>
-              Siguiente
-            </button>
-          </div>
-        </section>
-
-        {selected ? (
-          <>
-            <button className="vc-detail-scrim" type="button" aria-label="Cerrar detalle" onClick={() => setSelected(null)} />
-            <FileDetail
-              variant="panel"
-              file={selected}
-              duplicates={duplicates}
-              locale={locale}
-              canOpenPrevious={canOpenPrevious}
-              canOpenNext={canOpenNext}
-              onPrevious={() => openAdjacentDetail(-1)}
-              onNext={() => openAdjacentDetail(1)}
-              onRandom={(excludeId) => openRandomConnectedDetail(excludeId)}
-              onClose={() => setSelected(null)}
-              categories={facets.curationStatuses}
-              companionOnline={companionOnline}
-              companionLocalOnline={companionLocalOnline}
-              companionMountedDiskIds={companionMountedDiskIds}
-              chromecastEnabled={profileSecurity?.chromecastEnabled ?? false}
-              onToggleCategory={(categoryKey, enabled) => toggleFileCategory(selected, categoryKey, enabled)}
-              onDeleted={removeDeletedFile}
-            />
-          </>
-        ) : null}
-      </section>
+        <CatalogView
+          {...{
+            activeCatalogFilters,
+            allVisibleSelected,
+            applyBulkCategory,
+            beginFilterResize,
+            bulkBusy,
+            bulkCategoryKey,
+            bulkMessage,
+            canOpenNext,
+            canOpenPrevious,
+            catalogView,
+            categoryError,
+            categorySubmitting,
+            changeSort,
+            clearCatalogFilters,
+            clearFileSelection,
+            compactLayout,
+            companionLocalOnline,
+            companionMountedDiskIds,
+            companionOnline,
+            createCategory,
+            curationStatus,
+            deleteCategory,
+            duplicateOnly,
+            duplicates,
+            extension,
+            extensions,
+            facets,
+            files,
+            filterWidth,
+            folderSearch,
+            handlePageInput,
+            handlePageSizeChange,
+            loading,
+            locale,
+            maxTagCount,
+            newCategoryColor,
+            newCategoryLabel,
+            openAdjacentDetail,
+            openDetail,
+            openRandomConnectedDetail,
+            page,
+            pageCount,
+            pageSize,
+            profileSecurity,
+            queueSelectedDownloads,
+            regenerateSelectedThumbnails,
+            removeDeletedFile,
+            selected,
+            selectedFileIdSet,
+            selectedFileIds,
+            selectedFolders,
+            selectedTags,
+            setBulkCategoryKey,
+            setCatalogView,
+            setCurationStatus,
+            setDuplicateOnly,
+            setExtension,
+            setFiltersOpen,
+            setFolderSearch,
+            setNewCategoryColor,
+            setNewCategoryLabel,
+            setPage,
+            setSelected,
+            setSortBy,
+            setSortDirection,
+            showCatalogFilters,
+            sortBy,
+            sortDirection,
+            toggleFileCategory,
+            toggleFileSelection,
+            toggleFolder,
+            toggleFolderExpansion,
+            toggleTag,
+            toggleVisibleSelection,
+            total,
+            visibleFolders,
+            visibleSelectedCount
+          }}
+        />
       ) : null}
 
       {viewMode === "review" ? (
-        <section className="vc-review-home">
-          <div className="vc-review-hero">
-            <div className="vc-review-hero-text">
-              <span className="vc-overline">Review aleatorio</span>
-              <h2>{`${reviewPendingTotal.toLocaleString(locale)} ${reviewPendingTotal === 1 ? "video pendiente" : "videos pendientes"}`}</h2>
-              <p>Decidí qué conservar y qué borrar, un video a la vez, en los discos seleccionados.</p>
-              <p className="vc-review-hero-keys"><kbd>K</kbd> mantener · <kbd>D</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer</p>
-            </div>
-            <div className="vc-review-hero-actions">
-              <button className="vc-button is-primary is-large" onClick={() => void loadNextReviewVideo()} disabled={reviewLoading} type="button">
-                <Play size={18} />
-                {reviewLoading ? "Cargando..." : "Iniciar Review"}
-              </button>
-              <button className="vc-button" onClick={() => void openDeletionHistory()} type="button">
-                <History size={17} />
-                Últimos borrados
-              </button>
-              <button className="vc-button" onClick={() => void openRecoverableSpace()} type="button">
-                <HardDrive size={17} />
-                Espacio a recuperar
-              </button>
-            </div>
-          </div>
-          {reviewMessage && !reviewCurrent ? <div className="vc-review-message" role="status">{reviewMessage}</div> : null}
-          <section className="vc-kpis" aria-label="Progreso del review">
-            <div className="vc-kpi">
-              <span>Pendientes</span>
-              <strong>{reviewPendingTotal.toLocaleString(locale)}</strong>
-            </div>
-            <div className="vc-kpi">
-              <span>Marcados hoy</span>
-              <strong>{reviewMarkedToday.toLocaleString(locale)}</strong>
-            </div>
-            <div className="vc-kpi">
-              <span>Últimos 7 días</span>
-              <strong>{reviewMarkedLast7Days.toLocaleString(locale)}</strong>
-            </div>
-            <div className="vc-kpi is-accent">
-              <span>Espacio liberado</span>
-              <strong>{formatBytes(reviewFreedBytes)}</strong>
-            </div>
-          </section>
-
-          <div className="vc-section-heading">
-            <h3>Pendientes de review</h3>
-            <span>{`${reviewPending.length} de ${reviewPendingTotal.toLocaleString(locale)}`}</span>
-          </div>
-          {reviewPending.length === 0 ? (
-            <div className="empty">No quedan videos pendientes por revisar.</div>
-          ) : (
-            <div className="vc-grid">
-              {reviewPending.map((file) => (
-                <CatalogCard
-                  key={file.id}
-                  file={file}
-                  categories={facets.curationStatuses}
-                  active={false}
-                  checked={false}
-                  selectable={false}
-                  availability={!companionOnline ? "unknown" : companionMountedDiskIds.includes(file.diskId) ? "mounted" : "offline"}
-                  onOpen={() => void openDetail(file)}
-                  onToggleSelect={() => undefined}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="vc-section-heading">
-            <h3>Últimos revisados</h3>
-            <span>{`${reviewRecent.length} recientes`}</span>
-          </div>
-          {reviewRecent.length === 0 ? (
-            <div className="empty">Aun no hay videos sometidos al review.</div>
-          ) : (
-            <div className="vc-grid">
-              {reviewRecent.map((file) => (
-                <CatalogCard
-                  key={file.id}
-                  file={file}
-                  categories={facets.curationStatuses}
-                  active={false}
-                  checked={false}
-                  selectable={false}
-                  availability={!companionOnline ? "unknown" : companionMountedDiskIds.includes(file.diskId) ? "mounted" : "offline"}
-                  onOpen={() => void openDetail(file)}
-                  onToggleSelect={() => undefined}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        <ReviewHomeView
+          {...{
+            companionMountedDiskIds,
+            companionOnline,
+            facets,
+            loadNextReviewVideo,
+            locale,
+            openDeletionHistory,
+            openDetail,
+            openRecoverableSpace,
+            reviewCurrent,
+            reviewFreedBytes,
+            reviewLoading,
+            reviewMarkedLast7Days,
+            reviewMarkedToday,
+            reviewMessage,
+            reviewPending,
+            reviewPendingTotal,
+            reviewRecent
+          }}
+        />
       ) : null}
 
       {viewMode === "downloads" ? (
-        <section className="results downloads-view">
-          <div className="view-header downloads-header">
-            <div>
-              <strong>A descargar</strong>
-              <span>Cola local para copiar videos desde discos conectados usando el companion.</span>
-            </div>
-            <div className="download-header-actions">
-              <button
-                className="primary-button"
-                disabled={downloadActionBusy || downloadProcessing || downloadSummary?.paused || !companionOnline || downloadDiskIds.length === 0}
-                onClick={() => void processDownloadQueueNow()}
-                type="button"
-              >
-                <Play size={17} />
-                Procesar cola
-              </button>
-              <button
-                className="secondary-button"
-                disabled={downloadPauseBusy}
-                onClick={() => void setDownloadPaused(!(downloadSummary?.paused ?? false))}
-                type="button"
-              >
-                {downloadSummary?.paused ? <Play size={17} /> : <Pause size={17} />}
-                {downloadSummary?.paused ? "Reanudar" : "Detener"}
-              </button>
-              <button
-                className="danger-button"
-                disabled={downloadActionBusy}
-                onClick={() => void clearDownloadQueue()}
-                type="button"
-              >
-                <Trash2 size={17} />
-                Vaciar cola
-              </button>
-              <button
-                className="secondary-button"
-                disabled={downloadActionBusy || downloadProcessing || (downloadSummary?.counts.done ?? 0) === 0}
-                onClick={requestClearProcessedDownloadQueue}
-                type="button"
-                title="Eliminar historial completado"
-              >
-                <Trash2 size={17} />
-                Eliminar cola
-              </button>
-              <button className="secondary-button" disabled={downloadLoading || downloadActionBusy} onClick={() => void loadDownloadSummary()} type="button">
-                Actualizar
-              </button>
-            </div>
-          </div>
-          {!companionOnline ? (
-            <div className="download-companion-banner is-offline">
-              <AlertTriangle size={18} />
-              <div>
-                <strong>{companionLocalOnline ? "Companion sin sincronizar" : "Companion no iniciado"}</strong>
-                <span>
-                  {companionLocalOnline
-                    ? "El proceso local está abierto, pero no reporta a este servidor. Revisa SERVER_URL y AGENT_TOKEN."
-                    : "Abre el Companion de Windows para detectar discos y procesar esta cola."}
-                </span>
-              </div>
-            </div>
-          ) : companionNeedsUpdate ? (
-            <div className="download-companion-banner">
-              <AlertTriangle size={18} />
-              <div>
-                <strong>Actualización requerida</strong>
-                <span>Instala la versión más reciente del Companion para reportar los discos conectados.</span>
-              </div>
-            </div>
-          ) : downloadConnectedDisks.length === 0 ? (
-            <div className="download-companion-banner">
-              <HardDrive size={18} />
-              <div>
-                <strong>Sin discos conectados</strong>
-                <span>{downloadConnectionMessage}</span>
-              </div>
-            </div>
-          ) : null}
-          {downloadSummary?.paused ? <div className="download-paused-banner">Cola pausada: el companion no tomara nuevas descargas hasta reanudarla.</div> : null}
-
-          <section
-            aria-label="Resumen de transferencias"
-            className={`transfer-overview ${activeDownload ? "is-active" : downloadSummary?.paused ? "is-paused" : "is-idle"}`}
-          >
-            <div className="transfer-primary">
-              <div className="transfer-file-copy">
-                <span className="transfer-state-label">
-                  <i aria-hidden="true" />
-                  {activeDownload
-                    ? "Transferencia activa"
-                    : downloadSummary?.paused
-                      ? "Cola detenida"
-                      : (downloadSummary?.counts.queued ?? 0) > 0
-                        ? "Lista para procesar"
-                        : "Sin transferencias pendientes"}
-                </span>
-                <strong title={activeDownload?.file.filename}>
-                  {activeDownload?.file.filename ?? "VideoCAT Companion"}
-                </strong>
-                <span className="transfer-file-path" title={activeDownload?.file.relativePath}>
-                  {activeDownload
-                    ? `${activeDownload.file.disk?.name ?? "-"} · ${activeDownload.file.relativePath}`
-                    : downloadSummary?.paused
-                      ? "La descarga actual terminará antes de detener la cola."
-                      : (downloadSummary?.counts.queued ?? 0) > 0
-                        ? "El companion puede comenzar con el siguiente archivo."
-                        : "Añade videos a la cola para comenzar una transferencia."}
-                </span>
-              </div>
-              <div className="transfer-percent">
-                <strong>{activeDownload ? `${activeDownloadPercent}%` : "-"}</strong>
-                <span>Progreso del archivo</span>
-              </div>
-            </div>
-
-            <div className="transfer-main-progress" aria-label={`Progreso ${activeDownloadPercent}%`}>
-              <span style={{ width: `${activeDownloadPercent}%` }} />
-            </div>
-            <div className="transfer-progress-caption">
-              <span>{activeDownload ? formatBytes(activeDownload.progressBytes) : "0 B"}</span>
-              <span>{activeDownload ? formatBytes(activeDownload.file.sizeBytes) : "-"}</span>
-            </div>
-
-            <div className="transfer-detail-grid">
-              <div className="transfer-chart-panel">
-                <div className="transfer-chart-heading">
-                  <div>
-                    <span>Velocidad reciente</span>
-                    <strong>{activeDownload ? `${formatBytes(Math.round(currentDownloadSpeed))}/s` : "-"}</strong>
-                  </div>
-                  <small>Últimas 30 muestras</small>
-                </div>
-                <TransferSpeedChart samples={downloadSpeedSamples} />
-              </div>
-              <dl className="transfer-vitals">
-                <div>
-                  <dt>ETA del archivo</dt>
-                  <dd>{activeDownload ? transferEtaLabel(activeDownloadEta) : "-"}</dd>
-                </div>
-                <div>
-                  <dt>ETA de la cola</dt>
-                  <dd>{activeDownload ? transferEtaLabel(downloadQueueEta) : "-"}</dd>
-                </div>
-                <div>
-                  <dt>Resta en este archivo</dt>
-                  <dd>{activeDownload ? formatBytes(activeDownloadRemainingBytes) : "-"}</dd>
-                </div>
-                <div>
-                  <dt>Cola restante</dt>
-                  <dd>{formatBytes(pendingDownloadBytes)}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="transfer-queue-summary">
-              <div><span>En cola</span><strong>{(downloadSummary?.counts.queued ?? 0).toLocaleString(locale)}</strong></div>
-              <div><span>Descargando</span><strong>{(downloadSummary?.counts.downloading ?? 0).toLocaleString(locale)}</strong></div>
-              <div><span>Pendiente</span><strong>{formatBytes(pendingDownloadBytes)}</strong></div>
-              <div><span>Descargados</span><strong>{(downloadSummary?.counts.done ?? 0).toLocaleString(locale)}</strong></div>
-            </div>
-          </section>
-
-          <section className="random-download-panel">
-            <div className="random-download-copy">
-              <strong>Selección aleatoria</strong>
-              <span>Elige un aproximado en GB y VideoCAT pondrá videos aleatorios de los discos conectados en cola.</span>
-            </div>
-            <label>
-              <span>GB aproximados</span>
-              <input
-                min="0.1"
-                step="0.1"
-                value={randomDownloadGb}
-                onChange={(event) => setRandomDownloadGb(event.target.value)}
-                type="number"
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={downloadLoading || !companionOnline || downloadDiskIds.length === 0}
-              onClick={() => void queueRandomDownloads()}
-              type="button"
-            >
-              <Shuffle size={17} />
-              Elegir al azar
-            </button>
-            <div className="random-folder-scope">
-              <div className="random-folder-heading">
-                <div>
-                  <strong>Carpetas para la selección</strong>
-                  <span>
-                    {randomDownloadFolders.length > 0
-                      ? `${randomDownloadFolders.length} carpeta(s) seleccionada(s).`
-                      : "Sin selección se usarán todas las carpetas disponibles."}
-                  </span>
-                </div>
-                {randomDownloadFolders.length > 0 ? (
-                  <button className="ghost-button" onClick={() => setRandomDownloadFolders([])} type="button">
-                    Usar todas
-                  </button>
-                ) : null}
-              </div>
-              <div className="folder-search">
-                <Search size={15} />
-                <input
-                  value={downloadFolderSearch}
-                  onChange={(event) => setDownloadFolderSearch(event.target.value)}
-                  placeholder="Buscar carpeta"
-                />
-                {downloadFolderSearch ? (
-                  <button onClick={() => setDownloadFolderSearch("")} type="button" title="Limpiar busqueda de carpetas">
-                    <X size={14} />
-                  </button>
-                ) : null}
-              </div>
-              <div className="random-folder-list">
-                {visibleDownloadFolders.length > 0 ? (
-                  visibleDownloadFolders.map((folder) => (
-                    <div
-                      key={folder.path}
-                      className={`folder-option ${randomDownloadFolders.includes(folder.path) ? "is-active" : ""}`}
-                      style={{ "--folder-depth": folder.depth } as CSSProperties}
-                      title={folder.path}
-                    >
-                      <button
-                        className="folder-expander"
-                        onClick={() => toggleDownloadFolderExpansion(folder.path)}
-                        disabled={!folder.hasChildren}
-                        type="button"
-                        title={folder.isExpanded ? "Colapsar carpeta" : "Expandir carpeta"}
-                      >
-                        {folder.hasChildren
-                          ? folder.isExpanded
-                            ? <ChevronDown size={15} />
-                            : <ChevronRight size={15} />
-                          : null}
-                      </button>
-                      <button className="folder-select" onClick={() => toggleDownloadFolder(folder.path)} type="button">
-                        {folder.locked ? <Lock size={15} /> : <FolderOpen size={15} />}
-                        <span>{folder.label}</span>
-                        <small>{folder.count}</small>
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="facet-empty">
-                    {downloadDiskIds.length === 0
-                      ? "Selecciona al menos un disco conectado."
-                      : downloadFolderSearch
-                        ? "Sin coincidencias de carpeta."
-                        : "Sin carpetas para estos discos."}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-          {downloadMessage ? <div className="review-message">{downloadMessage}</div> : null}
-
-          {selectedDownloadQueueIds.length > 0 ? (
-            <div className="bulk-actions download-bulk-actions">
-              <strong>{`${selectedDownloadQueueIds.length.toLocaleString(locale)} ${selectedDownloadQueueIds.length === 1 ? "seleccionado" : "seleccionados"} en cola`}</strong>
-              <span>Solo se pueden retirar pendientes o fallidos.</span>
-              <button
-                className="danger-button"
-                disabled={downloadActionBusy}
-                onClick={() => void removeSelectedDownloads()}
-                type="button"
-              >
-                <Trash2 size={16} />
-                Retirar de cola
-              </button>
-              <button className="ghost-button" disabled={downloadActionBusy} onClick={() => setSelectedDownloadQueueIds([])} type="button">
-                Limpiar
-              </button>
-            </div>
-          ) : null}
-
-          <div className="table-frame">
-            <table className="download-table">
-              <thead>
-                <tr>
-                  <th className="select-column">
-                    <input
-                      aria-label="Seleccionar cola retirable"
-                      checked={allRemovableDownloadsSelected}
-                      disabled={removableDownloadEntries.length === 0}
-                      onChange={(event) => toggleAllRemovableDownloads(event.target.checked)}
-                      type="checkbox"
-                    />
-                  </th>
-                  <th>Estado</th>
-                  <th>Archivo</th>
-                  <th>Disco</th>
-                  <th>Tamaño</th>
-                  <th>Solicitado</th>
-                  <th>Destino / error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(downloadSummary?.entries ?? []).map((entry) => (
-                  <tr key={entry.id} className={`download-row is-${entry.status}`} onClick={() => void openDetail(entry.file)}>
-                    <td className="select-column" onClick={(event) => event.stopPropagation()}>
-                      <input
-                        aria-label={`Seleccionar ${entry.file.filename}`}
-                        checked={selectedDownloadQueueIdSet.has(entry.id)}
-                        disabled={entry.status !== "queued" && entry.status !== "failed"}
-                        onChange={() => toggleDownloadSelection(entry)}
-                        type="checkbox"
-                      />
-                    </td>
-                    <td>
-                      <span className={`download-status is-${entry.status}`}>
-                        {downloadStatusLabel(entry.status)}
-                      </span>
-                      <div className="download-progress">
-                        <div className="download-progress-track">
-                          <span style={{ width: `${downloadProgressPercent(entry)}%` }} />
-                        </div>
-                        <small>
-                          {downloadProgressPercent(entry)}%
-                          {entry.status === "downloading"
-                            ? ` · ${formatBytes(entry.progressBytes)} de ${formatBytes(entry.file.sizeBytes)}`
-                            : null}
-                        </small>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="file-cell">
-                        <div className="thumb">
-                          {mainThumbnail(entry.file) ? <img src={mainThumbnail(entry.file)} alt="" /> : <Image size={22} />}
-                        </div>
-                        <div>
-                          <strong>{entry.file.filename}</strong>
-                          <span>{entry.file.relativePath}</span>
-                          <CategoryBadges file={entry.file} categories={downloadFacets.curationStatuses} />
-                        </div>
-                      </div>
-                    </td>
-                    <td>{entry.file.disk?.name ?? "-"}</td>
-                    <td>{formatBytes(entry.file.sizeBytes)}</td>
-                    <td>{dateLabel(entry.requestedAt, locale)}</td>
-                    <td className="path-cell">{entry.errorMessage ?? entry.destinationPath ?? entry.downloadedTag ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {downloadLoading ? <div className="loading">Cargando...</div> : null}
-            {!downloadLoading && (downloadSummary?.entries.length ?? 0) === 0 ? (
-              <div className="empty">No hay archivos en cola de descarga.</div>
-            ) : null}
-          </div>
-        </section>
+        <DownloadsView
+          locale={locale}
+          categories={downloadFacets.curationStatuses}
+          summary={downloadSummary}
+          loading={downloadLoading}
+          actionBusy={downloadActionBusy}
+          pauseBusy={downloadPauseBusy}
+          processing={downloadProcessing}
+          message={downloadMessage}
+          companion={{
+            online: companionOnline,
+            localOnline: companionLocalOnline,
+            needsUpdate: companionNeedsUpdate,
+            connectedDiskCount: downloadConnectedDisks.length,
+            connectionMessage: downloadConnectionMessage
+          }}
+          selectedDiskCount={downloadDiskIds.length}
+          transfer={{
+            active: activeDownload,
+            percent: activeDownloadPercent,
+            speedBytesPerSecond: currentDownloadSpeed,
+            speedSamples: downloadSpeedSamples,
+            fileEtaSeconds: activeDownloadEta,
+            queueEtaSeconds: downloadQueueEta,
+            fileRemainingBytes: activeDownloadRemainingBytes,
+            pendingBytes: pendingDownloadBytes
+          }}
+          random={{
+            gigabytes: randomDownloadGb,
+            folders: randomDownloadFolders,
+            folderSearch: downloadFolderSearch,
+            visibleFolders: visibleDownloadFolders
+          }}
+          selection={{
+            ids: selectedDownloadQueueIds,
+            idSet: selectedDownloadQueueIdSet,
+            removableCount: removableDownloadEntries.length,
+            allRemovableSelected: allRemovableDownloadsSelected
+          }}
+          onProcess={() => void processDownloadQueueNow()}
+          onTogglePause={() => void setDownloadPaused(!(downloadSummary?.paused ?? false))}
+          onRefresh={() => void loadDownloadSummary()}
+          onClearQueue={() => void clearDownloadQueue()}
+          onClearHistory={requestClearProcessedDownloadQueue}
+          onRandomGigabytesChange={setRandomDownloadGb}
+          onQueueRandom={() => void queueRandomDownloads()}
+          onRandomFoldersReset={() => setRandomDownloadFolders([])}
+          onRandomFolderSearchChange={setDownloadFolderSearch}
+          onToggleRandomFolder={toggleDownloadFolder}
+          onToggleRandomFolderExpansion={toggleDownloadFolderExpansion}
+          onToggleSelection={toggleDownloadSelection}
+          onToggleAllSelection={toggleAllRemovableDownloads}
+          onClearSelection={() => setSelectedDownloadQueueIds([])}
+          onRemoveSelected={() => void removeSelectedDownloads()}
+          onOpenFile={(file) => void openDetail(file)}
+        />
       ) : null}
 
       {viewMode === "duplicates" ? (
-        <section className="vc-dup-home">
-          <div className="vc-review-hero">
-            <div className="vc-review-hero-text">
-              <span className="vc-overline">Duplicados probables</span>
-              <h2>{`${duplicateGroups.length.toLocaleString(locale)} ${duplicateGroups.length === 1 ? "grupo" : "grupos"} · ${formatBytes(duplicateRecoverableBytes)} recuperables`}</h2>
-              <p>Coincidencias por huella visual, duración y tamaño dentro de los discos seleccionados.</p>
-            </div>
-            <div className="vc-review-hero-actions">
-              <button
-                className="vc-button is-primary is-large"
-                disabled={auxLoading || pendingAssistedDuplicateGroups.length === 0}
-                onClick={() => openDuplicateAssistant()}
-                type="button"
-              >
-                <Sparkles size={18} />
-                Iniciar modo asistido
-                <span className="vc-count-badge is-inverse">{pendingAssistedDuplicateGroups.length}</span>
-              </button>
-            </div>
-          </div>
-          {duplicateAssistantMessage ? <div className="vc-review-message" role="status">{duplicateAssistantMessage}</div> : null}
-
-          <div className="vc-dup-layout">
-            <div className="vc-dup-groups">
-              {auxLoading ? <div className="loading">Cargando...</div> : null}
-              {!auxLoading && duplicateGroups.length === 0 ? (
-                <div className="empty">No hay duplicados probables para estos discos.</div>
-              ) : null}
-              {duplicateGroups.map((group) => {
-                const pendingGroup = pendingAssistedDuplicateGroups.find((item) => item.key === group.key);
-                const recommendedId = pendingGroup?.contenders[0]?.id;
-                return (
-                  <article className="vc-dup-group" key={group.key}>
-                    <header className="vc-dup-group-header">
-                      <span
-                        className={`vc-dup-confidence is-${group.matchType}`}
-                        title={group.matchType === "visual" ? "Coincidencia visual" : group.matchType === "mixed" ? "Coincidencia mixta" : "Mismo tamaño"}
-                      >
-                        <span className="vc-meter" aria-hidden="true"><span style={{ width: `${group.confidence}%` }} /></span>
-                        <strong>{`${group.confidence}% de confianza`}</strong>
-                      </span>
-                      {group.reasons.map((reason) => (
-                        <span className="vc-dup-reason" key={reason}>{translateText(reason, language)}</span>
-                      ))}
-                      <span className="vc-toolbar-spacer" />
-                      <span className="vc-dup-recoverable">{`${formatBytes(group.recoverableBytes)} recuperables`}</span>
-                      {pendingGroup ? (
-                        <button className="vc-button is-small" onClick={() => openDuplicateAssistant(group.key)} type="button">
-                          <Sparkles size={15} />
-                          Resolver
-                        </button>
-                      ) : (
-                        <span className="vc-dup-resolved"><Check size={14} /> Resuelto</span>
-                      )}
-                    </header>
-                    <div className="vc-dup-files">
-                      {group.files.map((file) => {
-                        const badge = resolutionBadge(file);
-                        return (
-                          <button
-                            className={`vc-dup-file ${file.id === recommendedId ? "is-recommended" : ""}`}
-                            key={file.id}
-                            onClick={() => void openDetail(file)}
-                            type="button"
-                          >
-                            <span className="vc-card-thumb">
-                              {mainThumbnail(file) ? <img src={mainThumbnail(file)} alt="" loading="lazy" /> : <Image size={22} aria-hidden="true" />}
-                              {badge ? <span className="vc-card-badge is-top-right">{badge}</span> : null}
-                              {file.durationSeconds ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(file.durationSeconds)}</span> : null}
-                              {file.id === recommendedId ? <span className="vc-dup-best">Recomendado</span> : null}
-                            </span>
-                            <span className="vc-dup-file-body">
-                              <strong title={file.filename}>{file.filename}</strong>
-                              <span title={file.relativePath}>{`${file.disk?.name ?? "-"} · ${file.relativePath}`}</span>
-                              <span className="vc-dup-file-metrics">{`${formatBytes(file.sizeBytes)} · ${resolution(file)}`}</span>
-                            </span>
-                            <CategoryBadges file={file} categories={facets.curationStatuses} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-
-            <aside className="vc-dup-side" aria-label="Discos prioritarios">
-              <span className="vc-overline">Conectá primero</span>
-              {duplicateDriveRecommendations ? (
-                <>
-                  <div className="vc-dup-side-total">
-                    <strong>{formatBytes(duplicateDriveRecommendations.totalRecoverableBytes)}</strong>
-                    <span className="vc-dup-legend">
-                      <span><i className="is-ready" />{`Marcado ${formatBytes(duplicateDriveRecommendations.totalReadyBytes)}`}</span>
-                      <span><i className="is-pending" />{`Por decidir ${formatBytes(duplicateDriveRecommendations.totalPendingBytes)}`}</span>
-                    </span>
-                  </div>
-                  <ol className="vc-dup-drives">
-                    {duplicateDriveRecommendations.disks.slice(0, 6).map((disk) => {
-                      const total = Math.max(1, disk.readyBytes + disk.pendingBytes);
-                      return (
-                        <li key={disk.diskId}>
-                          <div className="vc-dup-drive-head">
-                            <strong>{disk.diskName}</strong>
-                            <span>{formatBytes(disk.recoverableBytes)}</span>
-                          </div>
-                          <span className="vc-dup-drive-bar" aria-hidden="true">
-                            <span className="is-ready" style={{ width: `${(disk.readyBytes / total) * 100}%` }} />
-                            <span className="is-pending" style={{ width: `${(disk.pendingBytes / total) * 100}%` }} />
-                          </span>
-                          <span className="vc-dup-drive-status">
-                            <span className={`vc-disk-dot ${disk.connected ? "is-mounted" : ""}`} />
-                            {disk.connected ? "Conectado" : "Desconectado"}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </>
-              ) : (
-                <span className="vc-review-muted">Calculando discos prioritarios...</span>
-              )}
-              <button className="vc-link-button" onClick={() => void openDuplicateDriveRecommendations()} type="button">
-                Ver plan completo
-              </button>
-            </aside>
-          </div>
-        </section>
+        <DuplicatesView
+          {...{
+            auxLoading,
+            duplicateAssistantMessage,
+            duplicateDriveRecommendations,
+            duplicateGroups,
+            duplicateRecoverableBytes,
+            facets,
+            language,
+            loading,
+            locale,
+            openDetail,
+            openDuplicateAssistant,
+            openDuplicateDriveRecommendations,
+            pendingAssistedDuplicateGroups,
+            total
+          }}
+        />
       ) : null}
 
       {viewMode === "usage" ? (
-        <section className="results usage-view">
-          <div className="view-header">
-            <div>
-              <strong>Esquema de uso</strong>
-              <span>Tamano por folder segun el ultimo dato reportado por el agente.</span>
-            </div>
-          </div>
-          {auxLoading ? <div className="loading">Cargando...</div> : null}
-          {!auxLoading && folderUsage.length === 0 ? <div className="empty">Aun no hay datos de uso por folder.</div> : null}
-          <div className="usage-tiles">
-            {folderUsage.map((item) => {
-              const scale = Math.max(0.16, item.sizeBytes / maxFolderUsage);
-              return (
-                <article
-                  className="usage-tile"
-                  key={`${item.diskId}:${item.folder}`}
-                  style={{ "--tile-scale": scale } as CSSProperties}
-                  title={`${item.diskName} / ${item.folder}`}
-                >
-                  <div className="usage-fill" />
-                  <div className="usage-content">
-                    <span>{item.diskName}</span>
-                    <strong>{item.folder}</strong>
-                    <small>{formatBytes(item.sizeBytes)} · {item.fileCount} videos{item.estimated ? " · estimado" : ""}</small>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+        <UsageView
+          diskQuery={diskQuery}
+          noDisksSelected={disks.length > 0 && connectedDiskIds.length === 0}
+          refreshKey={catalogVersion}
+          onOpenInCatalog={openFolderInCatalog}
+        />
       ) : null}
 
       {viewMode === "audit" ? (
-        <section className="results audit-view">
-          <div className="view-header">
-            <div>
-              <strong>Auditoria del agente</strong>
-              <span>Errores enviados por el agente durante los escaneos.</span>
-            </div>
-          </div>
-          {auxLoading ? <div className="loading">Cargando...</div> : null}
-          <div className="audit-summary">
-            {auditSummary.map((item) => (
-              <div className="audit-chip" key={`${item.category}:${item.phase}`}>
-                <strong>{item.count}</strong>
-                <span>{item.category}</span>
-                <small>{item.phase}</small>
-              </div>
-            ))}
-          </div>
-          <div className="table-frame">
-            <table className="audit-table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Disco</th>
-                  <th>Categoria</th>
-                  <th>Fase</th>
-                  <th>Codigo</th>
-                  <th>Ruta</th>
-                  <th>Mensaje</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditErrors.map((error) => (
-                  <tr key={error.id}>
-                    <td>{dateLabel(error.createdAt, locale)}</td>
-                    <td>{error.diskName}</td>
-                    <td><span className="audit-category">{error.category}</span></td>
-                    <td>{error.phase}</td>
-                    <td>{error.code ?? "-"}</td>
-                    <td>
-                      <button
-                        className="audit-snippet is-path"
-                        onClick={() => setSelectedAuditError(error)}
-                        type="button"
-                        title="Ver error completo"
-                      >
-                        {error.relativePath ?? error.absolutePath ?? "-"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className="audit-snippet"
-                        onClick={() => setSelectedAuditError(error)}
-                        type="button"
-                        title="Ver error completo"
-                      >
-                        {error.message}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!auxLoading && auditErrors.length === 0 ? <div className="empty">No hay errores registrados para estos discos.</div> : null}
-          </div>
-        </section>
+        <AuditView
+          diskQuery={diskQuery}
+          noDisksSelected={disks.length > 0 && connectedDiskIds.length === 0}
+          refreshKey={catalogVersion}
+          locale={locale}
+        />
       ) : null}
 
       {viewMode === "admin" ? (
-        <section className="results admin-view">
-          <div className="view-header">
-            <div>
-              <strong>Administracion</strong>
-              <span>Limpieza de contenido indexado por unidad. No borra archivos del disco externo.</span>
-            </div>
-          </div>
-          <div className="admin-panel">
-            {adminMessage ? <div className="admin-notice">{adminMessage}</div> : null}
-            {adminError ? <div className="form-error">{adminError}</div> : null}
-            <section className="companion-admin-panel">
-              <div className="companion-admin-heading">
-                <div>
-                  <strong>Companions autorizados</strong>
-                  <span>Cada equipo puede usar una credencial individual, cifrada localmente y revocable.</span>
-                </div>
-                <button
-                  className="primary-button"
-                  disabled={companionAdminBusy}
-                  onClick={() => void createCompanionPairingCode()}
-                  type="button"
-                >
-                  <Shield size={16} />
-                  Generar codigo
-                </button>
-              </div>
-              {companionPairingCode ? (
-                <div className="companion-pairing-code">
-                  <div>
-                    <span>Codigo de un solo uso</span>
-                    <strong>{companionPairingCode.code}</strong>
-                    <small>Expira a las {new Date(companionPairingCode.expiresAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}.</small>
-                  </div>
-                  <button
-                    className="icon-button"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(companionPairingCode.code);
-                      setAdminMessage("Codigo de emparejamiento copiado.");
-                    }}
-                    title="Copiar codigo"
-                    type="button"
-                  >
-                    <Copy size={18} />
-                  </button>
-                </div>
-              ) : null}
-              <div className="companion-admin-list">
-                {adminCompanions.map((companionItem) => {
-                  const isOnline = !companionItem.revokedAt && Date.now() - new Date(companionItem.lastSeenAt).getTime() <= 45_000;
-                  const confirming = pendingCompanionRevocation === companionItem.installationId;
-                  const tunnelConnected = companionItem.tunnel?.connected === true;
-                  return (
-                    <article className="companion-admin-row" key={companionItem.installationId}>
-                      <span className={`companion-admin-dot ${isOnline ? "is-online" : ""}`} />
-                      <div className="companion-admin-identity">
-                        <strong>{companionItem.name || "VideoCAT Companion"}</strong>
-                        <span>{companionItem.installationId}</span>
-                      </div>
-                      <div className="companion-admin-meta">
-                        <span className={`companion-auth-badge is-${companionItem.revokedAt ? "revoked" : companionItem.authMode}`}>
-                          {companionItem.revokedAt ? "Revocado" : companionItem.authMode === "paired" ? "Individual" : "Token heredado"}
-                        </span>
-                        <span className={`companion-tunnel-badge ${tunnelConnected ? "is-connected" : ""}`}>
-                          {tunnelConnected ? "Túnel seguro" : "Sin túnel"}
-                        </span>
-                        <small>
-                          v{companionItem.version} · {dateLabel(companionItem.lastSeenAt, locale)}
-                          {tunnelConnected ? " · Control remoto listo" : ""}
-                        </small>
-                      </div>
-                      {confirming ? (
-                        <div className="companion-revoke-confirm">
-                          <span>¿Revocar acceso?</span>
-                          <button disabled={companionAdminBusy} onClick={() => void revokeCompanion(companionItem.installationId)} type="button">Sí</button>
-                          <button onClick={() => setPendingCompanionRevocation(null)} type="button">No</button>
-                        </div>
-                      ) : (
-                        <button
-                          className="icon-button danger-icon"
-                          disabled={Boolean(companionItem.revokedAt) || companionAdminBusy}
-                          onClick={() => setPendingCompanionRevocation(companionItem.installationId)}
-                          title="Revocar Companion"
-                          type="button"
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      )}
-                    </article>
-                  );
-                })}
-                {!adminOverviewLoading && adminCompanions.length === 0 ? (
-                  <div className="companion-admin-empty">Todavia no hay Companion registrados.</div>
-                ) : null}
-              </div>
-            </section>
-            {adminOverviewLoading && adminDiskOverview.length === 0 ? <div className="loading">Cargando...</div> : null}
-            <div className="admin-disk-grid">
-              {adminDiskOverview.map((item) => {
-                const disk = item.disk;
-                const totalBytes = item.storage.totalBytes ?? disk.totalBytes ?? null;
-                const freeBytes = item.storage.freeBytes ?? disk.freeBytes ?? null;
-                const usedBytes = item.storage.usedBytes;
-                const usedPercent = totalBytes && usedBytes != null
-                  ? Math.min(100, Math.max(0, (usedBytes / totalBytes) * 100))
-                  : 0;
-                const connected = companionMountedDiskIds.includes(disk.id);
-                return (
-                <article className="admin-disk-card" key={disk.id}>
-                  <div className="admin-disk-main">
-                    <HardDrive size={20} />
-                    <div>
-                      <strong>{disk.name}</strong>
-                      <span>
-                        {disk.driveLetter ? `${disk.driveLetter} · ` : ""}
-                        {disk.fileSystem ?? "Sistema desconocido"}
-                      </span>
-                    </div>
-                    <span className={`admin-disk-connection ${connected ? "is-connected" : ""}`}>
-                      {connected ? "Conectado" : "Desconectado"}
-                    </span>
-                  </div>
-
-                  <div className="admin-storage-overview">
-                    <div className="admin-storage-heading">
-                      <span>Uso físico</span>
-                      <strong>{totalBytes ? `${Math.round(usedPercent)}%` : "Sin reporte"}</strong>
-                    </div>
-                    <div className="admin-storage-bar"><span style={{ width: `${usedPercent}%` }} /></div>
-                    <dl className="admin-disk-meta is-storage">
-                      <div><dt>Usado</dt><dd>{usedBytes != null ? formatBytes(usedBytes) : "-"}</dd></div>
-                      <div><dt>Libre</dt><dd>{freeBytes != null ? formatBytes(freeBytes) : "Pendiente"}</dd></div>
-                      <div><dt>Total</dt><dd>{totalBytes != null ? formatBytes(totalBytes) : "-"}</dd></div>
-                      <div><dt>Catalogado</dt><dd>{formatBytes(item.storage.catalogedBytes)}</dd></div>
-                    </dl>
-                  </div>
-
-                  <dl className="admin-disk-meta is-catalog">
-                    <div><dt>Videos presentes</dt><dd>{item.catalog.presentFiles.toLocaleString(locale)}</dd></div>
-                    <div><dt>No encontrados</dt><dd>{item.catalog.missingFiles.toLocaleString(locale)}</dd></div>
-                    <div><dt>Escaneos</dt><dd>{item.catalog.scanCount.toLocaleString(locale)}</dd></div>
-                    <div><dt>Errores</dt><dd>{item.catalog.errorCount.toLocaleString(locale)}</dd></div>
-                    <div>
-                      <dt>Ultimo indexado</dt>
-                      <dd>{dateLabel(disk.lastScannedAt, locale)}</dd>
-                    </div>
-                  </dl>
-
-                  <div className="admin-disk-activity">
-                    <div className="admin-activity-heading">
-                      <History size={15} />
-                      <strong>Actividad reciente</strong>
-                    </div>
-                    {item.recentActions.length > 0 ? item.recentActions.map((action) => (
-                      <div className="admin-activity-row" key={`${action.type}:${action.id}`}>
-                        <span className={`admin-activity-icon is-${action.type}`}>
-                          {action.type === "deletion" ? <Trash2 size={14} /> : <Database size={14} />}
-                        </span>
-                        <div>
-                          <strong title={action.filename ?? undefined}>
-                            {action.type === "deletion"
-                              ? `${language === "en"
-                                ? action.status === "deleted" ? "Deleted" : "Deletion"
-                                : action.status === "deleted" ? "Eliminado" : "Borrado"}: ${action.filename ?? "-"}`
-                              : `${language === "en" ? "Scan" : "Escaneo"} ${action.status}`}
-                          </strong>
-                          <span>
-                            {action.type === "deletion"
-                              ? formatBytes(action.sizeBytes ?? 0)
-                              : language === "en"
-                                ? `${action.fileCount ?? 0} files · ${action.errorCount ?? 0} errors`
-                                : `${action.fileCount ?? 0} archivos · ${action.errorCount ?? 0} errores`}
-                            {` · ${dateLabel(action.occurredAt, locale)}`}
-                          </span>
-                        </div>
-                      </div>
-                    )) : <span className="admin-activity-empty">Sin actividad registrada.</span>}
-                  </div>
-
-                  <button
-                    className="danger-button"
-                    disabled={adminBusyDiskId === disk.id}
-                    onClick={() => void purgeDiskCatalog(disk)}
-                    type="button"
-                  >
-                    <Trash2 size={16} />
-                    {adminBusyDiskId === disk.id ? "Limpiando..." : "Vaciar catalogo"}
-                  </button>
-                </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+        <AdminView
+          locale={locale}
+          refreshKey={catalogVersion}
+          mountedDiskIds={companionMountedDiskIds}
+          onDiskPurged={handleDiskPurged}
+        />
       ) : null}
 
       {viewMode === "profile" ? (
-        <section className="results profile-view">
-          <div className="view-header">
-            <div>
-              <strong>Perfil y seguridad</strong>
-              <span>Seguridad, carpetas privadas y preferencias de reproducción.</span>
-            </div>
-          </div>
-          <form className="profile-panel" onSubmit={saveProfileSecurity}>
-            {profileLoading ? <div className="loading">Cargando...</div> : null}
-            {profileMessage ? <div className="admin-notice">{profileMessage}</div> : null}
-            {profileError ? <div className="form-error">{profileError}</div> : null}
-            <div className="profile-status">
-              <Lock size={18} />
-              <span>{profileSecurity?.hasPin ? "PIN configurado" : "PIN no configurado"}</span>
-            </div>
-            <div className="profile-grid">
-              <label>
-                PIN actual
-                <input
-                  value={profileCurrentPin}
-                  onChange={(event) => setProfileCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                  inputMode="numeric"
-                  autoComplete="current-password"
-                  placeholder="0000"
-                  type="password"
-                />
-              </label>
-              <label>
-                Nuevo PIN
-                <input
-                  value={profileNewPin}
-                  onChange={(event) => setProfileNewPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  placeholder="0000"
-                  type="password"
-                />
-              </label>
-            </div>
-            <label className="profile-patterns">
-              Patrones protegidos
-              <textarea
-                value={profilePatternsText}
-                onChange={(event) => setProfilePatternsText(event.target.value)}
-                rows={8}
-                placeholder={"Private\nProtected"}
-              />
-              <small>Un patron por linea o separados por coma. VideoCAT ocultara carpetas cuyo nombre contenga cualquiera de estos textos.</small>
-            </label>
-            <label className="profile-consent">
-              <input
-                checked={profileChromecastEnabled}
-                onChange={(event) => setProfileChromecastEnabled(event.target.checked)}
-                type="checkbox"
-              />
-              <span>
-                <strong>Permitir reproducción en Chromecast</strong>
-                <small>Al activarlo, VideoCAT podrá generar enlaces temporales para que un Chromecast solicite el video a tu servidor. Google Cast solo se cargará cuando uses esta función.</small>
-              </span>
-            </label>
-            <div className="profile-actions">
-              <button className="primary-button" disabled={profileSaving || profileLoading} type="submit">
-                <Shield size={17} />
-                {profileSaving ? "Guardando..." : "Guardar perfil"}
-              </button>
-            </div>
-          </form>
-          <section className="profile-panel vc-token-panel" aria-labelledby="companion-token-title">
-            <div className="vc-token-head">
-              <strong id="companion-token-title">Companion local</strong>
-              <span className={`vc-token-state ${companionTokenSaved ? "is-set" : ""}`}>
-                {companionTokenSaved ? "Token guardado en este navegador" : "Sin token en este navegador"}
-              </span>
-            </div>
-            <p className="vc-token-help">
-              Abrir, copiar y borrar archivos en esta PC requiere el token del Companion. Copialo desde la bandeja de Windows (Configuración › Token del navegador) y pegalo acá. Se guarda solo en este navegador.
-            </p>
-            <div className="vc-token-row">
-              <label className="vc-visually-hidden" htmlFor="companion-token-input">Token del Companion</label>
-              <input
-                id="companion-token-input"
-                value={companionTokenInput}
-                onChange={(event) => setCompanionTokenInput(event.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="Pegá el token del Companion"
-                type="password"
-              />
-              <button className="vc-button is-primary" disabled={!companionTokenInput.trim()} onClick={saveCompanionToken} type="button">
-                Guardar token
-              </button>
-              {companionTokenSaved ? (
-                <button className="vc-button" onClick={clearCompanionToken} type="button">Quitar</button>
-              ) : null}
-            </div>
-          </section>
-        </section>
+        <ProfileView
+          security={profileSecurity}
+          onSecuritySaved={handleSecuritySaved}
+          themePreferences={themePreferences}
+          resolvedAppearance={resolvedAppearance}
+          onThemeChange={updateThemePreferences}
+          language={language}
+          onLanguageChange={setLanguage}
+        />
       ) : null}
 
-      {selectedAuditError ? (
-        <div
-          className="audit-detail-backdrop"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedAuditError(null);
-          }}
-        >
-          <section className="audit-detail-panel">
-            <header className="audit-detail-header">
-              <div>
-                <span>{selectedAuditError.diskName}</span>
-                <h2>{selectedAuditError.category} · {selectedAuditError.phase}</h2>
-              </div>
-              <button className="icon-button" onClick={() => setSelectedAuditError(null)} type="button" title="Cerrar">
-                <X size={20} />
-              </button>
-            </header>
-            <div className="audit-detail-grid">
-              <Info label="Fecha" value={dateLabel(selectedAuditError.createdAt, locale)} />
-              <Info label="Codigo" value={selectedAuditError.code ?? "-"} />
-              <Info label="Ruta relativa" value={selectedAuditError.relativePath ?? "-"} copy />
-              <Info label="Ruta absoluta" value={selectedAuditError.absolutePath ?? "-"} copy />
-            </div>
-            <div className="audit-detail-message">
-              <strong>Mensaje completo</strong>
-              <pre>{selectedAuditError.message}</pre>
-            </div>
-          </section>
-        </div>
-      ) : null}
 
       {recoverableSpaceOpen ? (
         <RecoverableSpaceModal
@@ -4351,76 +2556,23 @@ export function App() {
         </div>
       </main>
 
-      <nav className="vc-tabbar" aria-label="Secciones">
-        {mobileTabItems.map((item) => (
-          <button
-            key={item.mode}
-            className={`vc-tab ${viewMode === item.mode ? "is-active" : ""}`}
-            aria-current={viewMode === item.mode ? "page" : undefined}
-            onClick={() => switchView(item.mode)}
-            type="button"
-          >
-            {item.icon}
-            <span>{item.mode === "downloads" ? "Descargas" : item.label}</span>
-            {item.badge ? <span className="vc-tab-badge">{item.badge}</span> : null}
-          </button>
-        ))}
-        <button
-          className={`vc-tab ${mobileMenuOpen || mobileMoreItems.some((item) => item.mode === viewMode) ? "is-active" : ""}`}
-          onClick={() => setMobileMenuOpen((open) => !open)}
-          aria-expanded={mobileMenuOpen}
-          aria-haspopup="dialog"
-          type="button"
-        >
-          <MoreHorizontal size={20} />
-          <span>Más</span>
-        </button>
-      </nav>
+      <MobileNav
+        {...{
+          companionIndicatorLabel,
+          companionIndicatorState,
+          connectedDiskIds,
+          disks,
+          logout,
+          mobileMenuOpen,
+          mobileMoreItems,
+          mobileTabItems,
+          setMobileMenuOpen,
+          setThemePanelOpen,
+          switchView,
+          viewMode
+        }}
+      />
 
-      {mobileMenuOpen ? (
-        <>
-          <button className="vc-sheet-scrim" type="button" aria-label="Cerrar menú" onClick={() => setMobileMenuOpen(false)} />
-          <div className="vc-sheet vc-more-sheet" role="dialog" aria-modal="true" aria-label="Más secciones">
-            <span className="vc-sheet-handle" aria-hidden="true" />
-            <div className={`vc-companion-card ${companionIndicatorState}`}>
-              <span className="vc-companion-title">
-                <em className={`agent-status-dot ${companionIndicatorState}`} aria-hidden="true" />
-                <span>{companionIndicatorLabel}</span>
-              </span>
-              <span className="vc-companion-meta">{`${connectedDiskIds.length} de ${disks.length} discos seleccionados`}</span>
-            </div>
-            <nav className="vc-nav" aria-label="Más secciones">
-              {mobileMoreItems.map((item) => (
-                <button
-                  key={item.mode}
-                  className={`vc-nav-item ${viewMode === item.mode ? "is-active" : ""}`}
-                  aria-current={viewMode === item.mode ? "page" : undefined}
-                  onClick={() => switchView(item.mode)}
-                  type="button"
-                >
-                  {item.icon}
-                  <span className="vc-nav-label">{item.label}</span>
-                </button>
-              ))}
-              <button
-                className="vc-nav-item"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  setThemePanelOpen(true);
-                }}
-                type="button"
-              >
-                <Palette size={18} />
-                <span className="vc-nav-label">Tema e idioma</span>
-              </button>
-              <button className="vc-nav-item" onClick={logout} type="button">
-                <LogOut size={18} />
-                <span className="vc-nav-label">Salir</span>
-              </button>
-            </nav>
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

@@ -98,6 +98,8 @@ async function writeFrames(diskId: string, fileId: string, palette: (typeof pale
 
 async function main() {
   await prisma.$transaction([
+    prisma.actionAudit.deleteMany(),
+    prisma.agentError.deleteMany(),
     prisma.downloadQueue.deleteMany(),
     prisma.thumbnail.deleteMany(),
     prisma.videoFileCategory.deleteMany(),
@@ -183,6 +185,59 @@ async function main() {
       await writeFrames(disk.id, file.id, original.palette, original.durationSeconds);
     }
   }
+
+  // A small download queue: one transfer in progress, pending, finished and failed entries.
+  const queueStates = ["downloading", "queued", "queued", "queued", "done", "done", "failed"] as const;
+  for (const [index, status] of queueStates.entries()) {
+    const original = originals[40 + index];
+    await prisma.downloadQueue.create({
+      data: {
+        videoFileId: original.file.id,
+        status,
+        source: index % 2 === 0 ? "manual" : "random",
+        requestedAt: new Date(Date.now() - (index + 1) * 3_600_000),
+        startedAt: status === "queued" ? null : new Date(Date.now() - index * 3_600_000),
+        completedAt: status === "done" || status === "failed" ? new Date() : null,
+        progressBytes: BigInt(status === "downloading" ? Math.round(original.sizeBytes * 0.42) : status === "done" ? original.sizeBytes : 0),
+        destinationPath: status === "done" ? `C:/Users/demo/Desktop/VideoCAT/${original.file.filename}` : null,
+        errorMessage: status === "failed" ? "El disco se desconectó durante la copia" : null
+      }
+    });
+  }
+
+  // Agent errors with repeated messages and an action ledger for the audit view.
+  const errorTemplates = [
+    { category: "metadata", phase: "ffprobe", code: "INVALID_DATA", message: "Invalid data found when processing input" },
+    { category: "thumbnail", phase: "extract", code: "TIMEOUT", message: "Frame extraction timed out after 30 s" },
+    { category: "scan", phase: "read", code: "EACCES", message: "Permission denied while reading folder" }
+  ];
+  const errorRows = [];
+  for (let index = 0; index < 36; index += 1) {
+    const template = errorTemplates[index % errorTemplates.length];
+    const original = originals[(index * 5) % originals.length];
+    errorRows.push({
+      diskId: original.file.diskId,
+      ...template,
+      relativePath: original.file.relativePath,
+      createdAt: new Date(Date.now() - index * 7 * 3_600_000)
+    });
+  }
+  await prisma.agentError.createMany({ data: errorRows });
+
+  const actionTemplates = [
+    { action: "scan.finish", status: "succeeded", actorType: "companion", target: "E:/" },
+    { action: "file.delete", status: "succeeded", actorType: "companion", target: "WD Elements/Cursos/Tutorial_edicion_05.webm" },
+    { action: "file.delete", status: "failed", actorType: "companion", target: "LaCie Rugged/Drone/2022/clip.mov", errorCode: "SIZE_MISMATCH", errorMessage: "The file on disk no longer matches the catalog" },
+    { action: "download.queue.clear", status: "succeeded", actorType: "web", target: "download-queue" },
+    { action: "maintenance.prune", status: "succeeded", actorType: "web", target: null }
+  ];
+  await prisma.actionAudit.createMany({
+    data: Array.from({ length: 20 }, (_, index) => {
+      const template = actionTemplates[index % actionTemplates.length];
+      const createdAt = new Date(Date.now() - index * 11 * 3_600_000);
+      return { ...template, actorId: template.actorType === "web" ? "admin" : null, startedAt: createdAt, completedAt: createdAt, createdAt };
+    })
+  });
 
   const count = await prisma.videoFile.count();
   console.log(`Demo catalog ready: ${createdDisks.length} disks, ${count} videos, thumbnails in ${thumbnailsDir}.`);
