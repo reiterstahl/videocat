@@ -427,7 +427,7 @@ async function pairCompanion(code: string, values: Record<string, string>): Prom
     await saveStoredCredential({ companionId, serverUrl, issuedAt: body.issuedAt }, body.credential);
     normalized.AGENT_TOKEN = "";
     const target = await saveConfig(normalized);
-    addLog("info", "seguridad", `Companion emparejado con ${serverUrl}. Configuracion: ${target}`);
+    addLog("info", "seguridad", `Companion emparejado con ${serverUrl}. Configuración: ${target}`);
     restartCompanion();
     updateMenu();
     notify("VideoCAT Companion", "Emparejamiento completado. La credencial individual se guardo cifrada.");
@@ -510,7 +510,7 @@ function runAgentTask(label: string, args: string[]): void {
     busy = false;
     void refreshMountedDisks().finally(updateMenu);
     const tail = output.trim().split(/\r?\n/).slice(-3).join("\n");
-    addLog(code === 0 ? "info" : "error", label, `Terminado con codigo ${code ?? "desconocido"}.`);
+    addLog(code === 0 ? "info" : "error", label, `Terminado con código ${code ?? "desconocido"}.`);
     notify("VideoCAT", code === 0 ? `${label} terminado.` : `${label} fallo.\n${tail}`.slice(0, 240));
   });
 }
@@ -598,7 +598,7 @@ function startCompanion(): void {
   });
   child.once("exit", (code) => {
     const stoppedIntentionally = child.killed || appQuitting || companion !== child;
-    addLog(code === 0 ? "info" : "warn", "companion", `Companion detenido con codigo ${code ?? "desconocido"}.`);
+    addLog(code === 0 ? "info" : "warn", "companion", `Companion detenido con código ${code ?? "desconocido"}.`);
     if (companion === child) companion = null;
     updateMenu();
 
@@ -606,7 +606,7 @@ function startCompanion(): void {
     if (companionRunWasStable(startedAt, Date.now())) companionRestartFailures = 0;
     const delayMs = companionRestartDelayMs(companionRestartFailures);
     companionRestartFailures += 1;
-    addLog("warn", "companion", `Reinicio automatico programado en ${Math.round(delayMs / 1000)} segundo(s).`);
+    addLog("warn", "companion", `Reinicio automático programado en ${Math.round(delayMs / 1000)} segundo(s).`);
     if (companionRestartFailures === 1) {
       notify("VideoCAT Companion", "El proceso se detuvo inesperadamente. Se intentara reiniciar automaticamente.");
     }
@@ -643,178 +643,215 @@ async function openVideoCat(): Promise<void> {
   await shell.openExternal(parsed.toString());
 }
 
-function configHtml(): string {
+function configHtml(logoDataUrl: string): string {
   return `<!doctype html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <title>VideoCAT Companion v${app.getVersion()}</title>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: light;
+      --bg: #f3f4f6; --surface: #ffffff; --sunken: #f6f7f9; --hover: #eef0f3;
+      --border: #e2e5e9; --border-strong: #cdd2d8; --text: #14181c; --text-soft: #2b333b; --muted: #5b6670;
+      --accent: #fc6121; --accent-strong: #c2410c; --accent-soft: #fff0e8; --accent-ink: #8a2e07;
+      --success: #15803d; --success-soft: #e7f6ec; --danger: #b91c1c; --danger-soft: #fdecec;
+      --shadow: 0 1px 2px rgba(16, 24, 32, 0.05), 0 10px 28px rgba(16, 24, 32, 0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #0d0f12; --surface: #15181c; --sunken: #111418; --hover: #1f242a;
+        --border: #252a30; --border-strong: #363d45; --text: #e8ecef; --text-soft: #cfd6dc; --muted: #9aa5ae;
+        --accent-soft: #3a1d10; --accent-ink: #ffb08a;
+        --success: #4ade80; --success-soft: #11291b; --danger: #f87171; --danger-soft: #2c1414;
+        --shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+      }
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #0d1418; color: #eef5f7; }
-    main { width: min(920px, 100%); margin: 0 auto; padding: 24px; display: grid; gap: 16px; }
-    h1 { margin: 0; font-size: 24px; }
-    h2 { margin: 0; font-size: 16px; }
-    p { margin: 0; color: #9aabb4; line-height: 1.4; }
-    label { display: grid; gap: 6px; color: #9aabb4; font-size: 12px; font-weight: 800; text-transform: uppercase; }
-    input, textarea, select { min-height: 42px; border: 1px solid #33444d; border-radius: 7px; background: #10191e; color: #fff; padding: 0 11px; font: inherit; }
-    textarea { min-height: 72px; padding: 10px; resize: vertical; }
-    input:focus, textarea:focus, select:focus { outline: 2px solid rgba(252, 97, 33, 0.45); border-color: #fc6121; }
-    input:invalid { border-color: rgba(252, 97, 33, 0.8); }
-    .grid { display: grid; gap: 14px; }
-    .full { grid-column: 1 / -1; }
-    .settings-section { border: 1px solid #2b3941; border-radius: 8px; padding: 16px; display: grid; gap: 13px; background: #111a1f; }
-    .settings-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-    .section-head > div { display: grid; gap: 4px; }
-    .monitor-panel { border-color: #35464f; }
-    .pair-panel { border: 1px solid #3c4d56; border-left: 4px solid #fc6121; border-radius: 7px; padding: 13px; display: grid; gap: 10px; background: #0f181d; }
-    .pair-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .pair-head h2 { margin: 0 0 4px; font-size: 15px; }
-    .pair-status { color: #ffbd96; font-size: 12px; font-weight: 900; }
-    .pair-status.is-paired { color: #76d69d; }
-    .pair-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
-    .pair-code { letter-spacing: 2px; text-transform: uppercase; }
-    .monitor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .monitor-head h2 { margin: 0; font-size: 15px; }
-    .monitor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .monitor-group { display: grid; gap: 7px; }
-    .monitor-group-title { color: #d7e3e8; font-size: 12px; font-weight: 900; text-transform: uppercase; }
-    .drive-picker { display: grid; gap: 7px; border: 1px solid #34454e; border-radius: 7px; background: #0c151a; padding: 10px; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+    header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); }
+    .catmark { width: 30px; height: 25px; flex: 0 0 auto; background: var(--accent); -webkit-mask: url("${logoDataUrl}") center / contain no-repeat; mask: url("${logoDataUrl}") center / contain no-repeat; }
+    h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+    h1 span { color: var(--accent); }
+    .version { border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; color: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
+    .spacer { flex: 1 1 auto; }
+    .pair-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); padding: 3px 10px; font-size: 12px; font-weight: 600; }
+    .pair-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .pair-status.is-paired { background: var(--success-soft); color: var(--success); }
+    main { width: min(1080px, 100%); margin: 0 auto; padding: 16px 20px 88px; }
+    form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+    .card { min-width: 0; display: grid; gap: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 14px 16px; box-shadow: var(--shadow); }
+    .card.full { grid-column: 1 / -1; }
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .card-head > div:first-child { display: grid; gap: 2px; flex: 1 1 260px; }
+    .card-head { flex-wrap: wrap; }
+    h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    p, .hint { margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; }
+    .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+    .fields.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .wide { grid-column: 1 / -1; }
+    label { min-width: 0; display: grid; gap: 4px; color: var(--text-soft); font-size: 12px; font-weight: 500; }
+    label code { justify-self: start; overflow: hidden; max-width: 100%; color: var(--muted); font: 10.5px ui-monospace, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .label-row { display: grid; gap: 0; }
+    .required { color: var(--accent); }
+    .card-head > .hint { white-space: nowrap; }
+    input, select, textarea { width: 100%; height: 34px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 10px; font: inherit; }
+    textarea { height: auto; min-height: 64px; padding: 8px 10px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent); }
+    input:invalid { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); }
+    input::placeholder { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+    button { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 12px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    button:hover:not(:disabled) { background: var(--hover); }
+    button.primary { border-color: var(--accent-strong); background: var(--accent-strong); color: #ffffff; }
+    button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-strong) 88%, #000000); }
+    button.ghost { background: transparent; }
+    button.danger { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); background: transparent; color: var(--danger); }
+    button.danger:hover:not(:disabled) { background: var(--danger-soft); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .inline { display: flex; align-items: flex-end; gap: 8px; }
+    .inline > label { flex: 1 1 auto; }
+    .pair-code { font-family: ui-monospace, Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; }
+    .note { border-radius: 10px; background: var(--sunken); padding: 8px 10px; color: var(--muted); font-size: 12px; }
+    details.legacy { border-top: 1px solid var(--border); padding-top: 10px; }
+    details.legacy summary, details.card summary { cursor: pointer; color: var(--text-soft); font-weight: 600; list-style: none; }
+    details.legacy summary::before, details.card summary::before { content: "▸ "; color: var(--muted); }
+    details[open].legacy summary::before, details[open].card summary::before { content: "▾ "; }
+    details.legacy label { margin-top: 10px; }
+    details.card { padding: 12px 16px; }
+    details.card[open] { gap: 12px; }
+    .monitor-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+    .monitor-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .monitor-group { min-width: 0; display: grid; align-content: start; gap: 6px; }
+    .monitor-group-title { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    .drive-picker { display: grid; gap: 6px; border: 1px dashed var(--accent); border-radius: 10px; background: var(--accent-soft); padding: 8px; }
     .drive-picker[hidden] { display: none; }
-    .monitor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid #24343d; border-radius: 8px; padding: 10px; background: #131d23; }
+    #targetList, #autoDiskList { display: grid; gap: 6px; }
+    .monitor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 10px; }
     .monitor-row strong, .monitor-row span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .monitor-row strong { color: #fff; font-size: 13px; }
-    .monitor-row span { color: #9aabb4; font-size: 12px; margin-top: 2px; }
-    .monitor-row small { display: inline-block; color: #ffb98f; font-size: 11px; font-weight: 900; margin-top: 4px; text-transform: uppercase; }
-    .monitor-empty { color: #78909c; font-size: 12px; font-weight: 800; border: 1px dashed #2b3941; border-radius: 8px; padding: 12px; }
-    details.settings-section { padding: 0; }
-    details.settings-section > summary { cursor: pointer; padding: 15px 16px; color: #eef5f7; font-weight: 900; }
-    details.settings-section > .settings-section-grid { padding: 0 16px 16px; }
-    .actions { position: sticky; bottom: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; border: 1px solid #33444d; border-radius: 8px; background: rgba(15, 24, 29, 0.96); padding: 10px; backdrop-filter: blur(12px); }
-    button { min-height: 38px; border: 0; border-radius: 7px; padding: 0 14px; font-weight: 900; color: #fff; background: #53636c; }
-    button.primary { background: #fc6121; }
-    button.danger { background: #b7352b; }
-    button.ghost { background: transparent; border: 1px solid #33444d; }
-    button:disabled { opacity: 0.6; cursor: wait; }
-    .required { color: #fc6121; }
-    .hint { color: #b1c4ce; font-size: 12px; font-weight: 700; }
-    .token-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-    #status { min-height: 18px; color: #93d8af; font-size: 13px; font-weight: 800; }
-    #status.is-error { color: #ffb4a4; }
-    #status.is-info { color: #b1c4ce; }
-    .version { color: #fc6121; font-size: 12px; font-weight: 800; vertical-align: middle; }
-    @media (max-width: 680px) {
-      main { padding: 14px; }
-      .settings-section-grid { grid-template-columns: 1fr; }
-      .section-head, .monitor-head { flex-direction: column; }
-      .actions { grid-template-columns: 1fr 1fr; }
-      #status { grid-column: 1 / -1; }
+    .monitor-row strong { font-size: 13px; font-weight: 600; }
+    .monitor-row span { color: var(--muted); font: 11.5px ui-monospace, Consolas, monospace; margin-top: 1px; }
+    .monitor-row small { display: inline-block; margin-top: 4px; border-radius: 999px; background: var(--hover); color: var(--text-soft); padding: 1px 8px; font-size: 10.5px; font-weight: 600; }
+    .monitor-row button { height: 30px; font-size: 12px; }
+    .monitor-empty { border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--muted); padding: 10px; font-size: 12px; }
+    .token-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions { position: fixed; right: 0; bottom: 0; left: 0; z-index: 6; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); padding: 10px 20px; backdrop-filter: blur(12px); }
+    #status { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--success); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    #status.is-error { color: var(--danger); }
+    #status.is-info { color: var(--muted); }
+    @media (max-width: 760px) {
+      form, .monitor-columns { grid-template-columns: minmax(0, 1fr); }
+      .fields.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      main { padding: 12px 12px 88px; }
     }
   </style>
 </head>
 <body>
+  <header>
+    <span class="catmark" aria-hidden="true"></span>
+    <h1>Video<span>CAT</span> Companion</h1>
+    <span class="version">v${app.getVersion()}</span>
+    <span class="spacer"></span>
+    <span id="pairStatus" class="pair-status">Sin emparejar</span>
+  </header>
   <main>
-    <div>
-      <h1>VideoCAT Companion <span class="version">v${app.getVersion()}</span></h1>
-      <p>Configura la conexion que usa el agente para reportar escaneos y recibir tareas.</p>
-    </div>
-    <form id="form" class="grid">
-      <section class="settings-section">
-        <div class="section-head">
-          <div><h2>Conexion con VideoCAT</h2><p class="hint">Define el servidor y autoriza este equipo con una credencial propia.</p></div>
-          <span class="hint"><span class="required">*</span> Obligatorio</span>
+    <form id="form">
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Conexión con VideoCAT</h2><p>Servidor al que este equipo reporta escaneos y del que recibe tareas.</p></div>
+          <span class="hint"><span class="required">*</span> obligatorio</span>
         </div>
-        <div class="settings-section-grid">
-          <label>SERVER_URL <span class="required">*</span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
-          <label>WEB_URL<input name="WEB_URL" placeholder="https://cat.example.com" /></label>
-          <label>COMPANION_NAME<input name="COMPANION_NAME" placeholder="Nombre opcional de este equipo" /></label>
-          <label>AGENT_TOKEN <span class="hint">(solo clientes heredados)</span><input name="AGENT_TOKEN" type="password" /></label>
+        <div class="fields">
+          <label class="wide"><span class="label-row"><span>URL del servidor <span class="required">*</span></span><code>SERVER_URL</code></span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
+          <label><span class="label-row"><span>URL de la web</span><code>WEB_URL</code></span><input name="WEB_URL" placeholder="https://cat.example.com" /></label>
+          <label><span class="label-row"><span>Nombre del equipo</span><code>COMPANION_NAME</code></span><input name="COMPANION_NAME" placeholder="Opcional" /></label>
         </div>
-        <div class="pair-panel">
-          <div class="pair-head">
-            <div>
-              <h2>Credencial individual</h2>
-              <p class="hint">Genera un codigo en VideoCAT: Administracion &gt; Companions. Solo se usa una vez.</p>
-            </div>
-            <span id="pairStatus" class="pair-status">Sin emparejar</span>
-          </div>
-          <div class="pair-controls">
-            <label>CODIGO DE EMPAREJAMIENTO<input id="pairCode" class="pair-code" maxlength="11" placeholder="ABCDE-23456" autocomplete="one-time-code" /></label>
-            <button type="button" id="pair" class="primary">Emparejar</button>
-          </div>
-          <div id="pairDetail" class="hint"></div>
+        <details class="legacy">
+          <summary>Token compartido (solo clientes heredados)</summary>
+          <label><span class="label-row"><span>Token compartido</span><code>AGENT_TOKEN</code></span><input name="AGENT_TOKEN" type="password" autocomplete="off" /></label>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Emparejamiento</h2><p>Genera un código en VideoCAT › Administración › Companions. Solo se usa una vez.</p></div>
+        </div>
+        <div class="inline">
+          <label><span class="label-row"><span>Código de emparejamiento</span></span><input id="pairCode" class="pair-code" maxlength="11" placeholder="ABCDE-23456" autocomplete="one-time-code" /></label>
+          <button type="button" id="pair" class="primary">Emparejar</button>
+        </div>
+        <div id="pairDetail" class="note"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Token del navegador</h2><p>Abrir, copiar y borrar archivos desde la web solo se acepta con este token. Pégalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div>
+        </div>
+        <label><span class="label-row"><span>Token local</span><code>COMPANION_TOKEN</code></span><input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
+        <div class="token-actions">
+          <button type="button" id="copyToken" class="primary">Copiar token</button>
+          <button type="button" id="toggleToken" class="ghost">Mostrar</button>
+        </div>
+        <p>Si lo borras y guardas, se genera uno nuevo y habrá que pegarlo otra vez en el navegador.</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Archivos y herramientas</h2><p>Destino de las copias y rutas opcionales de FFmpeg.</p></div>
+        </div>
+        <div class="fields">
+          <label class="wide"><span class="label-row"><span>Carpeta de descargas</span><code>COMPANION_DOWNLOAD_DIR</code></span><input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
+          <label><span class="label-row"><span>FFmpeg</span><code>FFMPEG_PATH</code></span><input name="FFMPEG_PATH" placeholder="Detección automática" /></label>
+          <label><span class="label-row"><span>FFprobe</span><code>FFPROBE_PATH</code></span><input name="FFPROBE_PATH" placeholder="Detección automática" /></label>
+          <label class="wide"><span class="label-row"><span>Carpeta de estado</span><code>AGENT_STATE_DIR</code></span><input name="AGENT_STATE_DIR" placeholder="Automática: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
         </div>
       </section>
 
-      <section class="settings-section monitor-panel">
-        <div class="monitor-head">
-          <div>
-            <h2>Rutas monitoreadas</h2>
-            <p class="hint">Unidades y carpetas locales o de red que el Companion revisara automaticamente.</p>
-          </div>
+      <section class="card full">
+        <div class="card-head">
+          <div><h2>Rutas monitoreadas</h2><p>Unidades y carpetas locales o de red que el Companion revisa automáticamente.</p></div>
           <div class="monitor-actions">
-            <button type="button" id="addFolder" class="ghost">Añadir carpeta...</button>
-            <button type="button" id="addDrive" class="primary">Añadir unidad...</button>
+            <button type="button" id="addFolder" class="ghost">Añadir carpeta…</button>
+            <button type="button" id="addDrive" class="primary">Añadir unidad…</button>
           </div>
         </div>
         <div id="drivePicker" class="drive-picker" hidden></div>
-        <div class="monitor-group">
-          <span class="monitor-group-title">Rutas añadidas manualmente</span>
-          <div id="targetList"></div>
-        </div>
-        <div class="monitor-group">
-          <span class="monitor-group-title">Discos VideoCAT detectados</span>
-          <p class="hint">Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
-          <div id="autoDiskList"></div>
+        <div class="monitor-columns">
+          <div class="monitor-group">
+            <span class="monitor-group-title">Rutas añadidas manualmente</span>
+            <div id="targetList"></div>
+          </div>
+          <div class="monitor-group">
+            <span class="monitor-group-title">Discos VideoCAT detectados</span>
+            <div id="autoDiskList"></div>
+            <p>Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
+          </div>
         </div>
         <textarea name="COMPANION_MONITORED_TARGETS" id="COMPANION_MONITORED_TARGETS" hidden></textarea>
         <input name="COMPANION_DISABLED_DISK_IDS" id="COMPANION_DISABLED_DISK_IDS" hidden />
       </section>
 
-      <section class="settings-section">
-        <div class="section-head"><div><h2>Token del navegador</h2><p class="hint">Las acciones locales (abrir, copiar, borrar) solo se aceptan con este token. Cópialo y pégalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div></div>
-        <div class="settings-section-grid">
-          <label class="full">COMPANION_TOKEN<input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
-          <div class="full token-actions">
-            <button type="button" id="copyToken" class="primary">Copiar token</button>
-            <button type="button" id="toggleToken" class="ghost">Mostrar</button>
-            <span class="hint">Si lo borras y guardas, se genera uno nuevo y habra que pegarlo otra vez en el navegador.</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <div class="section-head"><div><h2>Archivos y herramientas</h2><p class="hint">Destino de las copias y rutas opcionales de FFmpeg.</p></div></div>
-        <div class="settings-section-grid">
-          <label class="full">COMPANION_DOWNLOAD_DIR<input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
-          <label>FFMPEG_PATH<input name="FFMPEG_PATH" placeholder="Deteccion automatica" /></label>
-          <label>FFPROBE_PATH<input name="FFPROBE_PATH" placeholder="Deteccion automatica" /></label>
-          <label class="full">AGENT_STATE_DIR<input name="AGENT_STATE_DIR" placeholder="Automatico: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
-        </div>
-      </section>
-
-      <details class="settings-section">
+      <details class="card full">
         <summary>Opciones avanzadas</summary>
-        <div class="settings-section-grid">
-          <label>COMPANION_PORT<input name="COMPANION_PORT" placeholder="29429" /></label>
-          <label class="full">COMPANION_ALLOWED_ORIGINS<input name="COMPANION_ALLOWED_ORIGINS" /></label>
-          <label>COMPANION_DISK_POLL_MS<input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
-          <label>COMPANION_SCAN_POLL_MS<input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
-          <label>COMPANION_HEARTBEAT_MS<input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
-          <label>COMPANION_DELETE_POLL_MS<input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
-          <label>COMPANION_DOWNLOAD_POLL_MS<input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
-          <label>COMPANION_DOWNLOAD_STALL_MS<input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
-          <label>TRAY_DISK_POLL_MS<input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
-          <label>REMUX MP4 TEMPORAL<select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
-          <label>COMPANION_AUTO_DELETE_MARKED<input name="COMPANION_AUTO_DELETE_MARKED" placeholder="true" /></label>
+        <div class="fields three">
+          <label><span class="label-row"><span>Puerto local</span><code>COMPANION_PORT</code></span><input name="COMPANION_PORT" placeholder="29429" /></label>
+          <label><span class="label-row"><span>Remux MP4 temporal</span><code>COMPANION_REMOTE_REMUX_ENABLED</code></span><select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
+          <label><span class="label-row"><span>Borrar los marcados</span><code>COMPANION_AUTO_DELETE_MARKED</code></span><select name="COMPANION_AUTO_DELETE_MARKED"><option value="true">Automáticamente</option><option value="false">Solo a pedido</option></select></label>
+          <label class="wide"><span class="label-row"><span>Orígenes permitidos</span><code>COMPANION_ALLOWED_ORIGINS</code></span><input name="COMPANION_ALLOWED_ORIGINS" placeholder="https://cat.example.com,http://localhost:5173" /></label>
+          <label><span class="label-row"><span>Detección de discos (ms)</span><code>COMPANION_DISK_POLL_MS</code></span><input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
+          <label><span class="label-row"><span>Reescaneo (ms)</span><code>COMPANION_SCAN_POLL_MS</code></span><input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
+          <label><span class="label-row"><span>Latido (ms)</span><code>COMPANION_HEARTBEAT_MS</code></span><input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
+          <label><span class="label-row"><span>Revisión de borrados (ms)</span><code>COMPANION_DELETE_POLL_MS</code></span><input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
+          <label><span class="label-row"><span>Revisión de descargas (ms)</span><code>COMPANION_DOWNLOAD_POLL_MS</code></span><input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
+          <label><span class="label-row"><span>Copia estancada (ms)</span><code>COMPANION_DOWNLOAD_STALL_MS</code></span><input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
+          <label><span class="label-row"><span>Discos en la bandeja (ms)</span><code>TRAY_DISK_POLL_MS</code></span><input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
         </div>
       </details>
 
       <div class="actions">
-        <div id="status"></div>
-        <button type="button" id="close">Cerrar</button>
+        <div id="status" role="status"></div>
+        <button type="button" id="close" class="ghost">Cerrar</button>
         <button type="submit" class="primary">Guardar cambios</button>
       </div>
     </form>
@@ -847,8 +884,8 @@ function configHtml(): string {
         pairDetail.textContent = pairing.paired
           ? "Credencial cifrada para " + pairing.serverUrl + ". ID: " + pairing.companionId
           : pairing.encryptionAvailable
-            ? "Este equipo todavia usa el token compartido o no tiene credenciales."
-            : "El cifrado seguro de Windows no esta disponible en esta sesion.";
+            ? "Este equipo todavía usa el token compartido o no tiene credenciales."
+            : "El cifrado seguro de Windows no está disponible en esta sesión.";
       } catch (error) {
         pairStatus.textContent = "Estado desconocido";
         pairDetail.textContent = error?.message || "No se pudo consultar el emparejamiento.";
@@ -922,7 +959,7 @@ function configHtml(): string {
         const alreadyManual = hasManualTarget(drive.root);
         const ignored = drive.diskId && disabledDiskIds.has(drive.diskId);
         if (drive.diskId && !ignored) {
-          action.textContent = "Automatico";
+          action.textContent = "Automático";
           action.disabled = true;
           action.className = "ghost";
         } else if (drive.diskId && ignored) {
@@ -953,7 +990,7 @@ function configHtml(): string {
       if (targets.length === 0) {
         const empty = document.createElement("div");
         empty.className = "monitor-empty";
-        empty.textContent = "No hay rutas manuales. Los discos con .videocat-disk.json siguen detectandose automaticamente.";
+        empty.textContent = "No hay rutas manuales. Los discos con .videocat-disk.json se siguen detectando automáticamente.";
         targetList.appendChild(empty);
       } else {
         for (const target of targets) {
@@ -1000,7 +1037,7 @@ function configHtml(): string {
         const location = document.createElement("span");
         location.textContent = drive.root;
         const type = document.createElement("small");
-        type.textContent = ignored ? "ignorado" : "monitoreo automatico";
+        type.textContent = ignored ? "ignorado" : "monitoreo automático";
         main.append(name, location, type);
         const toggle = document.createElement("button");
         toggle.type = "button";
@@ -1027,7 +1064,7 @@ function configHtml(): string {
 
     async function loadConfig() {
       if (!window.videocatConfig) {
-        setStatus("No se pudo cargar el puente de configuracion de Electron.", "error");
+        setStatus("No se pudo cargar el puente de configuración de Electron.", "error");
         return;
       }
 
@@ -1042,7 +1079,7 @@ function configHtml(): string {
         await refreshAvailableDrives();
         await refreshPairingStatus();
       } catch (error) {
-        setStatus(error?.message || "No se pudo cargar la configuracion.", "error");
+        setStatus(error?.message || "No se pudo cargar la configuración.", "error");
       }
     }
 
@@ -1056,13 +1093,13 @@ function configHtml(): string {
     });
     document.getElementById("copyToken").addEventListener("click", async () => {
       const copied = window.videocatConfig?.copyToken ? await window.videocatConfig.copyToken() : false;
-      setStatus(copied ? "Token copiado. Pégalo en VideoCAT › Perfil › Companion local." : "Guarda la configuracion para generar el token.", copied ? "success" : "error");
+      setStatus(copied ? "Token copiado. Pégalo en VideoCAT › Perfil › Companion local." : "Guarda la configuración para generar el token.", copied ? "success" : "error");
     });
     document.getElementById("pair").addEventListener("click", async () => {
       if (!window.videocatConfig?.pair) return;
       const code = String(pairCode.value || "").trim();
       if (!code) {
-        setStatus("Ingresa el codigo generado desde Administracion.", "error");
+        setStatus("Ingresa el código generado desde Administración.", "error");
         pairCode.focus();
         return;
       }
@@ -1109,23 +1146,23 @@ function configHtml(): string {
       event.preventDefault();
       if (!form.reportValidity()) return;
       if (!window.videocatConfig) {
-        setStatus("No se pudo cargar el puente de configuracion de Electron. Cierra y abre de nuevo el companion.", "error");
+        setStatus("No se pudo cargar el puente de configuración de Electron. Cierra y abre de nuevo el Companion.", "error");
         return;
       }
       syncMonitorInputs();
       const values = Object.fromEntries(new FormData(form).entries());
       const submit = form.querySelector("button[type=submit]");
       submit.disabled = true;
-      setStatus("Guardando configuracion...", "info");
+      setStatus("Guardando configuración...", "info");
       try {
         const result = await window.videocatConfig.save(values);
         if (!result.ok) {
-          setStatus(result.message || "No se pudo guardar la configuracion.", "error");
+          setStatus(result.message || "No se pudo guardar la configuración.", "error");
           return;
         }
-        setStatus("Configuracion guardada. Companion reiniciado.", "success");
+        setStatus("Configuración guardada. Companion reiniciado.", "success");
       } catch (error) {
-        setStatus(error?.message || "No se pudo guardar la configuracion.", "error");
+        setStatus(error?.message || "No se pudo guardar la configuración.", "error");
       } finally {
         submit.disabled = false;
       }
@@ -1135,6 +1172,13 @@ function configHtml(): string {
 </html>`;
 }
 
+function configLogoDataUrl(): string {
+  const icon = iconPath();
+  if (!icon) return "";
+  const image = nativeImage.createFromPath(icon);
+  return image.isEmpty() ? "" : image.resize({ width: 96 }).toDataURL();
+}
+
 function openConfigWindow(): void {
   if (configWindow) {
     configWindow.focus();
@@ -1142,10 +1186,10 @@ function openConfigWindow(): void {
   }
 
   configWindow = new BrowserWindow({
-    width: 900,
-    height: 780,
-    minWidth: 680,
-    minHeight: 620,
+    width: 1000,
+    height: 760,
+    minWidth: 640,
+    minHeight: 560,
     title: `VideoCAT Companion v${app.getVersion()}`,
     icon: iconPath() || undefined,
     resizable: true,
@@ -1160,7 +1204,7 @@ function openConfigWindow(): void {
   configWindow.on("closed", () => {
     configWindow = null;
   });
-  void configWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(configHtml())}`);
+  void configWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(configHtml(configLogoDataUrl()))}`);
 }
 
 function logHtml(): string {
@@ -1364,7 +1408,7 @@ function updateMenu(): void {
     { label: companionLabel, enabled: false },
     { type: "separator" },
     { label: "Abrir VideoCAT", click: () => void openVideoCat() },
-    { label: "Configuracion...", click: () => openConfigWindow() },
+    { label: "Configuración...", click: () => openConfigWindow() },
     { label: "Ver actividad...", click: () => openLogWindow() },
     { label: "Actualizar discos", click: () => void refreshMountedDisks().finally(updateMenu) },
     { label: "Discos conectados", submenu: diskItems },
@@ -1442,7 +1486,7 @@ async function main(): Promise<void> {
       const target = await saveConfig(normalized);
       restartCompanion();
       updateMenu();
-      notify("VideoCAT Companion", "Configuracion guardada. Companion reiniciado.");
+      notify("VideoCAT Companion", "Configuración guardada. Companion reiniciado.");
       return { ok: true, path: target };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
