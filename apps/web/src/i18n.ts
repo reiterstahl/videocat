@@ -184,6 +184,7 @@ const en: Record<string, string> = {
   "Reproducir fotogramas": "Play frames",
   "Fotograma siguiente": "Next frame",
   "Pantalla completa": "Full screen",
+  "Pantalla completa (P)": "Full screen (P)",
   "Fotogramas": "Frames",
   "Saltar": "Skip",
   "Etiquetar": "Tag",

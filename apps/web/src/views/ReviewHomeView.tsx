@@ -32,7 +32,7 @@ export function ReviewHomeView({ companionMountedDiskIds, companionOnline, facet
           <span className="vc-overline">Review aleatorio</span>
           <h2>{`${reviewPendingTotal.toLocaleString(locale)} ${reviewPendingTotal === 1 ? "video pendiente" : "videos pendientes"}`}</h2>
           <p>Decide qué conservar y qué borrar, un video a la vez, en los discos seleccionados.</p>
-          <p className="vc-review-hero-keys"><kbd>K</kbd> mantener · <kbd>D</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer</p>
+          <p className="vc-review-hero-keys"><kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer</p>
         </div>
         <div className="vc-review-hero-actions">
           <button className="vc-button is-primary is-large" onClick={() => void loadNextReviewVideo()} disabled={reviewLoading} type="button">

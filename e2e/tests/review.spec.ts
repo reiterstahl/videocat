@@ -17,7 +17,7 @@ test("review session supports keep, undo, tag toggles, skip and delete from the 
 
   const name = page.locator(".vc-review-file h3");
   const first = await name.textContent();
-  await page.keyboard.press("k");
+  await page.keyboard.press("f");
   await expect(name).not.toHaveText(first ?? "");
   await expect(page.locator(".vc-review-last.is-keep")).toBeVisible();
   await expect(page.locator(".vc-review-session strong")).toHaveText("1");
@@ -35,7 +35,7 @@ test("review session supports keep, undo, tag toggles, skip and delete from the 
   await page.keyboard.press("s");
   await expect(name).not.toHaveText(first ?? "");
   await expect(page.locator(".vc-review-session strong")).toHaveText("0");
-  await page.keyboard.press("d");
+  await page.keyboard.press("j");
   await expect(page.locator(".vc-review-last.is-delete")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(session).toHaveCount(0);

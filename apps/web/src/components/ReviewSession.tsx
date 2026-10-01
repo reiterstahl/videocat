@@ -172,9 +172,10 @@ export function ReviewSession({
       if (key === "escape") {
         if (document.fullscreenElement) return;
         onClose();
-      } else if (key === "k") {
+      } else if (key === "f") {
+        // Home-row split: left hand keeps, right hand deletes.
         void decide("keep");
-      } else if (key === "d") {
+      } else if (key === "j") {
         void decide("delete");
       } else if (key === "s") {
         if (!loading) void onSkip();
@@ -188,7 +189,7 @@ export function ReviewSession({
       } else if (key === " " && layout === "frame") {
         event.preventDefault();
         setFramesPlaying((playing) => !playing);
-      } else if (key === "f") {
+      } else if (key === "p") {
         toggleFullscreen();
       } else if (/^[1-9]$/.test(key)) {
         const category = tagCategories[Number(key) - 1];
@@ -288,7 +289,7 @@ export function ReviewSession({
                 </button>
                 <button className="vc-review-round" onClick={() => moveFrame(1)} type="button" aria-label="Fotograma siguiente"><ChevronRight size={18} /></button>
                 <span className="vc-review-frame-count">{`${frameIndex + 1} / ${frames.length}`}</span>
-                <button className="vc-review-round" onClick={toggleFullscreen} type="button" aria-label="Pantalla completa"><Maximize size={17} /></button>
+                <button className="vc-review-round" onClick={toggleFullscreen} type="button" aria-label="Pantalla completa" title="Pantalla completa (P)"><Maximize size={17} /></button>
               </div>
             ) : null}
             {loading ? <span className="vc-review-loading" aria-hidden="true" /> : null}
@@ -317,7 +318,7 @@ export function ReviewSession({
             <button className="vc-review-decision is-keep" onClick={() => void decide("keep")} disabled={loading} type="button">
               <Check size={20} />
               <span>Mantener</span>
-              <kbd>K</kbd>
+              <kbd>F</kbd>
             </button>
             <button className="vc-review-decision is-skip" onClick={() => void onSkip()} disabled={loading} type="button">
               <SkipForward size={20} />
@@ -327,7 +328,7 @@ export function ReviewSession({
             <button className="vc-review-decision is-delete" onClick={() => void decide("delete")} disabled={loading} type="button">
               <Trash2 size={20} />
               <span>Marcar para borrar</span>
-              <kbd>D</kbd>
+              <kbd>J</kbd>
             </button>
           </div>
 
@@ -416,7 +417,7 @@ export function ReviewSession({
           </div>
 
           <p className="vc-review-keys">
-            <kbd>K</kbd> mantener · <kbd>D</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Espacio</kbd> reproducir · <kbd>F</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
+            <kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Espacio</kbd> reproducir · <kbd>P</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
           </p>
         </aside>
       </div>
