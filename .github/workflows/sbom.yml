@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write: sbom-action attaches the SBOM to the tag's GitHub release.
+  contents: write
   id-token: write
   attestations: write
 
