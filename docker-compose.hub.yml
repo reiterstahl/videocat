@@ -14,6 +14,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: volumes created by root-run releases (< 0.2.0) are handed to the non-root server user.
+  thumbnails-init:
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.0}}
+    user: "0:0"
+    restart: "no"
+    read_only: true
+    network_mode: none
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["sh", "-c", "find /data/video-catalog/thumbnails \\( ! -user 1000 -o ! -group 1000 \\) -exec chown -h 1000:1000 {} +"]
+    volumes:
+      - thumbnails_data:/data/video-catalog/thumbnails
+
   server:
     image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.0}}
     restart: unless-stopped
@@ -28,6 +46,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      thumbnails-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-videocat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a strong random value}@postgres:5432/${POSTGRES_DB:-videocat}}
       SERVER_HOST: 0.0.0.0

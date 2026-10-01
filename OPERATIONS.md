@@ -9,11 +9,13 @@ This runbook covers normal Docker Compose and Portainer deployments. Backups con
 3. In Portainer, pull and redeploy the stack. Prisma migrations run before the API starts.
 4. Confirm `GET /api/health` is healthy and open the web application.
 
-The runtime uses non-root application containers. Fresh thumbnail volumes receive the correct ownership automatically. If an existing `thumbnails_data` volume cannot be written after upgrade, run once from the stack directory:
+The runtime uses non-root application containers. A one-shot `thumbnails-init` service in both Compose files hands an existing `thumbnails_data` volume (created by root-run releases before 0.2.0) to uid 1000 before the API starts, so no manual step is needed. If you run the server without Compose and thumbnail uploads answer `507 Thumbnail storage is not writable`, run once from the stack directory:
 
 ```bash
 docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-videocat} --filter label=com.docker.compose.volume=thumbnails_data | head -n1)":/data alpine:3.21 chown -R 1000:1000 /data
 ```
+
+The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
 ## Upgrading to 0.2.0
 

@@ -1695,7 +1695,7 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
         }
         throw new AgentRequestError(
           `${response.status} ${body}`,
-          response.status === 408 || response.status === 429 || response.status >= 500,
+          response.status === 408 || response.status === 429 || (response.status >= 500 && response.status !== 507),
           response.status
         );
       }
@@ -1704,7 +1704,7 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
       lastError = error;
       if (error instanceof AgentAuthError || (error instanceof AgentRequestError && !error.retryable)) throw error;
       const waitMs = 800 * attempt;
-      console.warn(`Intento ${attempt}/${retries} fallo para ${url}. Reintentando en ${waitMs}ms.`);
+      console.warn(`Intento ${attempt}/${retries} falló para ${url} (${boundedText(error instanceof Error ? error.message : String(error), 200)}). Reintentando en ${waitMs}ms.`);
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
   }
@@ -2245,7 +2245,7 @@ async function uploadBatch(
       } catch (error) {
         uploadFailures += 1;
         const message = boundedErrorMessage(error);
-        console.warn(`Fallo subiendo miniatura ${thumb.kind} para ${compactFileLabel(item.record.absolutePath)}; continuando con el siguiente archivo.`);
+        console.warn(`Falló la subida de la miniatura ${thumb.kind} para ${compactFileLabel(item.record.absolutePath)} (${boundedText(message, 200)}); continuando con el siguiente archivo.`);
         errors.push({
           category: auditCategory(error, "thumbnail"),
           phase: "thumbnail_upload",

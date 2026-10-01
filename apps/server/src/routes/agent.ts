@@ -19,6 +19,7 @@ import { protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
 import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 import { recordAction } from "../lib/action-audit.js";
+import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -815,8 +816,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const filename = `${metadata.kind}.jpg`;
     const thumbnailRelativePath = path.posix.join(metadata.diskId, videoFile.id, filename);
     const destination = path.join(env.THUMBNAILS_DIR, thumbnailRelativePath);
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.writeFile(destination, image);
+    try {
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.writeFile(destination, image);
+    } catch (error) {
+      if (!isStoragePermissionError(error)) throw error;
+      request.log.error({ err: error, destination }, "Thumbnail storage is not writable");
+      return reply.code(507).send({ message: `Thumbnail storage is not writable on the server. ${thumbnailStorageHint}` });
+    }
 
     const thumbnail = await prisma.thumbnail.upsert({
       where: {
