@@ -31,6 +31,13 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "Vista de fotogramas": "Frame view",
+  "Fotograma": "Frame",
+  "Galería": "Gallery",
+  "Fotograma (G)": "Frame (G)",
+  "Galería (G)": "Gallery (G)",
+  "Todos los fotogramas": "All frames",
+  "galería ·": "gallery ·",
   "Abrir, copiar y borrar archivos en esta PC requiere el token del Companion.": "Opening, copying and deleting files on this PC requires the Companion token.",
   "Acción": "Action",
   "Agrupar repetidos": "Group repeats",
@@ -270,6 +277,7 @@ const en: Record<string, string> = {
   "Conectado al Companion": "Connected to the Companion",
   "No detectado por el Companion": "Not detected by the Companion",
   "Sin datos de capacidad": "No capacity data",
+  "Sin datos": "No data",
   "A descargar": "To download",
   "Duplicados": "Duplicates",
   "Iniciar modo asistido": "Start assisted mode",
@@ -635,6 +643,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) videos? pendientes?$/);
   if (match) return `${match[1]} pending ${match[1].trim() === "1" ? "video" : "videos"}`;
+
+  match = text.match(/^Ver fotograma (\d+) en grande$/);
+  if (match) return `View frame ${match[1]} full size`;
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;

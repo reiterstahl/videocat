@@ -589,24 +589,49 @@
 }
 
 .vc-disk-strip {
-  display: flex;
+  --vc-disk-chip-width: 216px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(var(--vc-disk-chip-width), 1fr);
+  grid-template-rows: auto;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  overscroll-behavior-x: contain;
+  padding-bottom: 4px;
   scrollbar-width: thin;
+  scrollbar-color: var(--vc-border-strong) transparent;
+}
+
+.vc-disk-strip.is-two-rows {
+  grid-template-rows: repeat(2, auto);
+}
+
+.vc-disk-strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.vc-disk-strip::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--vc-border-strong);
+}
+
+.vc-disk-strip::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .vc-disk-chip {
-  flex: 0 0 auto;
-  min-height: 46px;
+  position: relative;
+  min-width: 0;
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  overflow: hidden;
   border: 1px solid var(--vc-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--vc-surface);
   color: var(--vc-muted);
-  padding: 6px 12px;
+  padding: 0 10px;
   text-align: left;
   cursor: pointer;
 }
@@ -634,36 +659,48 @@
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
 }
 
-.vc-disk-text {
-  display: grid;
-  line-height: 1.2;
-}
-
 .vc-disk-name {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
   color: var(--vc-text);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .vc-disk-meta {
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
   color: var(--vc-muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vc-disk-usage {
-  display: grid;
-  justify-items: end;
-  gap: 3px;
+.vc-disk-percent {
+  flex: 0 0 auto;
+  color: var(--vc-muted);
+  font-family: var(--vc-font-mono);
+  font-size: 0.66rem;
 }
 
+.vc-disk-percent.is-high {
+  color: #d97706;
+}
+
+/* Usage bar drawn as a thin underline so the chip stays one line tall. */
 .vc-disk-bar {
-  width: 56px;
-  height: 4px;
+  position: absolute;
+  right: 10px;
+  bottom: 3px;
+  left: 10px;
+  height: 2px;
   display: block;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--vc-border);
 }
 
@@ -677,13 +714,8 @@
   background: #d97706;
 }
 
-.vc-disk-percent {
-  color: var(--vc-muted);
-  font-family: var(--vc-font-mono);
-  font-size: 0.68rem;
-}
-
 .vc-disk-check {
+  flex: 0 0 auto;
   color: var(--vc-accent-ink);
 }
 
@@ -741,8 +773,7 @@
 }
 
 :root[data-density="compact"] .vc-disk-chip {
-  min-height: 40px;
-  padding: 4px 10px;
+  height: 30px;
 }
 
 /* Mobile menu (reuses the existing panel markup) */
