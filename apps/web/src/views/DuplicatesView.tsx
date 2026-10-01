@@ -117,7 +117,7 @@ export function DuplicatesView({ auxLoading, duplicateAssistantMessage, duplicat
         </div>
 
         <aside className="vc-dup-side" aria-label="Discos prioritarios">
-          <span className="vc-overline">Conectá primero</span>
+          <span className="vc-overline">Conecta primero</span>
           {duplicateDriveRecommendations ? (
             <>
               <div className="vc-dup-side-total">

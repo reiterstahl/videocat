@@ -1110,7 +1110,7 @@ export function App() {
         reason?: string;
       };
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setBulkMessage(`${queued.queued} video(s) en cola. Falta el token del Companion o no es válido: pegalo en Perfil › Companion local.`);
+        setBulkMessage(`${queued.queued} video(s) en cola. Falta el token del Companion o no es válido: pégalo en Perfil › Companion local.`);
       } else if (result.busy) {
         setBulkMessage(`${queued.queued} video(s) en cola. El companion terminara primero el escaneo actual.`);
       } else if (response.ok && result.ok && result.accepted) {
@@ -1291,7 +1291,7 @@ export function App() {
       const result = await response.json().catch(() => ({ ok: false, reason: "open_failed" })) as CompanionProcessDownloadsResponse;
       if (!response.ok || !result.ok) {
         const message = result.reason === "forbidden"
-          ? "Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local."
+          ? "Falta el token del Companion o no es válido. Pégalo en Perfil › Companion local."
           : result.reason === "not_available"
             ? "Companion no disponible."
             : result.detail ?? "No se pudo procesar la cola.";
@@ -1698,7 +1698,7 @@ export function App() {
       const response = await fetch(`http://127.0.0.1:${port}/mounted-disks`, { headers });
       const result = await response.json().catch(() => ({ ok: false, disks: [] })) as { ok?: boolean; disks?: MountedCompanionDisk[]; reason?: string };
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setConnectedMessage("Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.");
+        setConnectedMessage("Falta el token del Companion o no es válido. Pégalo en Perfil › Companion local.");
         return;
       }
       if (!response.ok || !result.ok) {

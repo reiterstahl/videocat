@@ -66,7 +66,7 @@ Prioridad: alta para operaciones destructivas.
 - [x] Incorporar claves de idempotencia para las limpiezas destructivas de cola.
 - [ ] Extender las claves de idempotencia al resto de operaciones destructivas.
 - [x] Retención configurable (`ACTION_AUDIT_RETENTION_DAYS`) con limpieza administrativa.
-- [ ] Añadir búsqueda y exportación del registro en una pestaña de la interfaz.
+- [x] Añadir búsqueda y exportación del registro en una pestaña de la interfaz (Auditoría › Registro de acciones, CSV).
 - [ ] No almacenar secretos ni rutas personales absolutas cuando no sean necesarias. Pendiente revisar: el objetivo de `scan.finish` guarda la ruta raíz escaneada.
 
 Criterio de finalización: cada operación física o destructiva del catálogo puede seguirse desde la solicitud hasta el resultado final y admite reintentos seguros.
@@ -116,8 +116,8 @@ Prioridad: media.
 
 - [x] Definir retención independiente para errores del agente, historial de escaneos y acciones (`AGENT_ERROR_RETENTION_DAYS`, `SCAN_RETENTION_DAYS`, `ACTION_AUDIT_RETENTION_DAYS`).
 - [x] Limpieza administrativa mediante `POST /api/admin/maintenance/prune`.
-- [ ] Añadir paginación y filtros por edad/categoría en la vista de auditoría.
-- [ ] Agrupar errores repetidos conservando primera fecha, última fecha y cantidad.
+- [x] Añadir paginación y filtros por edad/categoría en la vista de auditoría.
+- [x] Agrupar errores repetidos conservando primera fecha, última fecha y cantidad.
 - [ ] Usar IDs estructurados de solicitud y correlación entre servidor y companion. Hoy solo el streaming remoto correlaciona `requestId`.
 - [ ] Publicar diagnóstico de salud y colas sin exponer secretos ni contenido de archivos. `GET /api/health` solo devuelve `ok`.
 
@@ -142,7 +142,7 @@ Criterio de finalización: un procedimiento documentado y probado restaura en un
 
 La consolidación de septiembre de 2026 implementa el libro `ActionAudit`, claves de idempotencia para limpiezas de cola, leases con generación por disco/root, renovación de lease en lotes, índices de Review, muestreo UUID indexado, retención configurable, scripts de respaldo/verificación/restauración, SBOM con atestación y contenedores de aplicación sin root. La referencia operativa está en [OPERATIONS.md](OPERATIONS.md).
 
-Lo pendiente queda marcado en cada fase. Los puntos más relevantes son la pestaña de auditoría en la interfaz, las pruebas de escaneos concurrentes, la ingesta en lote, los presupuestos de rendimiento con 100k/500k videos, la agrupación de errores, el cifrado de respaldos y un simulacro de restauración antes de cada release estable.
+Lo pendiente queda marcado en cada fase. Los puntos más relevantes son las pruebas de escaneos concurrentes, la ingesta en lote, los presupuestos de rendimiento con 100k/500k videos, el cifrado de respaldos y un simulacro de restauración antes de cada release estable.
 
 ## Orden Recomendado
 

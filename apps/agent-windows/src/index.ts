@@ -1576,7 +1576,7 @@ async function runCompanion(): Promise<void> {
   console.log(`VideoCAT Companion escuchando en http://${host}:${selectedPort}${selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})`}.`);
   console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
   console.log(process.env.COMPANION_TOKEN?.trim()
-    ? "Token local requerido por este companion; configuralo en Perfil del navegador, no en el servidor."
+    ? "Token local requerido por este companion; configúralo en Perfil del navegador, no en el servidor."
     : "COMPANION_TOKEN no configurado: el listener local solo responde /health y rechaza todas las acciones.");
   await reportMediaToolAvailability();
   await startCompanionDiskWatcher();

@@ -210,7 +210,7 @@ export function DuplicateAssistantModal({
                   {hovered && frames.length > 1 ? (
                     <span className="vc-card-badge is-bottom-right is-mono">{`${hoveredFrameIndex % frames.length + 1}/${frames.length}`}</span>
                   ) : frames.length > 1 ? (
-                    <span className="vc-card-badge is-bottom-right vc-hover-hint">Pasá el cursor para ver los fotogramas</span>
+                    <span className="vc-card-badge is-bottom-right vc-hover-hint">Pasa el cursor para ver los fotogramas</span>
                   ) : null}
                   {selected ? <span className="vc-dup-feedback is-keep"><Check size={18} /> Mantener</span> : null}
                   {rejected ? <span className="vc-dup-feedback is-delete"><Trash2 size={18} /> Borrar</span> : null}

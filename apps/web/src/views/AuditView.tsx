@@ -150,6 +150,13 @@ export function AuditView({ diskQuery, noDisksSelected, refreshKey, locale }: Au
     };
   }, [grouped, noDisksSelected, params, refreshKey, tab]);
 
+  // Each tab searches different fields, so a search does not carry over.
+  function switchTab(next: AuditTab) {
+    if (next === tab) return;
+    setSearch("");
+    setTab(next);
+  }
+
   async function loadMore() {
     setLoadingMore(true);
     try {
@@ -180,12 +187,12 @@ export function AuditView({ diskQuery, noDisksSelected, refreshKey, locale }: Au
   return (
     <section className="vc-view vc-audit" aria-label="Auditoría">
       <div className="vc-tabs" role="tablist" aria-label="Tipo de registro">
-        <button role="tab" aria-selected={tab === "errors"} className={tab === "errors" ? "is-active" : ""} onClick={() => setTab("errors")} type="button">
+        <button role="tab" aria-selected={tab === "errors"} className={tab === "errors" ? "is-active" : ""} onClick={() => switchTab("errors")} type="button">
           <AlertTriangle size={16} />
           Errores del agente
           {errorsData ? <span className="vc-tab-count">{formatCount(errorsData.total)}</span> : null}
         </button>
-        <button role="tab" aria-selected={tab === "actions"} className={tab === "actions" ? "is-active" : ""} onClick={() => setTab("actions")} type="button">
+        <button role="tab" aria-selected={tab === "actions"} className={tab === "actions" ? "is-active" : ""} onClick={() => switchTab("actions")} type="button">
           <ListChecks size={16} />
           Registro de acciones
         </button>

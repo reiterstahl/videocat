@@ -12,15 +12,21 @@ El rediseño de `v0.2.0` moderniza la web sin cambiar la API ni los flujos exist
 - **Fase 4 — Duplicados.** Grupos con confianza y copia recomendada, acción "Resolver" por grupo, ranking de discos en línea y comparación asistida A/B a pantalla completa.
 - **Fase 5 — Móvil.** Barra de pestañas inferior, hoja "Más", filtros y acciones masivas acopladas abajo, KPIs en una fila y selección táctil con pulsación larga.
 
-## Fase 6: Vistas Restantes
+## Fase 6: Vistas Restantes — Entregada
 
-Estado: pendiente. Estas vistas ya heredan el tema y el shell, pero conservan su maquetación anterior.
+Estado: entregada en `v0.2.0`.
 
-- [ ] **A descargar.** Panel de transferencia con progreso y velocidad en el nuevo sistema visual; cola como lista compacta con estados; selección aleatoria por GB en un panel lateral; acciones de cola en una barra coherente con el catálogo.
-- [ ] **Esquema de uso.** Mapa de carpetas por tamaño con navegación por niveles, filtros por disco y acceso directo al catálogo filtrado por carpeta.
-- [ ] **Auditoría.** Pestañas de errores y del registro `ActionAudit`, con búsqueda, filtros por edad, categoría y disco, paginación, agrupación de errores repetidos y exportación (ver Fases 3 y 7 de [ROADMAP.es.md](ROADMAP.es.md)).
-- [ ] **Administración.** Tarjetas de discos con uso físico y catalogado, Companions emparejados con estado del túnel y revocación, y mantenimiento (retención) en una sección propia.
-- [ ] **Perfil.** Secciones separadas para seguridad (PIN y carpetas protegidas), Companion local (token), reproducción (Chromecast) y apariencia e idioma.
-- [ ] **Deuda técnica.** Retirar estilos heredados que ya no se usan, dividir `App.tsx` por vistas y llevar al repositorio las pruebas de interacción de Playwright usadas durante el rediseño.
+- [x] **A descargar.** Panel de transferencia con progreso y velocidad en el nuevo sistema visual; cola como lista compacta con estados; selección aleatoria por GB en un panel lateral; acciones de cola en una barra coherente con el catálogo.
+- [x] **Esquema de uso.** Mapa de carpetas por tamaño con navegación por niveles, filtros por disco y acceso directo al catálogo filtrado por carpeta.
+- [x] **Auditoría.** Pestañas de errores y del registro `ActionAudit`, con búsqueda, filtros por edad, categoría y disco, paginación, agrupación de errores repetidos y exportación (ver Fases 3 y 7 de [ROADMAP.es.md](ROADMAP.es.md)).
+- [x] **Administración.** Tarjetas de discos con uso físico y catalogado, Companions emparejados con estado del túnel y revocación, y mantenimiento (retención) en una sección propia.
+- [x] **Perfil.** Secciones separadas para seguridad (PIN y carpetas protegidas), Companion local (token), reproducción (Chromecast) y apariencia e idioma.
+- [x] **Deuda técnica.** Retirar estilos heredados que ya no se usan, dividir `App.tsx` por vistas y llevar al repositorio las pruebas de interacción de Playwright usadas durante el rediseño.
 
 Criterio de finalización: todas las vistas usan los componentes y tokens del nuevo sistema, funcionan a 390 px sin scroll horizontal y quedan cubiertas por pruebas de interacción.
+
+## Notas De La Fase 6
+
+- `App.tsx` pasó de unas 7.700 líneas a un contenedor de estado: las vistas viven en `views/`, el shell y los componentes reutilizables en `components/`, la lógica autónoma en `hooks/` y los tipos y helpers en `lib/`.
+- Las pruebas de Playwright viven en `e2e/` y corren en CI con un catálogo de demostración (`npm run seed:demo -w @videocat/server`).
+- Pendiente para una iteración futura: mover el estado de catálogo, Review, Duplicados y descargas a hooks propios para reducir aún más `App.tsx`.

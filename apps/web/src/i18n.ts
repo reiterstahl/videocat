@@ -31,6 +31,102 @@ const en: Record<string, string> = {
   "Secciones principales": "Main sections",
   "Catalogo": "Catalog",
   "Catálogo": "Catalog",
+  "Abrir, copiar y borrar archivos en esta PC requiere el token del Companion.": "Opening, copying and deleting files on this PC requires the Companion token.",
+  "Acción": "Action",
+  "Agrupar repetidos": "Group repeats",
+  "Antigüedad": "Age",
+  "Apariencia e idioma": "Appearance and language",
+  "Aplicando...": "Applying...",
+  "Aplicar retención ahora": "Apply retention now",
+  "Borrado de archivo": "File deletion",
+  "Buscar acción, objetivo o error": "Search action, target or error",
+  "Buscar en la auditoría": "Search the audit",
+  "Buscar mensaje, ruta o código": "Search message, path or code",
+  "Cada PC se empareja con un código de un solo uso y recibe una credencial propia, cifrada y revocable.": "Each PC pairs with a one-time code and receives its own encrypted, revocable credential.",
+  "Cargar más": "Load more",
+  "Carpetas por tamaño": "Folders by size",
+  "Categoría": "Category",
+  "Cola de descarga": "Download queue",
+  "Cola de descargas vaciada": "Download queue cleared",
+  "Companion revocado. Tendrá que emparejarse de nuevo para conectarse.": "Companion revoked. It must pair again to connect.",
+  "Completada": "Completed",
+  "Completadas": "Completed",
+  "Copiar código": "Copy code",
+  "Credencial individual": "Individual credential",
+  "Código de emparejamiento copiado.": "Pairing code copied.",
+  "Código de un solo uso": "One-time code",
+  "Cópialo desde la bandeja de Windows (Configuración › Token del navegador) y pégalo aquí. Se guarda solo en este navegador.": "Copy it from the Windows tray (Settings › Browser token) and paste it here. It is stored only in this browser.",
+  "Discos seleccionados": "Selected drives",
+  "El Companion no tomará nuevas descargas hasta reanudarla. La descarga en curso termina primero.": "The Companion won't take new downloads until you resume. The current download finishes first.",
+  "El Companion puede comenzar con el siguiente archivo.": "The Companion can start the next file.",
+  "El PIN desbloquea las carpetas protegidas en esta sesión.": "The PIN unlocks protected folders for this session.",
+  "El PIN, los patrones y la reproducción se guardan en el servidor.": "The PIN, patterns and playback settings are saved on the server.",
+  "El nuevo PIN debe tener 4 dígitos.": "The new PIN must have 4 digits.",
+  "El proceso local está abierto, pero no reporta a este servidor. Revisa SERVER_URL y la credencial del Companion.": "The local process is open but doesn't report to this server. Check SERVER_URL and the Companion credential.",
+  "Eliminado": "Deleted",
+  "En curso": "In progress",
+  "Errores del agente": "Agent errors",
+  "Escaneo finalizado": "Scan finished",
+  "Esta carpeta no tiene subcarpetas con videos.": "This folder has no subfolders with videos.",
+  "Este navegador no permite guardar el token.": "This browser doesn't allow saving the token.",
+  "Explorar subcarpetas": "Explore subfolders",
+  "Exportar CSV": "Export CSV",
+  "Fallida": "Failed",
+  "Fallidas": "Failed",
+  "Fallidos": "Failed",
+  "Generar código": "Generate code",
+  "Guardar cambios": "Save changes",
+  "Historial de descargas limpiado": "Download history cleared",
+  "La retención elimina historial antiguo. Nunca borra videos catalogados ni miniaturas.": "Retention removes old history. It never deletes catalogued videos or thumbnails.",
+  "Limpiar completados": "Clear completed",
+  "Limpieza por retención": "Retention cleanup",
+  "Mantenimiento": "Maintenance",
+  "No hay acciones registradas para estos filtros.": "No actions recorded for these filters.",
+  "No hay archivos en la cola de descarga.": "No files in the download queue.",
+  "No hay errores registrados para estos filtros.": "No errors recorded for these filters.",
+  "No hay videos catalogados en los discos seleccionados.": "No catalogued videos on the selected drives.",
+  "No se pudieron cargar más registros.": "Could not load more records.",
+  "No se pudo aplicar la retención.": "Could not apply retention.",
+  "No se pudo calcular el esquema de uso.": "Could not compute the usage map.",
+  "No se pudo cargar la administración.": "Could not load administration.",
+  "No se pudo cargar la auditoría.": "Could not load the audit.",
+  "No se pudo generar el código de emparejamiento.": "Could not generate the pairing code.",
+  "No se pudo limpiar la unidad.": "Could not clean the drive.",
+  "No se pudo revocar el Companion.": "Could not revoke the Companion.",
+  "Opciones para enviar videos a otros dispositivos.": "Options for sending videos to other devices.",
+  "Primera vez": "First seen",
+  "Quita de la lista las descargas completadas": "Removes completed downloads from the list",
+  "Registro de acciones": "Action log",
+  "Repeticiones": "Repetitions",
+  "Reproducción": "Playback",
+  "Reproducción remota": "Remote playback",
+  "Resumen por categoría y fase": "Summary by category and phase",
+  "Revocar": "Revoke",
+  "Ruta de ejemplo": "Sample path",
+  "Seguridad": "Security",
+  "Selecciona al menos un disco para ver el esquema de uso.": "Select at least one drive to see the usage map.",
+  "Selecciona al menos un disco para ver sus errores.": "Select at least one drive to see its errors.",
+  "Sin archivo en curso": "No file in progress",
+  "Sin datos del volumen": "No volume data",
+  "Sin túnel": "No tunnel",
+  "Tipo de registro": "Record type",
+  "Todavía no hay Companions registrados.": "No Companions registered yet.",
+  "Todo el historial": "All history",
+  "Transferencia": "Transfer",
+  "Túnel seguro activo": "Secure tunnel active",
+  "Ubicación": "Location",
+  "Uno por línea o separados por coma. Se ocultan las carpetas cuyo nombre contenga alguno de estos textos.": "One per line or comma separated. Folders whose name contains any of these texts are hidden.",
+  "Uso físico reportado por el Companion y contenido catalogado. Vaciar el catálogo no borra archivos del disco.": "Physical usage reported by the Companion and catalogued content. Emptying the catalog doesn't delete files from the drive.",
+  "Vaciar catálogo": "Empty catalog",
+  "Ver en el catálogo": "View in catalog",
+  "VideoCAT genera enlaces temporales para que un Chromecast pida el video a tu servidor. Google Cast solo se carga cuando usas esta función.": "VideoCAT creates temporary links so a Chromecast can request the video from your server. Google Cast only loads when you use this feature.",
+  "VideoCAT pone en cola videos al azar de los discos conectados hasta el tamaño elegido.": "VideoCAT queues random videos from connected drives up to the chosen size.",
+  "Última vez": "Last seen",
+  "Últimas 24 horas": "Last 24 hours",
+  "Últimos 30 días": "Last 30 days",
+  "Últimos 90 días": "Last 90 days",
+  "Companions": "Companions",
+  "Credencial": "Credential",
   "La reproducción remota requiere un Companion sincronizado con el servidor. Ábrelo en la PC donde está conectado el disco.": "Remote playback requires a Companion synced with the server. Open it on the PC where the drive is connected.",
   "El Companion está activo, pero este disco no fue reportado como conectado. Conéctalo y actualiza los discos desde el Companion.": "The Companion is running, but this drive was not reported as connected. Connect it and refresh the drives from the Companion.",
   "El formato original no es compatible con este navegador. Usa el botón MP4 para preparar una copia temporal compatible.": "The original format is not supported by this browser. Use the MP4 button to prepare a compatible temporary copy.",
@@ -44,13 +140,13 @@ const en: Record<string, string> = {
   "Companion local": "Local Companion",
   "Sin token en este navegador": "No token in this browser",
   "Token guardado en este navegador": "Token saved in this browser",
-  "Abrir, copiar y borrar archivos en esta PC requiere el token del Companion. Copialo desde la bandeja de Windows (Configuración › Token del navegador) y pegalo acá. Se guarda solo en este navegador.": "Opening, copying and deleting files on this PC requires the Companion token. Copy it from the Windows tray (Settings › Browser token) and paste it here. It is stored only in this browser.",
+  "Abrir, copiar y borrar archivos en esta PC requiere el token del Companion. Cópialo desde la bandeja de Windows (Configuración › Token del navegador) y pégalo aquí. Se guarda solo en este navegador.": "Opening, copying and deleting files on this PC requires the Companion token. Copy it from the Windows tray (Settings › Browser token) and paste it here. It is stored only in this browser.",
   "Token del Companion": "Companion token",
   "Guardar token": "Save token",
-  "Pegá el token del Companion": "Paste the Companion token",
+  "Pega el token del Companion": "Paste the Companion token",
   "Token del Companion guardado en este navegador.": "Companion token saved in this browser.",
   "Token del Companion quitado de este navegador.": "Companion token removed from this browser.",
-  "Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.": "The Companion token is missing or invalid. Paste it in Profile › Local Companion.",
+  "Falta el token del Companion o no es válido. Pégalo en Perfil › Companion local.": "The Companion token is missing or invalid. Paste it in Profile › Local Companion.",
   "Duplicado": "Duplicate",
   "Descargas": "Downloads",
   "Más secciones": "More sections",
@@ -60,12 +156,12 @@ const en: Record<string, string> = {
   "Resolver": "Resolve",
   "Resuelto": "Resolved",
   "Recomendado ·": "Recommended ·",
-  "Conectá primero": "Connect first",
+  "Conecta primero": "Connect first",
   "Ver plan completo": "View full plan",
   "Salir del modo asistido": "Exit assisted mode",
   "Volver": "Back",
   "Duplicados · modo asistido": "Duplicates · assisted mode",
-  "Pasá el cursor para ver los fotogramas": "Hover to preview frames",
+  "Pasa el cursor para ver los fotogramas": "Hover to preview frames",
   "Sin miniatura": "No thumbnail",
   "La copia elegida se marca para mantener y la otra para borrar. El borrado físico ocurre cuando el Companion procesa ese disco.": "The chosen copy is marked to keep and the other one for deletion. Physical deletion happens when the Companion processes that drive.",
   "recomendado ·": "recommended ·",
@@ -105,7 +201,7 @@ const en: Record<string, string> = {
   "deshacer": "undo",
   "Espacio": "Space",
   "Review aleatorio": "Random review",
-  "Decidí qué conservar y qué borrar, un video a la vez, en los discos seleccionados.": "Decide what to keep and what to delete, one video at a time, on the selected drives.",
+  "Decide qué conservar y qué borrar, un video a la vez, en los discos seleccionados.": "Decide what to keep and what to delete, one video at a time, on the selected drives.",
   "Progreso del review": "Review progress",
   "Últimos revisados": "Recently reviewed",
   "No hay otro video pendiente para mostrar.": "There is no other pending video to show.",
@@ -582,11 +678,65 @@ function translateDynamicText(text: string, language: Language): string | null {
   match = text.match(/^([\d.,]+)% del total$/);
   if (match) return `${match[1]}% of total`;
 
-  match = text.match(/^([\d.,\s]+) video\(s\) en cola\. Falta el token del Companion o no es válido: pegalo en Perfil › Companion local\.$/);
+  match = text.match(/^([\d.,\s]+) video\(s\) en cola\. Falta el token del Companion o no es válido: pégalo en Perfil › Companion local\.$/);
   if (match) return `${match[1]} video(s) queued. The Companion token is missing or invalid: paste it in Profile › Local Companion.`;
 
   match = text.match(/^Ver ([\d.,\s]+) videos?$/);
   if (match) return `Show ${match[1]} ${match[1].trim() === "1" ? "video" : "videos"}`;
+
+  match = text.match(/^(\d+) subcarpetas$/);
+  if (match) return `${match[1]} subfolders`;
+
+  match = text.match(/^Ver (.+) en el catálogo$/);
+  if (match) return `View ${match[1]} in the catalog`;
+
+  match = text.match(/^([\d.,\s]+) videos directamente en esta carpeta · (.+)$/);
+  if (match) return `${match[1]} videos directly in this folder · ${match[2]}`;
+
+  match = text.match(/^Expira a las (.+)\. Ingrésalo en la configuración del Companion\.$/);
+  if (match) return `Expires at ${match[1]}. Enter it in the Companion settings.`;
+
+  match = text.match(/^v(\d+) · visto (.+)$/);
+  if (match) return `v${match[1]} · seen ${match[2]}`;
+
+  match = text.match(/^Usado (.+)$/);
+  if (match) return `Used ${match[1]}`;
+
+  match = text.match(/^Catalogado (.+)$/);
+  if (match) return `Catalogued ${match[1]}`;
+
+  match = text.match(/^Libre (.+) de (.+)$/);
+  if (match) return `Free ${match[1]} of ${match[2]}`;
+
+  match = text.match(/^Último indexado: (.+)$/);
+  if (match) return `Last indexed: ${match[1]}`;
+
+  match = text.match(/^(\d+) días$/);
+  if (match) return `${match[1]} days`;
+
+  match = text.match(/^([\d.,\s]+) registros · ([\d.,\s]+) vencidos$/);
+  if (match) return `${match[1]} records · ${match[2]} expired`;
+
+  match = text.match(/^Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "(.+)"\. Escribe BORRAR para confirmar\.$/);
+  if (match) return `VideoCAT will remove the videos, thumbnails, scans and errors of "${match[1]}". Type BORRAR to confirm.`;
+
+  match = text.match(/^Retención aplicada: (\d+) errores, (\d+) acciones y (\d+) escaneos eliminados\.$/);
+  if (match) return `Retention applied: ${match[1]} errors, ${match[2]} actions and ${match[3]} scans removed.`;
+
+  match = text.match(/^(Eliminado|Borrado): (.+)$/);
+  if (match) return `${match[1] === "Eliminado" ? "Deleted" : "Deletion"}: ${match[2]}`;
+
+  match = text.match(/^Escaneo (\w+) · (\d+) archivos · (\d+) errores$/);
+  if (match) return `Scan ${match[1]} · ${match[2]} files · ${match[3]} errors`;
+
+  match = text.match(/^([\d.,\s]+) en la lista$/);
+  if (match) return `${match[1]} in the list`;
+
+  match = text.match(/^([\d.,]+ [KMGT]?B) de ([\d.,]+ [KMGT]?B)$/);
+  if (match) return `${match[1]} of ${match[2]}`;
+
+  match = text.match(/^([\d.,\s]+)×$/);
+  if (match) return `${match[1]}×`;
 
   match = text.match(/^Abrir (.+)$/);
   if (match) return `Open ${match[1]}`;

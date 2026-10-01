@@ -218,7 +218,7 @@ export function ProfileView({
                 onChange={(event) => setTokenInput(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="Pegá el token del Companion"
+                placeholder="Pega el token del Companion"
                 type="password"
               />
               <button className="vc-button is-primary" disabled={!tokenInput.trim()} onClick={saveToken} type="button">Guardar token</button>

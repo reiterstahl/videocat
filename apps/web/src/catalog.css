@@ -958,44 +958,6 @@
 
 /* Profile: local Companion token */
 
-.vc-token-panel {
-  display: grid;
-  gap: 10px;
-  margin: 0 16px 16px;
-  border: 1px solid var(--vc-border);
-  border-radius: var(--vc-radius);
-  background: var(--vc-sunken);
-  padding: 14px;
-}
-
-.vc-token-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.vc-token-state {
-  border-radius: 999px;
-  background: color-mix(in srgb, #d97706 16%, var(--vc-surface));
-  color: var(--vc-text-soft);
-  padding: 3px 10px;
-  font-size: 0.76rem;
-  font-weight: 600;
-}
-
-.vc-token-state.is-set {
-  background: color-mix(in srgb, #16a34a 16%, var(--vc-surface));
-}
-
-.vc-token-help {
-  margin: 0;
-  color: var(--vc-muted);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
 .vc-token-row {
   display: flex;
   flex-wrap: wrap;

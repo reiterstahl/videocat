@@ -66,7 +66,7 @@ Priority: high for destructive operations.
 - [x] Add idempotency keys for destructive queue cleanup.
 - [ ] Extend idempotency keys to every other destructive operation.
 - [x] Configurable retention (`ACTION_AUDIT_RETENTION_DAYS`) with administrative cleanup.
-- [ ] Provide a searchable, exportable audit tab in the UI.
+- [x] Provide a searchable, exportable audit tab in the UI (Audit › Action log, CSV).
 - [ ] Never store agent secrets or unnecessary absolute personal paths in logs. Needs review: the `scan.finish` target stores the scanned root path.
 
 Definition of done: every physical or catalog-destructive action can be traced from request to final outcome and safely retried.
@@ -116,8 +116,8 @@ Priority: medium.
 
 - [x] Define retention separately for agent errors, scan history and action logs (`AGENT_ERROR_RETENTION_DAYS`, `SCAN_RETENTION_DAYS`, `ACTION_AUDIT_RETENTION_DAYS`).
 - [x] Administrative cleanup through `POST /api/admin/maintenance/prune`.
-- [ ] Add pagination and age/category filters to the audit view.
-- [ ] Aggregate repeated errors without losing first/last occurrence and count.
+- [x] Add pagination and age/category filters to the audit view.
+- [x] Aggregate repeated errors without losing first/last occurrence and count.
 - [ ] Add structured request and correlation IDs across server and companion logs. Only remote streaming correlates `requestId` today.
 - [ ] Publish health and queue diagnostics without exposing secrets or file contents. `GET /api/health` only returns `ok`.
 
@@ -142,7 +142,7 @@ Definition of done: a documented, tested procedure can restore a fresh VideoCAT 
 
 The September 2026 consolidation adds the `ActionAudit` ledger, idempotency keys for destructive queue cleanup, per disk/root scan leases with generations, batch lease renewal, Review indexes, indexed UUID sampling, configurable retention, backup/verify/restore scripts, SBOM attestation and non-root application containers. See [OPERATIONS.md](OPERATIONS.md) for the operational runbook.
 
-Remaining work is marked in each phase. The most relevant items are an audit tab in the UI, concurrent-scan tests, bulk ingestion, 100k/500k performance budgets, repeated-error aggregation, backup encryption and a clean restore drill before every stable release.
+Remaining work is marked in each phase. The most relevant items are concurrent-scan tests, bulk ingestion, 100k/500k performance budgets, backup encryption and a clean restore drill before every stable release.
 
 ## Recommended Order
 

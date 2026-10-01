@@ -292,7 +292,7 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged }: 
                     }}
                   >
                     <label htmlFor={`purge-${disk.id}`}>
-                      {`Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "${disk.name}". Escribí BORRAR para confirmar.`}
+                      {`Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "${disk.name}". Escribe BORRAR para confirmar.`}
                     </label>
                     <div>
                       <input

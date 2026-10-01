@@ -41,6 +41,8 @@ El sistema tiene dos partes:
 - Temas: apariencia clara, oscura, OLED o del sistema; seis esquemas de color y densidad cómoda o compacta, guardados por navegador.
 - Catálogo en cuadrícula o lista, búsqueda con `Ctrl K`, chips de filtros activos y panel lateral de detalle.
 - Review inmersivo a pantalla completa con atajos de teclado (mantener, borrar, saltar, deshacer y etiquetas numeradas).
+- Esquema de uso como mapa de carpetas navegable por niveles, con acceso directo al catálogo filtrado.
+- Auditoría con errores agrupados, registro de acciones, búsqueda, filtros por antigüedad y exportación CSV.
 - Soporte para reverse proxy, cookies seguras y despliegue bajo dominio propio.
 - Identificación resiliente de discos mediante `.videocat-disk.json` en la raíz del disco.
 - Escaneo aunque Windows cambie la letra de la unidad.
@@ -516,6 +518,15 @@ npm test
 ```
 
 Las pruebas de API que escriben en PostgreSQL se activan con `RUN_DB_TESTS=true` y requieren una base disponible; CI las ejecuta automáticamente. Los helpers sensibles seleccionados tienen umbrales mínimos de cobertura que también bloquean regresiones.
+
+Pruebas de interfaz de punta a punta con Playwright (escritorio y móvil). Usan un catálogo de demostración que **reemplaza todo el contenido de la base**, así que úsalas solo con una base de desarrollo:
+
+```bash
+npx playwright install chromium
+E2E_SEED=1 npm run test:e2e
+```
+
+Para cargar solo los datos de demostración: `VIDEOCAT_DEMO_SEED=1 npm run seed:demo -w @videocat/server` (se niega a correr con `NODE_ENV=production`).
 
 La web de Vite corre en:
 

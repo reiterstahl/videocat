@@ -774,7 +774,7 @@ function configHtml(): string {
       </section>
 
       <section class="settings-section">
-        <div class="section-head"><div><h2>Token del navegador</h2><p class="hint">Las acciones locales (abrir, copiar, borrar) solo se aceptan con este token. Copialo y pegalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div></div>
+        <div class="section-head"><div><h2>Token del navegador</h2><p class="hint">Las acciones locales (abrir, copiar, borrar) solo se aceptan con este token. Cópialo y pégalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div></div>
         <div class="settings-section-grid">
           <label class="full">COMPANION_TOKEN<input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
           <div class="full token-actions">
@@ -1056,7 +1056,7 @@ function configHtml(): string {
     });
     document.getElementById("copyToken").addEventListener("click", async () => {
       const copied = window.videocatConfig?.copyToken ? await window.videocatConfig.copyToken() : false;
-      setStatus(copied ? "Token copiado. Pegalo en VideoCAT › Perfil › Companion local." : "Guarda la configuracion para generar el token.", copied ? "success" : "error");
+      setStatus(copied ? "Token copiado. Pégalo en VideoCAT › Perfil › Companion local." : "Guarda la configuracion para generar el token.", copied ? "success" : "error");
     });
     document.getElementById("pair").addEventListener("click", async () => {
       if (!window.videocatConfig?.pair) return;

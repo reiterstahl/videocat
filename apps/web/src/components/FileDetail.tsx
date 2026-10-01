@@ -230,7 +230,7 @@ export function FileDetail({
       const result = await response.json().catch(() => ({ ok: false, reason: "open_failed" })) as CompanionResponse;
 
       if (response.status === 401 || response.status === 403 || result.reason === "forbidden") {
-        setCompanionMessage("Falta el token del Companion o no es válido. Pegalo en Perfil › Companion local.");
+        setCompanionMessage("Falta el token del Companion o no es válido. Pégalo en Perfil › Companion local.");
       } else if (result.ok) {
         if (action === "delete-file") {
           try {

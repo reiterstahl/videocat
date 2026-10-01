@@ -41,6 +41,8 @@ The system has two parts:
 - Themes: light, dark, OLED or system appearance; six color schemes and comfortable or compact density, stored per browser.
 - Catalog in grid or list view, `Ctrl K` search, active filter chips and a side detail panel.
 - Immersive full-screen Review with keyboard shortcuts (keep, delete, skip, undo and numbered tags).
+- Usage map as a folder treemap you can drill into, with a shortcut to the filtered catalog.
+- Audit with grouped errors, the action log, search, age filters and CSV export.
 - Reverse proxy support, secure cookies and custom domain deployment.
 - Resilient drive identification through `.videocat-disk.json` at the drive root.
 - Scanning still works when Windows changes the drive letter.
@@ -514,6 +516,15 @@ npm test
 ```
 
 API tests that write to PostgreSQL are enabled with `RUN_DB_TESTS=true` and require a running database; CI enables them automatically. Selected sensitive helpers also have minimum coverage thresholds that block regressions.
+
+End-to-end UI tests run with Playwright on desktop and mobile. They use a demo catalog that **replaces the whole database content**, so run them only against a development database:
+
+```bash
+npx playwright install chromium
+E2E_SEED=1 npm run test:e2e
+```
+
+To load only the demo data: `VIDEOCAT_DEMO_SEED=1 npm run seed:demo -w @videocat/server` (it refuses to run with `NODE_ENV=production`).
 
 The Vite web app runs at:
 
