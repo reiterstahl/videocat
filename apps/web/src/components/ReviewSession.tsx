@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Image, Maximize, Pause, Play, SkipForward, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Image, LayoutGrid, Maximize, Pause, Play, RectangleHorizontal, SkipForward, Trash2 } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { FullscreenGallery } from "./FullscreenGallery";
 import { thumbnailSrc } from "../lib/api";
@@ -19,6 +19,32 @@ export function defaultFrameIndex(file: VideoFile): number {
   const index = file.thumbnails.findIndex((thumb) => thumb.kind === "frame_08");
   if (index >= 0) return index;
   return Math.max(0, Math.floor(file.thumbnails.length / 2));
+}
+
+type ReviewLayout = "frame" | "gallery";
+
+const reviewLayoutKey = "videocat-review-layout";
+
+const galleryGap = 8;
+
+// Picks the column count that makes every 16:9 frame as large as possible inside the available box.
+function bestGalleryTileWidth(count: number, width: number, height: number): number {
+  let best = 0;
+  for (let columns = 1; columns <= count; columns += 1) {
+    const rows = Math.ceil(count / columns);
+    const byWidth = (width - galleryGap * (columns - 1)) / columns;
+    const byHeight = ((height - galleryGap * (rows - 1)) / rows) * (16 / 9);
+    best = Math.max(best, Math.min(byWidth, byHeight));
+  }
+  return Math.floor(best);
+}
+
+function storedReviewLayout(): ReviewLayout {
+  try {
+    return localStorage.getItem(reviewLayoutKey) === "gallery" ? "gallery" : "frame";
+  } catch {
+    return "frame";
+  }
 }
 
 export function ReviewSession({
@@ -54,6 +80,9 @@ export function ReviewSession({
 }) {
   const [frameIndex, setFrameIndex] = useState(() => defaultFrameIndex(file));
   const [framesPlaying, setFramesPlaying] = useState(false);
+  const [layout, setLayout] = useState<ReviewLayout>(storedReviewLayout);
+  const [galleryTileWidth, setGalleryTileWidth] = useState<number | null>(null);
+  const galleryRef = useRef<HTMLDivElement | null>(null);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [history, setHistory] = useState<ReviewSessionEntry[]>([]);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +111,28 @@ export function ReviewSession({
   useEffect(() => {
     rootRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const element = galleryRef.current;
+    if (layout !== "gallery" || !element || frames.length === 0) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      // On narrow screens the gallery flows with the page instead of filling a fixed box.
+      setGalleryTileWidth(height > 160 && window.innerWidth > 980 ? bestGalleryTileWidth(frames.length, width, height) : null);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [frames.length, layout]);
+
+  function changeLayout(next: ReviewLayout) {
+    setLayout(next);
+    setFramesPlaying(false);
+    try {
+      localStorage.setItem(reviewLayoutKey, next);
+    } catch {
+      // The layout still applies for this session when storage is unavailable.
+    }
+  }
 
   async function decide(status: ReviewDecision) {
     if (loading) return;
@@ -129,10 +180,12 @@ export function ReviewSession({
         if (!loading) void onSkip();
       } else if (key === "z") {
         void undo();
-      } else if (key === "arrowleft" || key === "arrowright") {
+      } else if (key === "g") {
+        changeLayout(layout === "gallery" ? "frame" : "gallery");
+      } else if (layout === "frame" && (key === "arrowleft" || key === "arrowright")) {
         event.preventDefault();
         moveFrame(key === "arrowleft" ? -1 : 1);
-      } else if (key === " ") {
+      } else if (key === " " && layout === "frame") {
         event.preventDefault();
         setFramesPlaying((playing) => !playing);
       } else if (key === "f") {
@@ -159,6 +212,14 @@ export function ReviewSession({
         <span className="vc-catmark" aria-hidden="true" />
         <h2 className="vc-review-heading">Review</h2>
         <span className="vc-review-pill">{`${remaining.toLocaleString("es-CR")} pendientes`}</span>
+        <div className="vc-segmented is-icons vc-review-layout" role="group" aria-label="Vista de fotogramas">
+          <button type="button" aria-pressed={layout === "frame"} onClick={() => changeLayout("frame")} title="Fotograma (G)" aria-label="Fotograma">
+            <RectangleHorizontal size={16} />
+          </button>
+          <button type="button" aria-pressed={layout === "gallery"} onClick={() => changeLayout("gallery")} title="Galería (G)" aria-label="Galería">
+            <LayoutGrid size={16} />
+          </button>
+        </div>
         <div className="vc-header-spacer" />
         {lastEntry ? (
           <span className={`vc-review-last is-${lastEntry.status}`} role="status">
@@ -177,6 +238,30 @@ export function ReviewSession({
 
       <div className="vc-review-body">
         <section className="vc-review-stage-column" aria-label="Video actual">
+          {layout === "gallery" ? (
+            <div
+              className="vc-review-gallery"
+              aria-label="Todos los fotogramas"
+              ref={galleryRef}
+              style={galleryTileWidth ? { gridTemplateColumns: `repeat(auto-fill, ${galleryTileWidth}px)` } : undefined}
+            >
+              {frames.length > 0 ? frames.map((thumb, index) => (
+                <button
+                  key={thumb.id}
+                  className="vc-review-gallery-tile"
+                  onClick={() => setGalleryIndex(index)}
+                  type="button"
+                  aria-label={`Ver fotograma ${index + 1} en grande`}
+                >
+                  <img src={thumbnailSrc(thumb.url)} alt="" decoding="async" loading="eager" />
+                  {thumb.timestampSeconds != null ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(thumb.timestampSeconds)}</span> : null}
+                </button>
+              )) : (
+                <div className="vc-review-empty-frame"><Image size={40} aria-hidden="true" /><span>Sin miniaturas</span></div>
+              )}
+              {loading ? <span className="vc-review-loading" aria-hidden="true" /> : null}
+            </div>
+          ) : (
           <div className="vc-review-stage">
             {activeFrame ? (
               <button className="vc-review-frame" onClick={() => setGalleryIndex(frameIndex)} type="button" title="Ver fotograma en grande">
@@ -208,8 +293,9 @@ export function ReviewSession({
             ) : null}
             {loading ? <span className="vc-review-loading" aria-hidden="true" /> : null}
           </div>
+          )}
 
-          {frames.length > 1 ? (
+          {layout === "frame" && frames.length > 1 ? (
             <div className="vc-review-filmstrip" aria-label="Fotogramas">
               {frames.map((thumb, index) => (
                 <button
@@ -330,7 +416,7 @@ export function ReviewSession({
           </div>
 
           <p className="vc-review-keys">
-            <kbd>K</kbd> mantener · <kbd>D</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Espacio</kbd> reproducir · <kbd>F</kbd> pantalla completa · <kbd>Esc</kbd> salir
+            <kbd>K</kbd> mantener · <kbd>D</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Espacio</kbd> reproducir · <kbd>F</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
           </p>
         </aside>
       </div>

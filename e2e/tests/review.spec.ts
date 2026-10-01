@@ -41,3 +41,28 @@ test("review session supports keep, undo, tag toggles, skip and delete from the 
   await expect(session).toHaveCount(0);
   await expect(pending).toHaveText(String(before - 1));
 });
+
+test("review gallery shows every frame at once and remembers the layout", async ({ page }) => {
+  await openView(page, "/review");
+  await page.locator(".vc-review-hero .vc-button.is-primary").click();
+  const session = page.locator(".vc-review");
+  await expect(session).toBeVisible();
+  await expect(page.locator(".vc-review-gallery")).toHaveCount(0);
+
+  await page.keyboard.press("g");
+  const tiles = page.locator(".vc-review-gallery-tile");
+  await expect(tiles).toHaveCount(15);
+  await expect(page.locator(".vc-review-filmstrip")).toHaveCount(0);
+  await expect(page.locator(".vc-review-layout button").nth(1)).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => localStorage.getItem("videocat-review-layout"))).toBe("gallery");
+
+  await page.keyboard.press("Escape");
+  await expect(session).toHaveCount(0);
+  await page.locator(".vc-review-hero .vc-button.is-primary").click();
+  await expect(page.locator(".vc-review-gallery-tile")).toHaveCount(15);
+
+  await page.locator(".vc-review-layout button").first().click();
+  await expect(page.locator(".vc-review-filmstrip button")).toHaveCount(15);
+  expect(await page.evaluate(() => localStorage.getItem("videocat-review-layout"))).toBe("frame");
+  await page.keyboard.press("Escape");
+});

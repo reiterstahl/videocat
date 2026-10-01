@@ -332,6 +332,51 @@
   }
 }
 
+.vc-review-layout {
+  flex: 0 0 auto;
+}
+
+.vc-review-gallery {
+  position: relative;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  align-content: center;
+  justify-content: center;
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.vc-review-gallery-tile {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 10px;
+  background: #000000;
+  padding: 0;
+  cursor: zoom-in;
+}
+
+.vc-review-gallery-tile img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: transform 160ms ease;
+}
+
+.vc-review-gallery-tile:hover img {
+  transform: scale(1.03);
+}
+
+.vc-review-gallery-tile:focus-visible {
+  outline: 3px solid var(--vc-accent);
+  outline-offset: 2px;
+}
+
 .vc-review-filmstrip {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
@@ -710,6 +755,12 @@
     aspect-ratio: 16 / 9;
   }
 
+  .vc-review-gallery {
+    flex: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+  }
+
   .vc-review-decisions {
     position: sticky;
     bottom: 0;
@@ -750,6 +801,11 @@
   .vc-review-filmstrip {
     grid-auto-columns: 56px;
     overflow-x: auto;
+  }
+
+  .vc-review-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
   }
 
   .vc-review-decision {
