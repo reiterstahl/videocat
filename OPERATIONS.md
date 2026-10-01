@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.2
+
+- Review shortcuts changed: `F` keeps, `J` marks for deletion and `P` toggles full screen.
+- Install Windows Companion 0.2.2 for the paged settings window.
+
 ## Upgrading to 0.2.1
 
 - Update the stack's Compose file from `docker-compose.hub.yml`: it adds the one-shot `thumbnails-init` service that repairs thumbnail uploads failing after 0.2.0 on existing volumes.
