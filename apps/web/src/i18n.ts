@@ -655,6 +655,12 @@ export function translateText(value: string, language: Language): string {
 }
 
 const textOriginals = new WeakMap<Text, string>();
+
+// A node still shows its original when it holds the Spanish source or the English rendering of it,
+// whichever language was active before. React-driven updates replace it with a new original.
+function isRenderedFrom(original: string, current: string): boolean {
+  return current === original || current === translateText(original, "en");
+}
 const attributeNames = ["title", "aria-label", "placeholder", "data-label"] as const;
 
 function shouldIgnoreElement(element: Element): boolean {
@@ -667,9 +673,7 @@ function localizeTextNode(node: Text, language: Language): void {
 
   const existingOriginal = textOriginals.get(node);
   const current = node.nodeValue ?? "";
-  const original = existingOriginal && current === translateText(existingOriginal, language)
-    ? existingOriginal
-    : current;
+  const original = existingOriginal && isRenderedFrom(existingOriginal, current) ? existingOriginal : current;
 
   textOriginals.set(node, original);
   const translated = language === "es" ? original : translateText(original, language);
@@ -685,7 +689,7 @@ function localizeElementAttributes(element: Element, language: Language): void {
 
     const originalAttribute = `data-videocat-i18n-${attribute}`;
     const stored = element.getAttribute(originalAttribute);
-    const original = stored && value === translateText(stored, language) ? stored : value;
+    const original = stored && isRenderedFrom(stored, value) ? stored : value;
     element.setAttribute(originalAttribute, original);
 
     const translated = language === "es" ? original : translateText(original, language);
