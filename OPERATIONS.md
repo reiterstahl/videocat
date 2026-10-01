@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to Companion 0.2.3
+
+- The Windows Companion now ships as `VideoCAT-Companion-win-Setup.exe` and updates itself from GitHub Releases. On each PC, close the portable `.exe` (0.2.2 or earlier), run Setup.exe once and delete the portable file; settings and pairing in `%APPDATA%\VideoCAT Companion` are kept.
+- The Docker stack stays on 0.2.2.
+
 ## Upgrading to 0.2.2
 
 - Review shortcuts changed: `F` keeps, `J` marks for deletion and `P` toggles full screen.

@@ -143,23 +143,20 @@ Main features:
 
 ## Current Release
 
-The current Docker stack is `v0.2.2`. The current Windows Companion is `v0.2.2`.
+The current Docker stack is `v0.2.2`. The current Windows Companion is `v0.2.3`.
 
 - Source code: <https://github.com/reiterstahl/videocat>
 - Project website: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: `VideoCAT-Companion-0.2.2.exe`, published as an asset of release [v0.2.2](https://github.com/reiterstahl/videocat/releases/tag/v0.2.2)
+- Windows Companion: [`VideoCAT-Companion-win-Setup.exe`](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe) installer from the latest release.
 
-Recommended companion verification:
+The Companion installs per user (no administrator rights), adds a Start menu shortcut and keeps itself up to date: it checks GitHub for new versions, downloads them in the background and applies them on restart or from `Reiniciar para actualizar` in the tray menu. If you used the portable `.exe` (0.2.2 or earlier), close it, install with Setup.exe and delete the portable file: settings and pairing are kept.
 
-```text
-SHA-256 and MD5 checksums for the executable are published as assets in the corresponding release.
-```
-
-On Windows:
+Recommended installer verification (each release publishes the SHA-256 and a provenance attestation):
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.2.2.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-win-Setup.exe -Algorithm SHA256
+gh attestation verify .\VideoCAT-Companion-win-Setup.exe -R reiterstahl/videocat
 ```
 
 ## Stack
@@ -346,44 +343,29 @@ Discover marked drives:
 npm run discover -w @videocat/agent-windows
 ```
 
-## Portable Windows Companion
+## Windows Companion
 
-Build the executable, validate TypeScript and generate its checksums automatically:
+Publishing a new version:
+
+1. Bump `version` in `apps/agent-windows/package.json`, commit and push to `main`.
+2. Run `.\package-companion.ps1 -PublishRelease`: it checks that `main` is current and pushes the `vX.Y.Z` tag.
+3. GitHub Actions (`release-companion.yml`) builds on Windows, packs with Velopack (Setup.exe, full package and deltas) and publishes the release with notes, SHA-256, attestation and SBOM. Installed Companions pick it up on their own.
+
+Local build without publishing (needs `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 ```
 
-The script installs the exact dependencies from `package-lock.json`, builds the runtime and tray app, generates SHA-256 and MD5 files, and stages all three release assets in both `apps\agent-windows\release` and `companion`.
-
-To bump the patch version first and open the resulting folder:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -Bump patch -OpenOutput
-```
-
-To create the `vX.Y.Z` GitHub release when needed and upload its assets using `gh`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
-```
-
-Manual build alternative:
-
-```powershell
-npm install
-npm run package:tray -w @videocat/agent-windows
-```
-
-The executable is created at:
+The script installs the exact dependencies from `package-lock.json`, type-checks, packages the app and verifies that runtime modules and the updater are inside the package. The installer is created at:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.2.2.exe
+apps\agent-windows\release\velopack\VideoCAT-Companion-win-Setup.exe
 ```
 
 Usage:
 
-1. Open the executable.
+1. Install with `VideoCAT-Companion-win-Setup.exe` and open VideoCAT Companion from the Start menu.
 2. Right-click the tray icon.
 3. In the VideoCAT web app, open `Administration`, generate a pairing code, and keep it visible.
 4. Open `Configuration...` in the Companion, enter `SERVER_URL`, paste the code, and select `Pair`.

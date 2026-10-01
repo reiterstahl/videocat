@@ -7,6 +7,10 @@ import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
+import { CompanionUpdater, createUpdateClient, runVelopackHooks } from "./updater.js";
+
+// Velopack may start the app only to run an install/update hook and exit, so this runs first.
+if (app.isPackaged && process.platform === "win32") runVelopackHooks();
 
 type DiskMarker = {
   schemaVersion: 1;
@@ -112,6 +116,9 @@ let logWindow: BrowserWindow | null = null;
 let busy = false;
 let nextLogId = 1;
 let duplicateLaunchPending = false;
+const updater = new CompanionUpdater(app.isPackaged && process.platform === "win32" ? createUpdateClient() : null);
+const firstUpdateCheckDelayMs = 60 * 1000;
+const updateCheckIntervalMs = 6 * 60 * 60 * 1000;
 let pairedCredential: string | null = null;
 let storedCredential: StoredCompanionCredential | null = null;
 const logEntries: LogEntry[] = [];
@@ -443,6 +450,71 @@ function notify(title: string, body: string): void {
   }
 }
 
+type UpdateStatus = {
+  installed: boolean;
+  currentVersion: string;
+  readyVersion: string | null;
+  message?: string;
+};
+
+function updateStatus(message?: string): UpdateStatus {
+  return { installed: updater.installed, currentVersion: app.getVersion(), readyVersion: updater.readyVersion, message };
+}
+
+async function checkForUpdates(manual = false): Promise<UpdateStatus> {
+  if (!updater.installed) {
+    return updateStatus("Las actualizaciones automáticas requieren instalar el Companion con Setup.exe.");
+  }
+  const previous = updater.readyVersion;
+  try {
+    const version = await updater.checkAndDownload();
+    if (!version) {
+      if (manual) notify("VideoCAT Companion", `Ya tienes la última versión (v${app.getVersion()}).`);
+      return updateStatus(`Tienes la última versión (v${app.getVersion()}).`);
+    }
+    if (version !== previous) {
+      addLog("info", "actualizaciones", `Versión v${version} descargada; se aplica al reiniciar.`);
+      updateMenu();
+      configWindow?.webContents.send("update:ready", updateStatus());
+    }
+    if (version !== previous || manual) notifyUpdateReady(version);
+    return updateStatus(`La versión v${version} está lista para instalar.`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    // Offline or rate-limited: the next scheduled check tries again.
+    addLog("warn", "actualizaciones", `No se pudo buscar actualizaciones: ${reason}`);
+    if (manual) notify("VideoCAT Companion", "No se pudo buscar actualizaciones. Revisa la conexión e inténtalo más tarde.");
+    return updateStatus("No se pudo buscar actualizaciones. Inténtalo más tarde.");
+  }
+}
+
+function notifyUpdateReady(version: string): void {
+  if (!Notification.isSupported()) return;
+  const notification = new Notification({
+    title: `VideoCAT Companion v${version} disponible`,
+    body: "Haz clic para reiniciar el Companion y aplicar la actualización."
+  });
+  notification.on("click", () => installUpdate());
+  notification.show();
+}
+
+function installUpdate(): void {
+  if (busy) {
+    notify("VideoCAT Companion", "Hay una tarea en curso. Actualiza cuando termine.");
+    return;
+  }
+  try {
+    if (!updater.applyAfterExit()) return;
+  } catch (error) {
+    notify("VideoCAT Companion", `No se pudo aplicar la actualización: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  addLog("info", "actualizaciones", `Reiniciando para instalar v${updater.readyVersion}.`);
+  appQuitting = true;
+  stopCompanion();
+  app.quit();
+}
+
 function notifyAlreadyRunning(): void {
   if (!app.isReady()) {
     duplicateLaunchPending = true;
@@ -680,6 +752,10 @@ function configHtml(logoDataUrl: string): string {
     .pair-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); padding: 3px 10px; font-size: 12px; font-weight: 600; }
     .pair-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
     .pair-status.is-paired { background: var(--success-soft); color: var(--success); }
+    .update-button { height: 28px; border-radius: 999px; padding: 0 12px; font-size: 12px; }
+    .update-button[hidden] { display: none; }
+    .update-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+    .update-row p { flex: 1 1 260px; }
     form.shell { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
     nav.pages { min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface); padding: 12px 10px; }
     nav.pages button { height: auto; justify-content: flex-start; gap: 10px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); padding: 8px 10px; text-align: left; font-weight: 500; }
@@ -774,6 +850,7 @@ function configHtml(logoDataUrl: string): string {
     <h1>Video<span>CAT</span> Companion</h1>
     <span class="version">v${app.getVersion()}</span>
     <span class="spacer"></span>
+    <button type="button" id="updateButton" class="primary update-button" hidden></button>
     <span id="pairStatus" class="pair-status">Sin emparejar</span>
   </header>
   <form id="form" class="shell" novalidate>
@@ -799,6 +876,11 @@ function configHtml(logoDataUrl: string): string {
       <button type="button" role="tab" data-page="advanced" aria-controls="page-advanced">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg>
         <span class="nav-text"><strong>Avanzado</strong><small>Puerto e intervalos</small></span>
+      </button>
+      <button type="button" role="tab" data-page="updates" aria-controls="page-updates">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+        <span class="nav-text"><strong>Actualizaciones</strong><small id="updateNavText">v${app.getVersion()}</small></span>
+        <span class="nav-flag" id="updateFlag" title="Actualización lista" hidden></span>
       </button>
     </nav>
 
@@ -914,6 +996,18 @@ function configHtml(logoDataUrl: string): string {
           </div>
         </section>
       </div>
+
+      <div class="page" id="page-updates" role="tabpanel" data-page="updates">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Actualizaciones</h2><p>El Companion busca versiones nuevas en GitHub, las descarga en segundo plano y las aplica al reiniciar.</p></div>
+          </div>
+          <div class="update-row">
+            <p id="updateText">Consultando…</p>
+            <button type="button" id="checkUpdates" class="ghost">Buscar ahora</button>
+          </div>
+        </section>
+      </div>
     </main>
 
     <div class="actions">
@@ -975,6 +1069,25 @@ function configHtml(logoDataUrl: string): string {
     }
     form.elements.namedItem("SERVER_URL").addEventListener("input", refreshConnectionFlag);
     showPage(storedPage());
+
+    const updateButton = document.getElementById("updateButton");
+    const updateText = document.getElementById("updateText");
+    const checkUpdates = document.getElementById("checkUpdates");
+
+    function renderUpdate(update) {
+      if (!update) return;
+      updateButton.hidden = !update.readyVersion;
+      document.getElementById("updateFlag").hidden = !update.readyVersion;
+      document.getElementById("updateNavText").textContent = update.readyVersion ? "v" + update.readyVersion + " lista" : "v" + update.currentVersion;
+      updateButton.textContent = update.readyVersion ? "Actualizar a v" + update.readyVersion : "";
+      checkUpdates.hidden = !update.installed;
+      updateText.textContent = update.message
+        || (update.readyVersion
+          ? "La versión v" + update.readyVersion + " está lista. Se instala al reiniciar el Companion."
+          : update.installed
+            ? "Versión instalada: v" + update.currentVersion + "."
+            : "Esta copia no se actualiza sola. Instala el Companion con Setup.exe desde GitHub para recibir actualizaciones automáticas.");
+    }
 
     function setStatus(message, type = "info") {
       status.textContent = message;
@@ -1193,6 +1306,18 @@ function configHtml(logoDataUrl: string): string {
     }
 
     void loadConfig();
+    window.videocatConfig?.updateStatus?.().then(renderUpdate).catch(() => undefined);
+    window.videocatConfig?.onUpdateReady?.(renderUpdate);
+    updateButton.addEventListener("click", () => window.videocatConfig?.installUpdate?.());
+    checkUpdates.addEventListener("click", async () => {
+      checkUpdates.disabled = true;
+      updateText.textContent = "Buscando actualizaciones…";
+      try {
+        renderUpdate(await window.videocatConfig.checkForUpdates());
+      } finally {
+        checkUpdates.disabled = false;
+      }
+    });
     document.getElementById("close").addEventListener("click", () => window.videocatConfig?.close());
     document.getElementById("toggleToken").addEventListener("click", (event) => {
       const input = document.getElementById("companionToken");
@@ -1518,8 +1643,10 @@ function updateMenu(): void {
       }))
     ];
 
+  const readyVersion = updater.readyVersion;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: companionLabel, enabled: false },
+    ...(readyVersion ? [{ label: `Reiniciar para actualizar a v${readyVersion}`, enabled: !busy, click: () => installUpdate() }] : []),
     { type: "separator" },
     { label: "Abrir VideoCAT", click: () => void openVideoCat() },
     { label: "Configuración...", click: () => openConfigWindow() },
@@ -1539,6 +1666,7 @@ function updateMenu(): void {
       enabled: !busy,
       click: () => runAgentTask("Borrados pendientes", ["process-deletes"])
     },
+    { label: "Buscar actualizaciones", visible: updater.installed, click: () => void checkForUpdates(true) },
     { type: "separator" },
     {
       label: "Salir",
@@ -1610,6 +1738,9 @@ async function main(): Promise<void> {
   ipcMain.on("config:close", () => {
     configWindow?.close();
   });
+  ipcMain.handle("update:status", () => updateStatus());
+  ipcMain.handle("update:check", () => checkForUpdates());
+  ipcMain.on("update:install", () => installUpdate());
   ipcMain.handle("log:load", () => logEntries);
   ipcMain.handle("log:clear", () => {
     clearLogs();
@@ -1632,6 +1763,11 @@ async function main(): Promise<void> {
   setInterval(() => {
     void refreshMountedDisks().finally(updateMenu);
   }, Number(process.env.TRAY_DISK_POLL_MS ?? 10000));
+
+  if (updater.installed) {
+    setTimeout(() => void checkForUpdates(), firstUpdateCheckDelayMs);
+    setInterval(() => void checkForUpdates(), updateCheckIntervalMs);
+  }
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();

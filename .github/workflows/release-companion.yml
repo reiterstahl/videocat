@@ -1,0 +1,164 @@
+name: Release Companion
+
+# Push a tag such as `v0.2.3` (matching apps/agent-windows/package.json) to build the Windows
+# Companion with Velopack and publish it as a GitHub Release. Installed Companions check these
+# releases, download new versions in the background and apply them on restart.
+# Manual runs build the packages as a workflow artifact without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-companion-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Keep in sync with the velopack dependency in apps/agent-windows/package.json.
+  VELOPACK_VERSION: 1.2.161
+  PACK_ID: VideoCAT-Companion
+  RELEASE_DIR: apps/agent-windows/release/velopack
+
+jobs:
+  companion:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $version = (Get-Content apps/agent-windows/package.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid Companion version: $version" }
+          if ($env:EVENT_NAME -eq "push" -and $env:REF_NAME -ne "v$version") {
+            throw "Tag $env:REF_NAME does not match the Companion version $version."
+          }
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk --version $env:VELOPACK_VERSION
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install, check and build
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm run build -w @videocat/shared
+          if ($LASTEXITCODE -ne 0) { throw "shared build failed" }
+          npm run typecheck -w @videocat/agent-windows
+          if ($LASTEXITCODE -ne 0) { throw "Companion typecheck failed" }
+          npm run typecheck:tray -w @videocat/agent-windows
+          if ($LASTEXITCODE -ne 0) { throw "tray typecheck failed" }
+          npm run package:tray -w @videocat/agent-windows
+          if ($LASTEXITCODE -ne 0) { throw "Electron packaging failed" }
+
+      - name: Download previous release for delta updates
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          # Releases before Velopack have nothing to download; packing still builds a full package.
+          vpk download github --repoUrl $env:REPO_URL --outputDir $env:RELEASE_DIR
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "No previous Velopack release was downloaded; continuing without deltas."
+            $global:LASTEXITCODE = 0
+          }
+
+      - name: Pack with Velopack
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          vpk pack `
+            --packId $env:PACK_ID `
+            --packVersion $env:VERSION `
+            --packDir "apps/agent-windows/release/win-unpacked" `
+            --mainExe "VideoCAT Companion.exe" `
+            --packTitle "VideoCAT Companion" `
+            --packAuthors "VideoCAT" `
+            --icon "apps/agent-windows/build/icon.ico" `
+            --outputDir $env:RELEASE_DIR
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack exited with code $LASTEXITCODE." }
+          $setup = Join-Path $env:RELEASE_DIR "$env:PACK_ID-win-Setup.exe"
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$setup.sha256", "$hash  $env:PACK_ID-win-Setup.exe`r`n", [Text.Encoding]::ASCII)
+          Get-ChildItem -LiteralPath $env:RELEASE_DIR -File | Sort-Object Name | ForEach-Object { "{0,12:N0}  {1}" -f $_.Length, $_.Name }
+
+      - uses: actions/attest-build-provenance@v2
+        if: github.event_name == 'push'
+        with:
+          subject-path: ${{ env.RELEASE_DIR }}/${{ env.PACK_ID }}-win-Setup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: videocat-companion-${{ steps.version.outputs.value }}
+          path: ${{ env.RELEASE_DIR }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          # Velopack uploads into a draft so Companions never see a release without its update feed.
+          vpk upload github --repoUrl $env:REPO_URL --outputDir $env:RELEASE_DIR --tag $env:TAG `
+            --releaseName "VideoCAT v$env:VERSION" --merge
+          if ($LASTEXITCODE -ne 0) { throw "vpk upload exited with code $LASTEXITCODE." }
+          gh release upload $env:TAG "$env:RELEASE_DIR/$env:PACK_ID-win-Setup.exe.sha256" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Uploading the checksum failed." }
+          gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name=$env:TAG --jq .body > release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw "Generating release notes failed." }
+          gh release edit $env:TAG --notes-file release-notes.md --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
+
+  sbom:
+    needs: companion
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: videocat.spdx.json
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: videocat.spdx.json

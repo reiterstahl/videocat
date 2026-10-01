@@ -33,22 +33,40 @@ El ícono queda en la bandeja. Clic izquierdo abre VideoCAT; clic derecho muestr
 
 En VideoCAT web abre `Administración` y genera un código. Luego usa `Configuración...` en el Companion para indicar la URL del servidor y emparejarlo. Al completar el proceso, la credencial individual se guarda cifrada, se retira el token compartido de la configuración local y el Companion se reinicia automáticamente.
 
-## Generar ejecutable
+## Instalar y actualizar
 
-En Windows:
+Instala con `VideoCAT-Companion-win-Setup.exe` desde el último release de GitHub. Se instala para el usuario actual, sin permisos de administrador, y crea un acceso en el menú Inicio.
+
+El Companion busca versiones nuevas un minuto después de iniciar y luego cada 6 horas. Cuando encuentra una, la descarga en segundo plano (con deltas cuando es posible) y muestra una notificación. Para aplicarla:
+
+- clic en la notificación,
+- `Reiniciar para actualizar a vX.Y.Z` en el menú de la bandeja,
+- o el botón `Actualizar a vX.Y.Z` en la configuración.
+
+Si no la aplicas, se instala sola en el siguiente arranque. `Buscar actualizaciones` en la bandeja fuerza una consulta. La configuración y la credencial se guardan en `%APPDATA%\VideoCAT Companion` y se conservan entre versiones.
+
+## Generar instalador
+
+Para publicar una versión: sube `version` en `package.json`, haz commit y push a `main`, y ejecuta en Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
+```
+
+El script empuja el tag `vX.Y.Z` y el workflow `release-companion.yml` compila, empaqueta con Velopack y publica el release.
+
+Build local sin publicar (requiere `dotnet tool install -g vpk --version 1.2.161` para generar Setup.exe):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 ```
 
-El script instala dependencias bloqueadas, valida TypeScript, empaqueta el portable, comprueba que todos los módulos runtime estén dentro de `app.asar` y genera los archivos SHA-256 y MD5. Los assets quedan en:
+El instalador queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.2.2.exe
-companion\VideoCAT-Companion-0.2.2.exe
+apps\agent-windows\release\velopack\VideoCAT-Companion-win-Setup.exe
+companion\VideoCAT-Companion-win-Setup.exe
 ```
-
-Usa `-Bump patch` para incrementar la versión antes de construir, `-OpenOutput` para abrir la carpeta final y `-PublishRelease` para crear el release de GitHub si hace falta y subir los tres assets.
 
 ## Configuración
 

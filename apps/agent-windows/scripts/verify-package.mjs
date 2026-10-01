@@ -54,4 +54,16 @@ while (pending.length > 0) {
   }
 }
 
-console.log(`Verified ${checked.size} runtime modules inside app.asar.`);
+// Velopack's JavaScript loader lives in the archive; its native module must stay unpacked.
+for (const entry of ["/node_modules/velopack/lib/index.js", "/node_modules/@neon-rs/load/package.json"]) {
+  if (!archiveEntries.has(entry)) throw new Error(`Updater module missing from app.asar: ${entry}`);
+}
+const unpackedNative = path.join(
+  agentRoot, "release", "win-unpacked", "resources", "app.asar.unpacked",
+  "node_modules", "velopack", "lib", "native", "velopack_nodeffi_win_x64_msvc.node"
+);
+if (!fs.existsSync(unpackedNative)) {
+  throw new Error(`Velopack native module missing from app.asar.unpacked: ${unpackedNative}`);
+}
+
+console.log(`Verified ${checked.size} runtime modules inside app.asar and the Velopack updater.`);

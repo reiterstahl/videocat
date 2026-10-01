@@ -16,7 +16,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
 - Stack Docker actual: `0.2.2`
-- Companion Windows actual: `0.2.2`
+- Companion Windows actual: `0.2.3` (instalador con actualización automática)
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 

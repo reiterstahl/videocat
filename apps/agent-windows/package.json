@@ -1,6 +1,6 @@
 {
   "name": "@videocat/agent-windows",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "VideoCAT Windows agent and tray companion.",
   "author": "VideoCAT contributors",
   "private": true,
@@ -27,7 +27,7 @@
     "tray": "electron dist/tray.js",
     "build:icon": "node scripts/build-icon.mjs",
     "prepackage:tray": "npm run ensure-tray-runtime && npm run build:icon",
-    "package:tray": "electron-builder --win portable && npm run verify:package",
+    "package:tray": "electron-builder --win dir && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs",
     "preinit-disk": "npm run ensure-runtime",
     "init-disk": "node dist/index.js init-disk",
@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@videocat/shared": "0.1.0",
+    "velopack": "1.2.161",
     "zod": "^3.23.8"
   },
   "build": {
@@ -64,7 +65,11 @@
       {
         "from": "../../packages/shared/package.json",
         "to": "node_modules/@videocat/shared/package.json"
-      }
+      },
+      "!**/node_modules/velopack/lib/native/*{linux,osx,arm64,x86}*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/velopack/lib/native/*.node"
     ],
     "extraResources": [
       {
@@ -79,7 +84,7 @@
     "win": {
       "icon": "build/icon.png",
       "target": [
-        "portable"
+        "dir"
       ]
     }
   },

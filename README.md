@@ -144,23 +144,20 @@ Funciones principales:
 
 ## Release actual
 
-La versión actual del stack Docker es `v0.2.2`. El Companion Windows vigente es `v0.2.2`.
+La versión actual del stack Docker es `v0.2.2`. El Companion Windows vigente es `v0.2.3`.
 
 - Código fuente: <https://github.com/reiterstahl/videocat>
 - Sitio del proyecto: <https://videocat.centeran.com>
 - Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Companion Windows: `VideoCAT-Companion-0.2.2.exe`, publicado como asset del release [v0.2.2](https://github.com/reiterstahl/videocat/releases/tag/v0.2.2)
+- Companion Windows: instalador [`VideoCAT-Companion-win-Setup.exe`](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe) del último release.
 
-Verificación recomendada del companion:
+El Companion se instala para tu usuario (sin permisos de administrador), crea un acceso en el menú Inicio y se actualiza solo: busca versiones nuevas en GitHub, las descarga en segundo plano y las aplica al reiniciar o desde `Reiniciar para actualizar` en la bandeja. Si usabas el `.exe` portable (0.2.2 o anterior), ciérralo, instala con Setup.exe y borra el portable: la configuración y el emparejamiento se conservan.
 
-```text
-Los hashes SHA-256 y MD5 del ejecutable están publicados como assets del release correspondiente.
-```
-
-En Windows:
+Verificación recomendada del instalador (el SHA-256 y la atestación de origen se publican en cada release):
 
 ```powershell
-Get-FileHash .\VideoCAT-Companion-0.2.2.exe -Algorithm SHA256
+Get-FileHash .\VideoCAT-Companion-win-Setup.exe -Algorithm SHA256
+gh attestation verify .\VideoCAT-Companion-win-Setup.exe -R reiterstahl/videocat
 ```
 
 ## Stack
@@ -348,44 +345,29 @@ Descubrir discos marcados:
 npm run discover -w @videocat/agent-windows
 ```
 
-## Companion portable para Windows
+## Companion para Windows
 
-Construir el ejecutable, validar TypeScript y generar sus hashes automáticamente:
+Publicar una versión nueva:
+
+1. Sube `version` en `apps/agent-windows/package.json`, haz commit y push a `main`.
+2. Ejecuta `.\package-companion.ps1 -PublishRelease`: valida que `main` esté al día y empuja el tag `vX.Y.Z`.
+3. GitHub Actions (`release-companion.yml`) compila en Windows, empaqueta con Velopack (Setup.exe, paquete completo y deltas), publica el release con notas, SHA-256, atestación y SBOM. Los Companions instalados lo detectan solos.
+
+Build local, sin publicar (requiere `dotnet tool install -g vpk --version 1.2.161` para generar Setup.exe):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 ```
 
-El script instala exactamente las dependencias del `package-lock.json`, compila el runtime y la bandeja, genera SHA-256 y MD5, y deja los tres archivos listos tanto en `apps\agent-windows\release` como en `companion`.
-
-Para incrementar primero la versión patch y abrir la carpeta resultante:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -Bump patch -OpenOutput
-```
-
-Para crear el release `vX.Y.Z` si todavía no existe y subir los assets mediante `gh`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
-```
-
-Construcción manual alternativa:
-
-```powershell
-npm install
-npm run package:tray -w @videocat/agent-windows
-```
-
-El ejecutable queda en:
+El script instala exactamente las dependencias del `package-lock.json`, valida TypeScript, empaqueta la app y comprueba que los módulos runtime y el actualizador estén dentro del paquete. El instalador queda en:
 
 ```text
-apps\agent-windows\release\VideoCAT-Companion-0.2.2.exe
+apps\agent-windows\release\velopack\VideoCAT-Companion-win-Setup.exe
 ```
 
 Uso:
 
-1. Abre el ejecutable.
+1. Instala con `VideoCAT-Companion-win-Setup.exe` y abre VideoCAT Companion desde el menú Inicio.
 2. Clic derecho en el ícono de la bandeja.
 3. En VideoCAT web entra a `Administración`, genera un código de emparejamiento y mantenlo visible.
 4. Entra a `Configuración...` en el Companion, indica `SERVER_URL`, pega el código y pulsa `Emparejar`.

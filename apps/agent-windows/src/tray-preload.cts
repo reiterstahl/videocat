@@ -15,6 +15,12 @@ type TrayDrive = {
   diskId?: string;
   diskName?: string;
 };
+type TrayUpdateStatus = {
+  installed: boolean;
+  currentVersion: string;
+  readyVersion: string | null;
+  message?: string;
+};
 type TrayLogEntry = {
   id: number;
   timestamp: string;
@@ -34,6 +40,12 @@ contextBridge.exposeInMainWorld("videocatConfig", {
   pair: (code: string, values: TrayConfig): Promise<TrayPairingResult> =>
     ipcRenderer.invoke("config:pair", code, values) as Promise<TrayPairingResult>,
   copyToken: (): Promise<boolean> => ipcRenderer.invoke("config:copy-token") as Promise<boolean>,
+  updateStatus: (): Promise<TrayUpdateStatus> => ipcRenderer.invoke("update:status") as Promise<TrayUpdateStatus>,
+  checkForUpdates: (): Promise<TrayUpdateStatus> => ipcRenderer.invoke("update:check") as Promise<TrayUpdateStatus>,
+  installUpdate: (): void => ipcRenderer.send("update:install"),
+  onUpdateReady: (callback: (status: TrayUpdateStatus) => void): void => {
+    ipcRenderer.on("update:ready", (_event, status: TrayUpdateStatus) => callback(status));
+  },
   close: (): void => ipcRenderer.send("config:close")
 });
 

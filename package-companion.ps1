@@ -70,6 +70,10 @@ try {
   Write-Host "Repository: $repoRoot"
   Write-Host "Node.js: v$nodeVersionText"
 
+  if ($PublishRelease -and $Bump -ne "none") {
+    throw "Commit and push the version bump first, then run -PublishRelease without -Bump."
+  }
+
   if ($Bump -ne "none") {
     Invoke-NativeStep -Label "Bump Companion $Bump version" -Command $npmCommand.Source -Arguments @(
       "version", $Bump, "-w", "@videocat/agent-windows", "--no-git-tag-version"
@@ -82,12 +86,39 @@ try {
     throw "The Companion version is missing from apps\agent-windows\package.json."
   }
 
-  $artifactName = "VideoCAT-Companion-$version.exe"
-  $artifactPath = Join-Path $releaseDirectory $artifactName
-  $sha256Path = "$artifactPath.sha256"
-  $md5Path = "$artifactPath.md5"
+  $packId = "VideoCAT-Companion"
+  $velopackDirectory = Join-Path $releaseDirectory "velopack"
+  $unpackedDirectory = Join-Path $releaseDirectory "win-unpacked"
+  $setupPath = Join-Path $velopackDirectory "$packId-win-Setup.exe"
 
   Write-Host "Companion version: $version" -ForegroundColor Green
+
+  if ($PublishRelease) {
+    # GitHub Actions builds, packs and publishes tagged releases (release-companion.yml).
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCommand) {
+      throw "git was not found. Install Git for Windows before using -PublishRelease."
+    }
+    $dirty = & $gitCommand.Source status --porcelain
+    if ($dirty) {
+      throw "The working tree has uncommitted changes. Commit and push them before publishing."
+    }
+    Invoke-NativeStep -Label "Fetch origin" -Command $gitCommand.Source -Arguments @("fetch", "origin", "--tags")
+    $head = (& $gitCommand.Source rev-parse HEAD).Trim()
+    $remoteMain = (& $gitCommand.Source rev-parse origin/main).Trim()
+    if ($head -ne $remoteMain) {
+      throw "HEAD is not origin/main. Pull or push main before publishing v$version."
+    }
+    & $gitCommand.Source rev-parse -q --verify "refs/tags/v$version" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      throw "Tag v$version already exists. Bump the Companion version before publishing."
+    }
+    Invoke-NativeStep -Label "Create tag v$version" -Command $gitCommand.Source -Arguments @("tag", "-a", "v$version", "-m", "VideoCAT v$version")
+    Invoke-NativeStep -Label "Push tag v$version" -Command $gitCommand.Source -Arguments @("push", "origin", "v$version")
+    Write-Host "`nTag v$version pushed. GitHub Actions now builds Setup.exe and publishes the release:" -ForegroundColor Green
+    Write-Host "https://github.com/reiterstahl/videocat/actions/workflows/release-companion.yml"
+    return
+  }
 
   if (-not $SkipInstall) {
     Invoke-NativeStep -Label "Install locked dependencies" -Command $npmCommand.Source -Arguments @("ci")
@@ -105,82 +136,52 @@ try {
     )
   }
 
-  if (Test-Path -LiteralPath $artifactPath) {
-    Remove-Item -LiteralPath $artifactPath -Force
-  }
-
-  Invoke-NativeStep -Label "Build portable Windows executable" -Command $npmCommand.Source -Arguments @(
+  Invoke-NativeStep -Label "Build Windows application" -Command $npmCommand.Source -Arguments @(
     "run", "package:tray", "-w", "@videocat/agent-windows"
   )
 
-  if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
-    throw "electron-builder finished but $artifactName was not created."
+  $vpkCommand = Get-Command vpk -ErrorAction SilentlyContinue
+  if (-not $vpkCommand) {
+    Write-Host "`nVelopack CLI not found: skipping Setup.exe. Install it with: dotnet tool install -g vpk --version 1.2.161" -ForegroundColor Yellow
+    Write-Host "Application folder: $unpackedDirectory"
+    return
   }
 
-  $sha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
-  $md5 = (Get-FileHash -LiteralPath $artifactPath -Algorithm MD5).Hash.ToLowerInvariant()
-  [IO.File]::WriteAllText($sha256Path, "$sha256  $artifactName`r`n", [Text.Encoding]::ASCII)
-  [IO.File]::WriteAllText($md5Path, "$md5  $artifactName`r`n", [Text.Encoding]::ASCII)
+  if (Test-Path -LiteralPath $velopackDirectory) {
+    Remove-Item -LiteralPath $velopackDirectory -Recurse -Force
+  }
+  Invoke-NativeStep -Label "Pack installer with Velopack" -Command $vpkCommand.Source -Arguments @(
+    "pack",
+    "--packId", $packId,
+    "--packVersion", $version,
+    "--packDir", $unpackedDirectory,
+    "--mainExe", "VideoCAT Companion.exe",
+    "--packTitle", "VideoCAT Companion",
+    "--packAuthors", "VideoCAT",
+    "--icon", (Join-Path $agentDirectory "build\icon.ico"),
+    "--outputDir", $velopackDirectory
+  )
+  if (-not (Test-Path -LiteralPath $setupPath -PathType Leaf)) {
+    throw "vpk finished but $setupPath was not created."
+  }
 
-  $publishFiles = @($artifactPath, $sha256Path, $md5Path)
+  $sha256 = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  [IO.File]::WriteAllText("$setupPath.sha256", "$sha256  $packId-win-Setup.exe`r`n", [Text.Encoding]::ASCII)
+
   if ($Stage) {
     New-Item -ItemType Directory -Path $stagingDirectory -Force | Out-Null
-    foreach ($file in $publishFiles) {
-      Copy-Item -LiteralPath $file -Destination $stagingDirectory -Force
-    }
-    $publishFiles = $publishFiles | ForEach-Object {
-      Join-Path $stagingDirectory (Split-Path $_ -Leaf)
-    }
+    Copy-Item -LiteralPath $setupPath, "$setupPath.sha256" -Destination $stagingDirectory -Force
   }
 
-  if ($PublishRelease) {
-    $ghCommand = Get-Command gh.exe -ErrorAction SilentlyContinue
-    if (-not $ghCommand) {
-      $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
-    }
-    if (-not $ghCommand) {
-      throw "GitHub CLI was not found. Install gh and authenticate before using -PublishRelease."
-    }
-
-    Write-Host "`n==> Check GitHub release v$version" -ForegroundColor Cyan
-    # A missing release is an expected state before publishing a new Companion.
-    # Keep this probe non-fatal even when PowerShell is configured to stop on native stderr.
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-      $ErrorActionPreference = "Continue"
-      & $ghCommand.Source release view "v$version" --json tagName 2>$null | Out-Null
-      $releaseExists = $LASTEXITCODE -eq 0
-    }
-    finally {
-      $ErrorActionPreference = $previousErrorActionPreference
-    }
-    if ($releaseExists) {
-      Write-Host "GitHub release v$version already exists." -ForegroundColor Green
-    }
-    else {
-      Invoke-NativeStep -Label "Create GitHub release v$version" -Command $ghCommand.Source -Arguments @(
-        "release", "create", "v$version",
-        "--target", "main",
-        "--title", "VideoCAT v$version",
-        "--generate-notes"
-      )
-    }
-    $uploadArguments = @("release", "upload", "v$version") + $publishFiles + @("--clobber")
-    Invoke-NativeStep -Label "Upload release assets" -Command $ghCommand.Source -Arguments $uploadArguments
-  }
-
-  $sizeMb = [Math]::Round((Get-Item -LiteralPath $artifactPath).Length / 1MB, 1)
+  $sizeMb = [Math]::Round((Get-Item -LiteralPath $setupPath).Length / 1MB, 1)
   Write-Host "`nCompanion package completed." -ForegroundColor Green
-  Write-Host "Executable: $artifactPath"
+  Write-Host "Installer: $setupPath"
   Write-Host "Size: $sizeMb MB"
   Write-Host "SHA-256: $sha256"
-  Write-Host "MD5: $md5"
-  if ($Stage) {
-    Write-Host "Release assets: $stagingDirectory"
-  }
+  Write-Host "Velopack packages: $velopackDirectory"
 
   if ($OpenOutput) {
-    $outputDirectory = if ($Stage) { $stagingDirectory } else { $releaseDirectory }
+    $outputDirectory = if ($Stage) { $stagingDirectory } else { $velopackDirectory }
     Invoke-Item -LiteralPath $outputDirectory
   }
 }
