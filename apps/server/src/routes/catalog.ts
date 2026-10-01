@@ -14,6 +14,8 @@ import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
 import { recordAction, requestIdempotencyKey, runIdempotentAction } from "../lib/action-audit.js";
+import { groupAuditErrors, toCsv } from "../lib/audit-report.js";
+import { folderTreeLevel } from "../lib/folder-tree.js";
 
 function parseBigInt(value: number | undefined): bigint | undefined {
   return value == null ? undefined : BigInt(Math.floor(value));
@@ -64,8 +66,67 @@ const actionAuditQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   action: z.string().trim().min(1).max(80).optional(),
+  status: z.enum(["started", "succeeded", "failed"]).optional(),
+  q: z.string().trim().min(1).max(200).optional(),
+  sinceDays: z.coerce.number().int().min(1).max(3650).optional()
+});
+const auditErrorsQuerySchema = diskIdsQuerySchema.extend({
+  q: z.string().trim().min(1).max(200).optional(),
+  category: z.string().trim().min(1).max(80).optional(),
+  phase: z.string().trim().min(1).max(80).optional(),
+  sinceDays: z.coerce.number().int().min(1).max(3650).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(300),
+  cursor: z.string().uuid().optional(),
+  grouped: z.enum(["true", "false"]).optional()
+});
+const auditExportQuerySchema = auditErrorsQuerySchema.extend({
+  type: z.enum(["errors", "actions"]),
+  action: z.string().trim().min(1).max(80).optional(),
   status: z.enum(["started", "succeeded", "failed"]).optional()
 });
+const folderTreeQuerySchema = diskIdsQuerySchema.extend({
+  prefix: z.string().max(2000).optional()
+});
+const maximumAuditGroupingRows = 5_000;
+const maximumAuditExportRows = 10_000;
+
+function sinceDate(days: number | undefined): Date | undefined {
+  return days ? new Date(Date.now() - days * 86_400_000) : undefined;
+}
+
+function auditErrorWhere(query: z.infer<typeof auditErrorsQuerySchema>): Prisma.AgentErrorWhereInput {
+  const diskIds = commaList(query.diskIds);
+  const since = sinceDate(query.sinceDays);
+  return {
+    ...(diskIds.length > 0 ? { diskId: { in: diskIds } } : {}),
+    ...(query.category ? { category: query.category } : {}),
+    ...(query.phase ? { phase: query.phase } : {}),
+    ...(since ? { createdAt: { gte: since } } : {}),
+    ...(query.q ? {
+      OR: [
+        { message: { contains: query.q, mode: "insensitive" } },
+        { relativePath: { contains: query.q, mode: "insensitive" } },
+        { code: { contains: query.q, mode: "insensitive" } }
+      ]
+    } : {})
+  };
+}
+
+function actionAuditWhere(query: { action?: string; status?: string; q?: string; sinceDays?: number }): Prisma.ActionAuditWhereInput {
+  const since = sinceDate(query.sinceDays);
+  return {
+    ...(query.action ? { action: query.action } : {}),
+    ...(query.status ? { status: query.status } : {}),
+    ...(since ? { createdAt: { gte: since } } : {}),
+    ...(query.q ? {
+      OR: [
+        { action: { contains: query.q, mode: "insensitive" } },
+        { target: { contains: query.q, mode: "insensitive" } },
+        { errorMessage: { contains: query.q, mode: "insensitive" } }
+      ]
+    } : {})
+  };
+}
 const maximumDuplicateGroups = 80;
 const maximumDuplicateFilesPerGroup = 100;
 const maximumDuplicateFilesPerResponse = 1_200;
@@ -1212,10 +1273,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/audit/errors", { preHandler: requireWebAuth }, async (request) => {
-    const query = diskIdsQuerySchema.parse(request.query);
-    const diskIds = commaList(query.diskIds);
-    const where: Prisma.AgentErrorWhereInput = diskIds.length > 0 ? { diskId: { in: diskIds } } : {};
-    const [summary, errors] = await Promise.all([
+    const query = auditErrorsQuerySchema.parse(request.query);
+    const where = auditErrorWhere(query);
+    const grouped = query.grouped === "true";
+    const [summary, total, errors] = await Promise.all([
       prisma.agentError.groupBy({
         by: ["category", "phase"],
         where,
@@ -1223,48 +1284,54 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         orderBy: { _count: { category: "desc" } },
         take: 50
       }),
+      prisma.agentError.count({ where }),
       prisma.agentError.findMany({
         where,
         include: {
           disk: { select: { name: true } },
           scan: { select: { startedAt: true } }
         },
-        orderBy: { createdAt: "desc" },
-        take: 300
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        ...(grouped ? { take: maximumAuditGroupingRows } : {
+          take: query.limit + 1,
+          ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {})
+        })
       })
     ]);
+    const page = grouped ? errors : errors.slice(0, query.limit);
+    const rows = page.map((error) => ({
+      id: error.id,
+      diskName: error.disk.name,
+      category: error.category,
+      phase: error.phase,
+      code: error.code,
+      message: error.message,
+      absolutePath: error.absolutePath,
+      relativePath: error.relativePath,
+      createdAt: error.createdAt,
+      scanStartedAt: error.scan?.startedAt ?? null
+    }));
 
     return {
+      total,
       summary: summary.map((item) => ({
         category: item.category,
         phase: item.phase,
         count: item._count._all
       })),
-      errors: errors.map((error) => ({
-        id: error.id,
-        diskName: error.disk.name,
-        category: error.category,
-        phase: error.phase,
-        code: error.code,
-        message: error.message,
-        absolutePath: error.absolutePath,
-        relativePath: error.relativePath,
-        createdAt: error.createdAt,
-        scanStartedAt: error.scan?.startedAt ?? null
-      }))
+      errors: grouped ? [] : rows,
+      groups: grouped ? groupAuditErrors(rows).slice(0, query.limit) : undefined,
+      nextCursor: !grouped && errors.length > query.limit ? page.at(-1)?.id ?? null : null
     };
   });
 
   app.get("/api/audit/actions", { preHandler: requireWebAuth }, async (request) => {
     const query = actionAuditQuerySchema.parse(request.query);
     const actions = await prisma.actionAudit.findMany({
-      where: {
-        ...(query.cursor ? { id: { lt: query.cursor } } : {}),
-        ...(query.action ? { action: query.action } : {}),
-        ...(query.status ? { status: query.status } : {})
-      },
-      orderBy: { createdAt: "desc" },
-      take: query.limit + 1
+      where: actionAuditWhere(query),
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {})
     });
     const page = actions.slice(0, query.limit);
     return {
@@ -1287,6 +1354,79 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         createdAt: item.createdAt
       })),
       nextCursor: actions.length > query.limit ? page.at(-1)?.id ?? null : null
+    };
+  });
+
+  app.get("/api/audit/export", { preHandler: requireWebAuth }, async (request, reply) => {
+    const query = auditExportQuerySchema.parse(request.query);
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    let csv: string;
+    if (query.type === "errors") {
+      const errors = await prisma.agentError.findMany({
+        where: auditErrorWhere(query),
+        include: { disk: { select: { name: true } } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: maximumAuditExportRows
+      });
+      csv = toCsv(
+        ["createdAt", "disk", "category", "phase", "code", "message", "relativePath"],
+        errors.map((error) => [error.createdAt, error.disk.name, error.category, error.phase, error.code, error.message, error.relativePath])
+      );
+    } else {
+      const actions = await prisma.actionAudit.findMany({
+        where: actionAuditWhere(query),
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: maximumAuditExportRows
+      });
+      csv = toCsv(
+        ["createdAt", "action", "status", "actorType", "actorId", "target", "errorCode", "errorMessage", "completedAt"],
+        actions.map((item) => [item.createdAt, item.action, item.status, item.actorType, item.actorId, item.target, item.errorCode, item.errorMessage, item.completedAt])
+      );
+    }
+    return reply
+      .type("text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="videocat-audit-${query.type}-${stamp}.csv"`)
+      .send(csv);
+  });
+
+  app.get("/api/folder-usage/tree", { preHandler: requireWebAuth }, async (request) => {
+    const query = folderTreeQuerySchema.parse(request.query);
+    const protectedUnlocked = isProtectedFolderUnlocked(request);
+    const diskIds = commaList(query.diskIds);
+    const where: Prisma.VideoFileWhereInput = diskIds.length > 0 ? { diskId: { in: diskIds } } : {};
+    applyHiddenPathFilter(where);
+    if (!protectedUnlocked) applyProtectedPathFilter(where);
+    const files = await prisma.videoFile.findMany({
+      where,
+      select: { diskId: true, relativePath: true, sizeBytes: true, disk: { select: { name: true } } }
+    });
+    return folderTreeLevel(
+      files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
+      query.prefix ?? ""
+    );
+  });
+
+  app.get("/api/admin/maintenance", { preHandler: requireWebAuth }, async () => {
+    const now = Date.now();
+    const errorCutoff = new Date(now - env.AGENT_ERROR_RETENTION_DAYS * 86_400_000);
+    const auditCutoff = new Date(now - env.ACTION_AUDIT_RETENTION_DAYS * 86_400_000);
+    const scanCutoff = new Date(now - env.SCAN_RETENTION_DAYS * 86_400_000);
+    const [agentErrors, auditActions, scans, eligibleErrors, eligibleActions, eligibleScans] = await prisma.$transaction([
+      prisma.agentError.count(),
+      prisma.actionAudit.count(),
+      prisma.scan.count(),
+      prisma.agentError.count({ where: { createdAt: { lt: errorCutoff } } }),
+      prisma.actionAudit.count({ where: { createdAt: { lt: auditCutoff } } }),
+      prisma.scan.count({ where: { status: { not: "running" }, finishedAt: { lt: scanCutoff } } })
+    ]);
+    return {
+      retentionDays: {
+        agentErrors: env.AGENT_ERROR_RETENTION_DAYS,
+        auditActions: env.ACTION_AUDIT_RETENTION_DAYS,
+        scans: env.SCAN_RETENTION_DAYS
+      },
+      totals: { agentErrors, auditActions, scans },
+      eligible: { agentErrors: eligibleErrors, auditActions: eligibleActions, scans: eligibleScans }
     };
   });
 

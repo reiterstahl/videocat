@@ -663,3 +663,69 @@ test("categories, download queue and scan reconciliation work together", { skip:
     if (categoryKey) await prisma.curationCategory.deleteMany({ where: { key: categoryKey } });
   }
 });
+
+test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  let diskId = "";
+  try {
+    const cookie = await authenticatedCookie();
+    const disk = await prisma.disk.create({ data: { name: `Audit ${suffix}`, volumeId: `audit-${suffix}` } });
+    diskId = disk.id;
+    const repeated = `=cmd|'/C calc'!A0 ${suffix}`;
+    await prisma.agentError.createMany({
+      data: [
+        { diskId, category: "metadata", phase: "ffprobe", code: "E1", message: repeated, relativePath: "Familia/a.mp4", createdAt: new Date(Date.now() - 3_600_000) },
+        { diskId, category: "metadata", phase: "ffprobe", code: "E1", message: repeated, relativePath: "Familia/b.mp4" },
+        { diskId, category: "thumbnail", phase: "extract", code: "E2", message: `Other ${suffix}`, relativePath: "Drone/c.mp4", createdAt: new Date(Date.now() - 40 * 86_400_000) }
+      ]
+    });
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId, filename: "a.mp4", extension: "mp4", absolutePath: "X:/Familia/2019/a.mp4", relativePath: "Familia/2019/a.mp4", sizeBytes: 100n },
+        { diskId, filename: "b.mp4", extension: "mp4", absolutePath: "X:/Familia/b.mp4", relativePath: "Familia/b.mp4", sizeBytes: 50n },
+        { diskId, filename: "c.mp4", extension: "mp4", absolutePath: "X:/Drone/c.mp4", relativePath: "Drone/c.mp4", sizeBytes: 300n }
+      ]
+    });
+
+    const searched = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${diskId}&q=${encodeURIComponent(suffix)}&category=metadata`, headers: { cookie } });
+    assert.equal(searched.statusCode, 200);
+    assert.equal(searched.json().total, 2);
+    assert.equal(searched.json().errors.length, 2);
+
+    const recent = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${diskId}&sinceDays=7`, headers: { cookie } });
+    assert.equal(recent.json().total, 2);
+
+    const paged = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${diskId}&limit=1`, headers: { cookie } });
+    assert.equal(paged.json().errors.length, 1);
+    assert.ok(paged.json().nextCursor);
+    const second = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${diskId}&limit=1&cursor=${paged.json().nextCursor}`, headers: { cookie } });
+    assert.notEqual(second.json().errors[0].id, paged.json().errors[0].id);
+
+    const grouped = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${diskId}&grouped=true`, headers: { cookie } });
+    const groups = grouped.json().groups as Array<{ message: string; count: number }>;
+    assert.equal(groups.find((group) => group.message === repeated)?.count, 2);
+
+    const exported = await app.inject({ method: "GET", url: `/api/audit/export?type=errors&diskIds=${diskId}`, headers: { cookie } });
+    assert.equal(exported.statusCode, 200);
+    assert.match(String(exported.headers["content-type"]), /text\/csv/);
+    assert.match(String(exported.headers["content-disposition"]), /attachment; filename="videocat-audit-errors-\d{8}\.csv"/);
+    assert.ok(exported.body.includes(`"'=cmd|`));
+    assert.ok(!exported.body.includes(`,"=cmd|`));
+
+    const unauthenticated = await app.inject({ method: "GET", url: "/api/audit/export?type=actions" });
+    assert.equal(unauthenticated.statusCode, 401);
+
+    const tree = await app.inject({ method: "GET", url: `/api/folder-usage/tree?diskIds=${diskId}`, headers: { cookie } });
+    assert.deepEqual(tree.json().children.map((child: { path: string; sizeBytes: number }) => [child.path, child.sizeBytes]), [["Drone", 300], ["Familia", 150]]);
+    const nested = await app.inject({ method: "GET", url: `/api/folder-usage/tree?diskIds=${diskId}&prefix=Familia`, headers: { cookie } });
+    assert.equal(nested.json().directBytes, 50);
+    assert.equal(nested.json().children[0].path, "Familia/2019");
+
+    const maintenance = await app.inject({ method: "GET", url: "/api/admin/maintenance", headers: { cookie } });
+    assert.equal(maintenance.statusCode, 200);
+    assert.equal(typeof maintenance.json().retentionDays.agentErrors, "number");
+    assert.ok(maintenance.json().totals.agentErrors >= 3);
+  } finally {
+    if (diskId) await prisma.disk.deleteMany({ where: { id: diskId } });
+  }
+});
