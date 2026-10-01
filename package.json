@@ -19,9 +19,11 @@
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:api": "tsx --test tests/api.test.ts",
     "test:coverage": "tsx --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=70 --test-coverage-functions=95 tests/unit/pin-security.test.ts tests/unit/path-security.test.ts tests/unit/file-transfer.test.ts",
-    "test": "npm run build -w @videocat/shared && npm run prisma:generate && npm run test:unit && npm run test:api && npm run test:coverage"
+    "test": "npm run build -w @videocat/shared && npm run prisma:generate && npm run test:unit && npm run test:api && npm run test:coverage",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "tsx": "^4.23.13"
   },
   "engines": {

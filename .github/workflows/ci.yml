@@ -73,3 +73,62 @@ jobs:
         run: npm run typecheck
       - name: Build application
         run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: videocat
+          POSTGRES_USER: videocat
+          POSTGRES_PASSWORD: videocat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U videocat -d videocat"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://videocat:videocat@localhost:5432/videocat
+      JWT_SECRET: 0123456789abcdef0123456789abcdef
+      AGENT_TOKEN: 0123456789abcdef0123456789abcdef
+      PROTECTED_FOLDER_PIN: "5678"
+      PROTECTED_FOLDER_PATTERNS: Private,Protected
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: test-password-12345
+      WEB_ORIGIN: http://localhost:5173
+      SERVER_HOST: 127.0.0.1
+      SERVER_PORT: "4000"
+      TRUST_PROXY: "false"
+      COOKIE_SECURE: "false"
+      THUMBNAILS_DIR: /tmp/videocat-e2e-thumbnails
+      E2E_SEED: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Prepare database and shared package
+        run: |
+          npm run prisma:migrate
+          npm run prisma:generate
+          npm run build -w @videocat/shared
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/.report
+          retention-days: 7
