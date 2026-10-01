@@ -348,8 +348,9 @@ npm run discover -w @videocat/agent-windows
 Publishing a new version:
 
 1. Bump `version` in `apps/agent-windows/package.json`, commit and push to `main`.
-2. Run `.\package-companion.ps1 -PublishRelease`: it checks that `main` is current and pushes the `vX.Y.Z` tag.
-3. GitHub Actions (`release-companion.yml`) builds on Windows, packs with Velopack (Setup.exe, full package and deltas) and publishes the release with notes, SHA-256, attestation and SBOM. Installed Companions pick it up on their own.
+2. That's it: GitHub Actions (`release-companion.yml`) detects the new version, builds on Windows, packs with Velopack (Setup.exe, full package and deltas), creates the `vX.Y.Z` tag and publishes the release with notes, SHA-256, attestation and SBOM. Installed Companions pick it up on their own.
+
+A version that is already tagged is never published again. To start the workflow by hand: `gh workflow run release-companion.yml -f publish=true` or `.\package-companion.ps1 -PublishRelease`.
 
 Local build without publishing (needs `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
 

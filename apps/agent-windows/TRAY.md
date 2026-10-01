@@ -47,13 +47,7 @@ Si no la aplicas, se instala sola en el siguiente arranque. `Buscar actualizacio
 
 ## Generar instalador
 
-Para publicar una versión: sube `version` en `package.json`, haz commit y push a `main`, y ejecuta en Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1 -PublishRelease
-```
-
-El script empuja el tag `vX.Y.Z` y el workflow `release-companion.yml` compila, empaqueta con Velopack y publica el release.
+Para publicar una versión basta con subir `version` en `package.json`, hacer commit y push a `main`: el workflow `release-companion.yml` compila, empaqueta con Velopack, crea el tag `vX.Y.Z` y publica el release. Una versión que ya tiene tag no se vuelve a publicar.
 
 Build local sin publicar (requiere `dotnet tool install -g vpk --version 1.2.161` para generar Setup.exe):
 

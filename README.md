@@ -350,8 +350,9 @@ npm run discover -w @videocat/agent-windows
 Publicar una versión nueva:
 
 1. Sube `version` en `apps/agent-windows/package.json`, haz commit y push a `main`.
-2. Ejecuta `.\package-companion.ps1 -PublishRelease`: valida que `main` esté al día y empuja el tag `vX.Y.Z`.
-3. GitHub Actions (`release-companion.yml`) compila en Windows, empaqueta con Velopack (Setup.exe, paquete completo y deltas), publica el release con notas, SHA-256, atestación y SBOM. Los Companions instalados lo detectan solos.
+2. Listo: GitHub Actions (`release-companion.yml`) detecta la versión nueva, compila en Windows, empaqueta con Velopack (Setup.exe, paquete completo y deltas), crea el tag `vX.Y.Z` y publica el release con notas, SHA-256, atestación y SBOM. Los Companions instalados lo detectan solos.
+
+Si una versión ya tiene tag, el workflow no la vuelve a publicar. Para relanzarlo a mano: `gh workflow run release-companion.yml -f publish=true` o `.\package-companion.ps1 -PublishRelease`.
 
 Build local, sin publicar (requiere `dotnet tool install -g vpk --version 1.2.161` para generar Setup.exe):
 

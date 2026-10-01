@@ -94,10 +94,15 @@ try {
   Write-Host "Companion version: $version" -ForegroundColor Green
 
   if ($PublishRelease) {
-    # GitHub Actions builds, packs and publishes tagged releases (release-companion.yml).
+    # Pushing a new version to main already publishes it (release-companion.yml); this only
+    # starts that workflow by hand, for example after a failed run.
     $gitCommand = Get-Command git -ErrorAction SilentlyContinue
-    if (-not $gitCommand) {
-      throw "git was not found. Install Git for Windows before using -PublishRelease."
+    $ghCommand = Get-Command gh.exe -ErrorAction SilentlyContinue
+    if (-not $ghCommand) {
+      $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+    }
+    if (-not $gitCommand -or -not $ghCommand) {
+      throw "git and the GitHub CLI (gh) are required for -PublishRelease."
     }
     $dirty = & $gitCommand.Source status --porcelain
     if ($dirty) {
@@ -107,15 +112,12 @@ try {
     $head = (& $gitCommand.Source rev-parse HEAD).Trim()
     $remoteMain = (& $gitCommand.Source rev-parse origin/main).Trim()
     if ($head -ne $remoteMain) {
-      throw "HEAD is not origin/main. Pull or push main before publishing v$version."
+      throw "HEAD is not origin/main. Push main first: the push itself publishes v$version."
     }
-    & $gitCommand.Source rev-parse -q --verify "refs/tags/v$version" | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-      throw "Tag v$version already exists. Bump the Companion version before publishing."
-    }
-    Invoke-NativeStep -Label "Create tag v$version" -Command $gitCommand.Source -Arguments @("tag", "-a", "v$version", "-m", "VideoCAT v$version")
-    Invoke-NativeStep -Label "Push tag v$version" -Command $gitCommand.Source -Arguments @("push", "origin", "v$version")
-    Write-Host "`nTag v$version pushed. GitHub Actions now builds Setup.exe and publishes the release:" -ForegroundColor Green
+    Invoke-NativeStep -Label "Start the release workflow for v$version" -Command $ghCommand.Source -Arguments @(
+      "workflow", "run", "release-companion.yml", "--ref", "main", "-f", "publish=true"
+    )
+    Write-Host "`nGitHub Actions builds Setup.exe and publishes v$version unless that tag already exists:" -ForegroundColor Green
     Write-Host "https://github.com/reiterstahl/videocat/actions/workflows/release-companion.yml"
     return
   }
