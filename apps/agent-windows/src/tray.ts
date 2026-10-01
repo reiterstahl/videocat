@@ -669,23 +669,39 @@ function configHtml(logoDataUrl: string): string {
       }
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-    header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(12px); }
-    .catmark { width: 30px; height: 25px; flex: 0 0 auto; background: var(--accent); -webkit-mask: url("${logoDataUrl}") center / contain no-repeat; mask: url("${logoDataUrl}") center / contain no-repeat; }
-    h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+    html, body { height: 100%; }
+    body { margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+    header { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .catmark { width: 28px; height: 23px; flex: 0 0 auto; background: var(--accent); -webkit-mask: url("${logoDataUrl}") center / contain no-repeat; mask: url("${logoDataUrl}") center / contain no-repeat; }
+    h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
     h1 span { color: var(--accent); }
     .version { border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; color: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
     .spacer { flex: 1 1 auto; }
     .pair-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); padding: 3px 10px; font-size: 12px; font-weight: 600; }
     .pair-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
     .pair-status.is-paired { background: var(--success-soft); color: var(--success); }
-    main { width: min(1080px, 100%); margin: 0 auto; padding: 16px 20px 88px; }
-    form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
-    .card { min-width: 0; display: grid; gap: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 14px 16px; box-shadow: var(--shadow); }
+    form.shell { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    nav.pages { min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface); padding: 12px 10px; }
+    nav.pages button { height: auto; justify-content: flex-start; gap: 10px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); padding: 8px 10px; text-align: left; font-weight: 500; }
+    nav.pages button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+    nav.pages button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+    nav.pages svg { width: 17px; height: 17px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .nav-text { min-width: 0; display: grid; flex: 1 1 auto; }
+    .nav-text strong { color: inherit; font-size: 13px; font-weight: 600; }
+    nav.pages button:not([aria-selected="true"]) .nav-text strong { color: var(--text-soft); }
+    .nav-text small { overflow: hidden; color: var(--muted); font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-count { min-width: 20px; border-radius: 999px; background: var(--hover); color: var(--text-soft); padding: 0 6px; font: 600 11px/18px ui-monospace, Consolas, monospace; text-align: center; }
+    .nav-count:empty { display: none; }
+    .nav-flag { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); }
+    .nav-flag[hidden] { display: none; }
+    main { min-height: 0; overflow-y: auto; padding: 16px 20px; }
+    .page { display: grid; gap: 14px; align-content: start; }
+    .page:not(.is-active) { display: none; }
+    .page.split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card { min-width: 0; display: grid; gap: 12px; align-content: start; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 14px 16px; box-shadow: var(--shadow); }
     .card.full { grid-column: 1 / -1; }
-    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .card-head > div:first-child { display: grid; gap: 2px; flex: 1 1 260px; }
-    .card-head { flex-wrap: wrap; }
     h2 { margin: 0; font-size: 14px; font-weight: 600; }
     p, .hint { margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; }
     .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
@@ -715,12 +731,13 @@ function configHtml(logoDataUrl: string): string {
     .pair-code { font-family: ui-monospace, Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; }
     .note { border-radius: 10px; background: var(--sunken); padding: 8px 10px; color: var(--muted); font-size: 12px; }
     details.legacy { border-top: 1px solid var(--border); padding-top: 10px; }
-    details.legacy summary, details.card summary { cursor: pointer; color: var(--text-soft); font-weight: 600; list-style: none; }
-    details.legacy summary::before, details.card summary::before { content: "▸ "; color: var(--muted); }
-    details[open].legacy summary::before, details[open].card summary::before { content: "▾ "; }
+    details.legacy summary { cursor: pointer; color: var(--text-soft); font-weight: 600; list-style: none; }
+    details.legacy summary::before { content: "▸ "; color: var(--muted); }
+    details[open].legacy summary::before { content: "▾ "; }
     details.legacy label { margin-top: 10px; }
-    details.card { padding: 12px 16px; }
-    details.card[open] { gap: 12px; }
+    .steps { margin: 0; display: grid; gap: 8px; padding: 0; list-style: none; counter-reset: step; }
+    .steps li { display: flex; align-items: baseline; gap: 10px; color: var(--text-soft); font-size: 12.5px; counter-increment: step; }
+    .steps li::before { content: counter(step); width: 20px; height: 20px; flex: 0 0 auto; display: inline-grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 700; }
     .monitor-actions { display: flex; flex: 0 0 auto; gap: 8px; }
     .monitor-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .monitor-group { min-width: 0; display: grid; align-content: start; gap: 6px; }
@@ -736,14 +753,18 @@ function configHtml(logoDataUrl: string): string {
     .monitor-row button { height: 30px; font-size: 12px; }
     .monitor-empty { border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--muted); padding: 10px; font-size: 12px; }
     .token-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .actions { position: fixed; right: 0; bottom: 0; left: 0; z-index: 6; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); padding: 10px 20px; backdrop-filter: blur(12px); }
+    .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); background: var(--surface); padding: 10px 18px; }
     #status { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--success); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
     #status.is-error { color: var(--danger); }
     #status.is-info { color: var(--muted); }
     @media (max-width: 760px) {
-      form, .monitor-columns { grid-template-columns: minmax(0, 1fr); }
+      form.shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+      nav.pages { flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px 10px; }
+      nav.pages button { flex: 0 0 auto; padding: 6px 10px; }
+      .nav-text small { display: none; }
+      .page.split, .monitor-columns { grid-template-columns: minmax(0, 1fr); }
       .fields.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      main { padding: 12px 12px 88px; }
+      main { padding: 12px; }
     }
   </style>
 </head>
@@ -755,107 +776,152 @@ function configHtml(logoDataUrl: string): string {
     <span class="spacer"></span>
     <span id="pairStatus" class="pair-status">Sin emparejar</span>
   </header>
-  <main>
-    <form id="form">
-      <section class="card">
-        <div class="card-head">
-          <div><h2>Conexión con VideoCAT</h2><p>Servidor al que este equipo reporta escaneos y del que recibe tareas.</p></div>
-          <span class="hint"><span class="required">*</span> obligatorio</span>
-        </div>
-        <div class="fields">
-          <label class="wide"><span class="label-row"><span>URL del servidor <span class="required">*</span></span><code>SERVER_URL</code></span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
-          <label><span class="label-row"><span>URL de la web</span><code>WEB_URL</code></span><input name="WEB_URL" placeholder="https://cat.example.com" /></label>
-          <label><span class="label-row"><span>Nombre del equipo</span><code>COMPANION_NAME</code></span><input name="COMPANION_NAME" placeholder="Opcional" /></label>
-        </div>
-        <details class="legacy">
-          <summary>Token compartido (solo clientes heredados)</summary>
-          <label><span class="label-row"><span>Token compartido</span><code>AGENT_TOKEN</code></span><input name="AGENT_TOKEN" type="password" autocomplete="off" /></label>
-        </details>
-      </section>
+  <form id="form" class="shell" novalidate>
+    <nav class="pages" role="tablist" aria-label="Secciones de la configuración">
+      <button type="button" role="tab" data-page="connection" aria-controls="page-connection">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+        <span class="nav-text"><strong>Conexión</strong><small>Servidor y código</small></span>
+        <span class="nav-flag" id="connectionFlag" title="Falta completar la conexión" hidden></span>
+      </button>
+      <button type="button" role="tab" data-page="browser" aria-controls="page-browser">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/></svg>
+        <span class="nav-text"><strong>Navegador</strong><small>Token local</small></span>
+      </button>
+      <button type="button" role="tab" data-page="routes" aria-controls="page-routes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M6 16h.01"/><path d="M10 16h.01"/></svg>
+        <span class="nav-text"><strong>Rutas</strong><small>Discos y carpetas</small></span>
+        <span class="nav-count" id="routesCount"></span>
+      </button>
+      <button type="button" role="tab" data-page="files" aria-controls="page-files">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        <span class="nav-text"><strong>Archivos</strong><small>Descargas y FFmpeg</small></span>
+      </button>
+      <button type="button" role="tab" data-page="advanced" aria-controls="page-advanced">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg>
+        <span class="nav-text"><strong>Avanzado</strong><small>Puerto e intervalos</small></span>
+      </button>
+    </nav>
 
-      <section class="card">
-        <div class="card-head">
-          <div><h2>Emparejamiento</h2><p>Genera un código en VideoCAT › Administración › Companions. Solo se usa una vez.</p></div>
-        </div>
-        <div class="inline">
-          <label><span class="label-row"><span>Código de emparejamiento</span></span><input id="pairCode" class="pair-code" maxlength="11" placeholder="ABCDE-23456" autocomplete="one-time-code" /></label>
-          <button type="button" id="pair" class="primary">Emparejar</button>
-        </div>
-        <div id="pairDetail" class="note"></div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <div><h2>Token del navegador</h2><p>Abrir, copiar y borrar archivos desde la web solo se acepta con este token. Pégalo en VideoCAT › Perfil › Companion local en cada navegador de esta PC.</p></div>
-        </div>
-        <label><span class="label-row"><span>Token local</span><code>COMPANION_TOKEN</code></span><input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
-        <div class="token-actions">
-          <button type="button" id="copyToken" class="primary">Copiar token</button>
-          <button type="button" id="toggleToken" class="ghost">Mostrar</button>
-        </div>
-        <p>Si lo borras y guardas, se genera uno nuevo y habrá que pegarlo otra vez en el navegador.</p>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <div><h2>Archivos y herramientas</h2><p>Destino de las copias y rutas opcionales de FFmpeg.</p></div>
-        </div>
-        <div class="fields">
-          <label class="wide"><span class="label-row"><span>Carpeta de descargas</span><code>COMPANION_DOWNLOAD_DIR</code></span><input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
-          <label><span class="label-row"><span>FFmpeg</span><code>FFMPEG_PATH</code></span><input name="FFMPEG_PATH" placeholder="Detección automática" /></label>
-          <label><span class="label-row"><span>FFprobe</span><code>FFPROBE_PATH</code></span><input name="FFPROBE_PATH" placeholder="Detección automática" /></label>
-          <label class="wide"><span class="label-row"><span>Carpeta de estado</span><code>AGENT_STATE_DIR</code></span><input name="AGENT_STATE_DIR" placeholder="Automática: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
-        </div>
-      </section>
-
-      <section class="card full">
-        <div class="card-head">
-          <div><h2>Rutas monitoreadas</h2><p>Unidades y carpetas locales o de red que el Companion revisa automáticamente.</p></div>
-          <div class="monitor-actions">
-            <button type="button" id="addFolder" class="ghost">Añadir carpeta…</button>
-            <button type="button" id="addDrive" class="primary">Añadir unidad…</button>
+    <main>
+      <div class="page" id="page-connection" role="tabpanel" data-page="connection">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Conexión con VideoCAT</h2><p>Servidor al que este equipo reporta escaneos y del que recibe tareas.</p></div>
+            <span class="hint"><span class="required">*</span> obligatorio</span>
           </div>
-        </div>
-        <div id="drivePicker" class="drive-picker" hidden></div>
-        <div class="monitor-columns">
-          <div class="monitor-group">
-            <span class="monitor-group-title">Rutas añadidas manualmente</span>
-            <div id="targetList"></div>
+          <div class="fields">
+            <label class="wide"><span class="label-row"><span>URL del servidor <span class="required">*</span></span><code>SERVER_URL</code></span><input name="SERVER_URL" required placeholder="http://192.168.1.x:8081" /></label>
+            <label><span class="label-row"><span>URL de la web</span><code>WEB_URL</code></span><input name="WEB_URL" placeholder="https://cat.example.com" /></label>
+            <label><span class="label-row"><span>Nombre del equipo</span><code>COMPANION_NAME</code></span><input name="COMPANION_NAME" placeholder="Opcional" /></label>
           </div>
-          <div class="monitor-group">
-            <span class="monitor-group-title">Discos VideoCAT detectados</span>
-            <div id="autoDiskList"></div>
-            <p>Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
+          <details class="legacy">
+            <summary>Token compartido (solo clientes heredados)</summary>
+            <label><span class="label-row"><span>Token compartido</span><code>AGENT_TOKEN</code></span><input name="AGENT_TOKEN" type="password" autocomplete="off" /></label>
+          </details>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Emparejamiento</h2><p>Genera un código en VideoCAT › Administración › Companions. Solo se usa una vez.</p></div>
           </div>
-        </div>
-        <textarea name="COMPANION_MONITORED_TARGETS" id="COMPANION_MONITORED_TARGETS" hidden></textarea>
-        <input name="COMPANION_DISABLED_DISK_IDS" id="COMPANION_DISABLED_DISK_IDS" hidden />
-      </section>
-
-      <details class="card full">
-        <summary>Opciones avanzadas</summary>
-        <div class="fields three">
-          <label><span class="label-row"><span>Puerto local</span><code>COMPANION_PORT</code></span><input name="COMPANION_PORT" placeholder="29429" /></label>
-          <label><span class="label-row"><span>Remux MP4 temporal</span><code>COMPANION_REMOTE_REMUX_ENABLED</code></span><select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
-          <label><span class="label-row"><span>Borrar los marcados</span><code>COMPANION_AUTO_DELETE_MARKED</code></span><select name="COMPANION_AUTO_DELETE_MARKED"><option value="true">Automáticamente</option><option value="false">Solo a pedido</option></select></label>
-          <label class="wide"><span class="label-row"><span>Orígenes permitidos</span><code>COMPANION_ALLOWED_ORIGINS</code></span><input name="COMPANION_ALLOWED_ORIGINS" placeholder="https://cat.example.com,http://localhost:5173" /></label>
-          <label><span class="label-row"><span>Detección de discos (ms)</span><code>COMPANION_DISK_POLL_MS</code></span><input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
-          <label><span class="label-row"><span>Reescaneo (ms)</span><code>COMPANION_SCAN_POLL_MS</code></span><input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
-          <label><span class="label-row"><span>Latido (ms)</span><code>COMPANION_HEARTBEAT_MS</code></span><input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
-          <label><span class="label-row"><span>Revisión de borrados (ms)</span><code>COMPANION_DELETE_POLL_MS</code></span><input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
-          <label><span class="label-row"><span>Revisión de descargas (ms)</span><code>COMPANION_DOWNLOAD_POLL_MS</code></span><input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
-          <label><span class="label-row"><span>Copia estancada (ms)</span><code>COMPANION_DOWNLOAD_STALL_MS</code></span><input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
-          <label><span class="label-row"><span>Discos en la bandeja (ms)</span><code>TRAY_DISK_POLL_MS</code></span><input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
-        </div>
-      </details>
-
-      <div class="actions">
-        <div id="status" role="status"></div>
-        <button type="button" id="close" class="ghost">Cerrar</button>
-        <button type="submit" class="primary">Guardar cambios</button>
+          <div class="inline">
+            <label><span class="label-row"><span>Código de emparejamiento</span></span><input id="pairCode" class="pair-code" maxlength="11" placeholder="ABCDE-23456" autocomplete="one-time-code" /></label>
+            <button type="button" id="pair" class="primary">Emparejar</button>
+          </div>
+          <div id="pairDetail" class="note"></div>
+        </section>
       </div>
-    </form>
-  </main>
+
+      <div class="page" id="page-browser" role="tabpanel" data-page="browser">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Token del navegador</h2><p>Abrir, copiar y borrar archivos desde la web solo se acepta con este token.</p></div>
+          </div>
+          <label><span class="label-row"><span>Token local</span><code>COMPANION_TOKEN</code></span><input name="COMPANION_TOKEN" id="companionToken" type="password" autocomplete="off" spellcheck="false" /></label>
+          <div class="token-actions">
+            <button type="button" id="copyToken" class="primary">Copiar token</button>
+            <button type="button" id="toggleToken" class="ghost">Mostrar</button>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Cómo usarlo</h2>
+          <ol class="steps">
+            <li>Copia el token con el botón de arriba.</li>
+            <li>En VideoCAT, abre Perfil › Companion local.</li>
+            <li>Pégalo y guárdalo. Repite en cada navegador de esta PC.</li>
+          </ol>
+          <p>Si lo borras y guardas, se genera uno nuevo y habrá que pegarlo otra vez en el navegador.</p>
+        </section>
+      </div>
+
+      <div class="page" id="page-routes" role="tabpanel" data-page="routes">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Rutas monitoreadas</h2><p>Unidades y carpetas locales o de red que el Companion revisa automáticamente.</p></div>
+            <div class="monitor-actions">
+              <button type="button" id="addFolder" class="ghost">Añadir carpeta…</button>
+              <button type="button" id="addDrive" class="primary">Añadir unidad…</button>
+            </div>
+          </div>
+          <div id="drivePicker" class="drive-picker" hidden></div>
+          <div class="monitor-columns">
+            <div class="monitor-group">
+              <span class="monitor-group-title">Rutas añadidas manualmente</span>
+              <div id="targetList"></div>
+            </div>
+            <div class="monitor-group">
+              <span class="monitor-group-title">Discos VideoCAT detectados</span>
+              <div id="autoDiskList"></div>
+              <p>Puedes ignorarlos temporalmente sin borrar el marcador del disco.</p>
+            </div>
+          </div>
+          <textarea name="COMPANION_MONITORED_TARGETS" id="COMPANION_MONITORED_TARGETS" hidden></textarea>
+          <input name="COMPANION_DISABLED_DISK_IDS" id="COMPANION_DISABLED_DISK_IDS" hidden />
+        </section>
+      </div>
+
+      <div class="page" id="page-files" role="tabpanel" data-page="files">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Archivos y herramientas</h2><p>Destino de las copias y rutas opcionales de FFmpeg.</p></div>
+          </div>
+          <div class="fields">
+            <label class="wide"><span class="label-row"><span>Carpeta de descargas</span><code>COMPANION_DOWNLOAD_DIR</code></span><input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
+            <label><span class="label-row"><span>FFmpeg</span><code>FFMPEG_PATH</code></span><input name="FFMPEG_PATH" placeholder="Detección automática" /></label>
+            <label><span class="label-row"><span>FFprobe</span><code>FFPROBE_PATH</code></span><input name="FFPROBE_PATH" placeholder="Detección automática" /></label>
+            <label class="wide"><span class="label-row"><span>Carpeta de estado</span><code>AGENT_STATE_DIR</code></span><input name="AGENT_STATE_DIR" placeholder="Automática: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="page-advanced" role="tabpanel" data-page="advanced">
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Opciones avanzadas</h2><p>Déjalas vacías para usar los valores por defecto.</p></div>
+          </div>
+          <div class="fields three">
+            <label><span class="label-row"><span>Puerto local</span><code>COMPANION_PORT</code></span><input name="COMPANION_PORT" placeholder="29429" /></label>
+            <label><span class="label-row"><span>Remux MP4 temporal</span><code>COMPANION_REMOTE_REMUX_ENABLED</code></span><select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
+            <label><span class="label-row"><span>Borrar los marcados</span><code>COMPANION_AUTO_DELETE_MARKED</code></span><select name="COMPANION_AUTO_DELETE_MARKED"><option value="true">Automáticamente</option><option value="false">Solo a pedido</option></select></label>
+            <label class="wide"><span class="label-row"><span>Orígenes permitidos</span><code>COMPANION_ALLOWED_ORIGINS</code></span><input name="COMPANION_ALLOWED_ORIGINS" placeholder="https://cat.example.com,http://localhost:5173" /></label>
+            <label><span class="label-row"><span>Detección de discos (ms)</span><code>COMPANION_DISK_POLL_MS</code></span><input name="COMPANION_DISK_POLL_MS" placeholder="5000" /></label>
+            <label><span class="label-row"><span>Reescaneo (ms)</span><code>COMPANION_SCAN_POLL_MS</code></span><input name="COMPANION_SCAN_POLL_MS" placeholder="900000" /></label>
+            <label><span class="label-row"><span>Latido (ms)</span><code>COMPANION_HEARTBEAT_MS</code></span><input name="COMPANION_HEARTBEAT_MS" placeholder="15000" /></label>
+            <label><span class="label-row"><span>Revisión de borrados (ms)</span><code>COMPANION_DELETE_POLL_MS</code></span><input name="COMPANION_DELETE_POLL_MS" placeholder="60000" /></label>
+            <label><span class="label-row"><span>Revisión de descargas (ms)</span><code>COMPANION_DOWNLOAD_POLL_MS</code></span><input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
+            <label><span class="label-row"><span>Copia estancada (ms)</span><code>COMPANION_DOWNLOAD_STALL_MS</code></span><input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
+            <label><span class="label-row"><span>Discos en la bandeja (ms)</span><code>TRAY_DISK_POLL_MS</code></span><input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div class="actions">
+      <div id="status" role="status"></div>
+      <button type="button" id="close" class="ghost">Cerrar</button>
+      <button type="submit" class="primary">Guardar cambios</button>
+    </div>
+  </form>
   <script>
     const form = document.getElementById("form");
     const status = document.getElementById("status");
@@ -870,6 +936,45 @@ function configHtml(logoDataUrl: string): string {
     let targets = [];
     let disabledDiskIds = new Set();
     let availableDrives = [];
+    const pageKey = "videocat-companion-settings-page";
+    const pageTabs = [...document.querySelectorAll("nav.pages [data-page]")];
+    const routesCount = document.getElementById("routesCount");
+    const connectionFlag = document.getElementById("connectionFlag");
+
+    function showPage(page) {
+      if (!pageTabs.some((tab) => tab.dataset.page === page)) page = "connection";
+      for (const tab of pageTabs) {
+        const active = tab.dataset.page === page;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+      }
+      for (const panel of document.querySelectorAll("main .page")) panel.classList.toggle("is-active", panel.dataset.page === page);
+      document.querySelector("main").scrollTop = 0;
+      if (status.className === "is-info") setStatus("");
+      try { localStorage.setItem(pageKey, page); } catch {}
+    }
+
+    function storedPage() {
+      try { return localStorage.getItem(pageKey) || "connection"; } catch { return "connection"; }
+    }
+
+    function refreshConnectionFlag() {
+      connectionFlag.hidden = Boolean(String(form.elements.namedItem("SERVER_URL").value || "").trim());
+    }
+
+    for (const tab of pageTabs) {
+      tab.addEventListener("click", () => showPage(tab.dataset.page));
+      tab.addEventListener("keydown", (event) => {
+        const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 0;
+        if (!step) return;
+        event.preventDefault();
+        const next = pageTabs[(pageTabs.indexOf(tab) + step + pageTabs.length) % pageTabs.length];
+        showPage(next.dataset.page);
+        next.focus();
+      });
+    }
+    form.elements.namedItem("SERVER_URL").addEventListener("input", refreshConnectionFlag);
+    showPage(storedPage());
 
     function setStatus(message, type = "info") {
       status.textContent = message;
@@ -1019,6 +1124,8 @@ function configHtml(logoDataUrl: string): string {
 
       autoDiskList.textContent = "";
       const markerDrives = availableDrives.filter((drive) => drive.diskId);
+      const monitored = targets.filter((target) => target.enabled).length + markerDrives.filter((drive) => !disabledDiskIds.has(drive.diskId)).length;
+      routesCount.textContent = monitored > 0 ? String(monitored) : "";
       if (markerDrives.length === 0) {
         const empty = document.createElement("div");
         empty.className = "monitor-empty";
@@ -1074,6 +1181,8 @@ function configHtml(logoDataUrl: string): string {
           const input = form.elements.namedItem(key);
           if (input) input.value = value || "";
         }
+        refreshConnectionFlag();
+        if (!String(config.SERVER_URL || "").trim()) showPage("connection");
         targets = normalizeTargets(config.COMPANION_MONITORED_TARGETS);
         disabledDiskIds = new Set(String(config.COMPANION_DISABLED_DISK_IDS || "").split(",").map((item) => item.trim()).filter(Boolean));
         await refreshAvailableDrives();
@@ -1144,7 +1253,12 @@ function configHtml(logoDataUrl: string): string {
     });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!form.reportValidity()) return;
+      const invalid = form.querySelector("main :invalid");
+      if (invalid) {
+        showPage(invalid.closest(".page").dataset.page);
+        form.reportValidity();
+        return;
+      }
       if (!window.videocatConfig) {
         setStatus("No se pudo cargar el puente de configuración de Electron. Cierra y abre de nuevo el Companion.", "error");
         return;
@@ -1186,10 +1300,10 @@ function openConfigWindow(): void {
   }
 
   configWindow = new BrowserWindow({
-    width: 1000,
-    height: 760,
+    width: 920,
+    height: 620,
     minWidth: 640,
-    minHeight: 560,
+    minHeight: 500,
     title: `VideoCAT Companion v${app.getVersion()}`,
     icon: iconPath() || undefined,
     resizable: true,
