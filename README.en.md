@@ -1,525 +1,141 @@
 <div align="center">
   <img src="logo_orange.png" alt="VideoCAT logo" width="96" />
   <h1>Video<font color="#FC6121">CAT</font></h1>
-  <p><strong>Private video catalog for external drives, with a Windows companion app.</strong></p>
+  <p><strong>A private catalog for videos spread across external drives, with a Windows Companion.</strong></p>
 
   <p>
-    <a href="README.md">Español</a>
+    <a href="README.md">Español</a> · <strong>English</strong>
   </p>
 
   <p>
     <a href="https://videocat.centeran.com"><img alt="Website" src="https://img.shields.io/badge/Website-videocat.centeran.com-FC6121?style=for-the-badge" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/reiterstahl/videocat?label=Release&style=for-the-badge&color=FC6121" /></a>
+    <a href="https://hub.docker.com/r/reiterstahl/videocat-web"><img alt="Docker Hub" src="https://img.shields.io/docker/v/reiterstahl/videocat-web?sort=semver&label=Docker%20Hub&style=for-the-badge&logo=docker&logoColor=white&color=2496ED" /></a>
     <a href="https://github.com/reiterstahl/videocat/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/reiterstahl/videocat/ci.yml?branch=main&label=CI&style=for-the-badge" /></a>
-    <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Windows Companion" src="https://img.shields.io/badge/Windows-Companion-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
+    <a href="https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe"><img alt="Windows Companion" src="https://img.shields.io/badge/Windows-Companion-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
     <a href="https://github.com/reiterstahl/videocat/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0--or--later-2E8B57?style=for-the-badge" /></a>
     <a href="https://github.com/sponsors/reiterstahl"><img alt="Sponsor" src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" /></a>
   </p>
-
-  <p>
-    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" />
-    <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=0B1020" />
-    <img alt="Fastify" src="https://img.shields.io/badge/Fastify-Backend-111111?style=flat-square&logo=fastify&logoColor=white" />
-    <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=flat-square&logo=postgresql&logoColor=white" />
-    <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white" />
-  </p>
 </div>
 
-VideoCAT is a private catalog for videos stored on external hard drives. It is designed for collections spread across many drives that are not always connected: it indexes metadata, paths, thumbnails, tags, duplicates and review decisions without copying the original videos to the server.
+VideoCAT indexes the videos on your external drives — even ones that are rarely plugged in — and lets you search, review, find duplicates, play remotely and free up space from a browser or your phone. **Your videos never leave your drives:** the server only stores metadata, relative paths and thumbnails.
 
-The system has two parts:
+<p align="center">
+  <img src="docs/screenshots/catalog.png" alt="VideoCAT catalog with drives, filters and thumbnails" width="900" />
+</p>
 
-- A Docker Compose web platform: `postgres`, `server` and `web`.
-- A Windows companion app that lives in the system tray, detects drives, scans files, opens local files and processes pending deletes.
+> [!WARNING]
+> VideoCAT can **physically delete files** on Windows: when you mark a video for deletion, the Companion removes it once the right drive is connected. Before using it with important footage, read [Review and safe deletion](#review-and-safe-deletion).
 
-> VideoCAT can physically delete files from Windows when a video is marked for deletion and the companion is running. Use this feature only if you understand the review flow.
+## Contents
+
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Everyday use](#everyday-use)
+- [Production deployment](#production-deployment)
+- [Security and privacy](#security-and-privacy)
+- [Companion configuration](#companion-configuration)
+- [Development](#development)
+- [Publishing releases](#publishing-releases)
+- [Related documentation](#related-documentation)
+- [License and support](#license-and-support)
+
+## How it works
+
+```mermaid
+flowchart LR
+  browser["Browser or phone"] --> web
+  subgraph server_host["Server · Docker Compose"]
+    web["web<br/>Nginx + React"] --> api["server<br/>Fastify API"]
+    api --> db[("PostgreSQL")]
+    api --> thumbs[("Thumbnails")]
+  end
+  subgraph windows["Windows PC"]
+    companion["VideoCAT Companion<br/>tray app"] --> disks[("External drives")]
+  end
+  companion -- "HTTPS and outbound tunnel" --> api
+  browser -. "local actions with token" .-> companion
+```
+
+| Piece | What it does |
+| --- | --- |
+| **web** | Serves the React app and proxies the API and thumbnails. It is the only thing you expose through your reverse proxy. |
+| **server** | API for login, catalog, review, duplicates, audit and the Companion tunnel. Applies database migrations on start. |
+| **postgres** | Catalog database, reachable only on the internal Docker network. |
+| **Companion** | Windows tray app: detects drives, scans with FFmpeg, uploads metadata and thumbnails, processes deletions and copies, and serves remote playback through an **outbound** tunnel (no open ports). |
 
 ## Features
 
-- Private web catalog with username/password login.
-- Responsive UI with a collapsible sidebar and a bottom tab bar on phones, with filters and menus in bottom sheets.
-- Themes: light, dark, OLED or system appearance; six color schemes and comfortable or compact density, stored per browser.
-- Catalog in grid or list view, `Ctrl K` search, active filter chips and a side detail panel.
-- Immersive full-screen Review with keyboard shortcuts (keep, delete, skip, undo and numbered tags).
-- Usage map as a folder treemap you can drill into, with a shortcut to the filtered catalog.
-- Audit with grouped errors, the action log, search, age filters and CSV export.
-- Reverse proxy support, secure cookies and custom domain deployment.
-- Resilient drive identification through `.videocat-disk.json` at the drive root.
-- Scanning still works when Windows changes the drive letter.
-- Connected-drive selection to work only with the currently available subset.
-- Filters by drive, extension, folders, tags, categories and duplicates.
-- Collapsible folder tree with lazy subfolder expansion.
-- Accent-tolerant and partial search across filename and relative path.
-- Sortable table columns, configurable page size and result count.
-- Thumbnails and distributed frame gallery for each video.
-- Desktop- and mobile-friendly detail modal with keyboard navigation, full-screen image gallery and local open actions.
-- Remote playback from phones and other browsers through the Companion's outbound tunnel, without exposing Windows paths or mounting drives on the server.
-- Immersive player with touch controls, double-tap seek, next-video navigation and persistent shuffle across connected drives.
-- Direct video-to-video transitions that replace the previous session and keep the player open while the next file loads.
-- Last indexed timestamp per video.
-- Folder-size value for the folder containing each video.
-- Folder usage screen to understand space distribution.
-- Duplicate detection using file size and perceptual fingerprints sampled at 15 points in each video.
-- Recognition of likely copies with different resolution, codec, bitrate or compression level.
-- Dedicated duplicate review section with confidence, match reasons and potentially recoverable space.
-- Assisted duplicate mode with side-by-side comparison, one recommendation based on resolution/size/duration, and atomic one-click keep/delete decisions.
-- Captured frames cycle automatically while hovering over either duplicate candidate.
-- Temporary group caching plus metadata/frame preloading for the current and upcoming pairs to keep assisted review responsive.
-- Drive prioritization by recoverable duplicate space, separating files already marked for deletion from those awaiting review and showing current connection status.
-- Automatic tags based on filenames.
-- Custom multi-category labels with colors.
-- Built-in review categories: `Mantener`, `Marcado para borrar`, `Por revisar`, `SH` and user-defined categories.
-- Random review flow for pending videos, filtered by selected/connected drives.
-- Preloading for the next video and its thumbnails to keep review decisions responsive.
-- Review indicators: pending count, marked today, weekly streak and freed GB.
-- Recoverable-space modal that recommends which drive to connect to free the most space.
-- `A descargar` download queue to copy selected videos from connected drives into a local folder.
-- Random selection by target GB amount, limited to connected drives and optionally to specific folders.
-- Per-file copy progress, one-at-a-time processing, pause, clear queue and manual process controls.
-- Year/month download tags to avoid randomly selecting already downloaded videos again.
-- Deferred physical deletion of marked files when the drive is connected again.
-- Audit section for scan, metadata, thumbnail and delete errors.
-- Admin section with physical total/used/free space, cataloged size, counts, recent activity and per-drive cleanup.
-- Discreet update indicator beside the logo when Docker Hub contains a newer stable release.
-- Profile section to configure the security PIN and protected folder patterns.
-- PIN protection for folders matching configurable patterns.
-- Protected folders are excluded from duplicate calculations.
-- System folders such as `$RECYCLE.BIN` and `System Volume Information` are skipped.
-- Bilingual Spanish/English interface, with a language selector and optional support links in the official distribution.
+### Catalog
+- Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a detail panel.
+- Filters by drive, extension, folder (lazy-loaded tree), tags, categories and duplicates.
+- Drive strip with capacity and usage, plus **Show connected** to work only with what is plugged in.
+- Drives are identified by `.videocat-disk.json`, so they are recognized even when Windows changes the drive letter.
+- Thumbnails, a 15-frame gallery per video, folder size and last indexed date.
 
-## Section URLs
+### Review
+- Immersive full-screen session with random pending videos, optionally limited to connected drives.
+- Left- and right-hand shortcuts: **F** keeps, **J** marks for deletion, plus skip, undo and numbered tags.
+- Single-frame view or a **gallery** with every thumbnail at once.
+- On phones: an animated confirmation for each decision, the file name always visible and an automatic jump back to the top.
+- The next video is preloaded; counters show pending videos, the weekly streak and space marked to free.
 
-Each section has its own URL, so you can refresh the page or share a link without being sent back to the catalog:
+### Duplicates
+- Detection by size and by **perceptual visual fingerprints** taken at 15 points, which match copies with a different resolution, codec or compression.
+- Confidence level, reasons and recoverable space per group.
+- Assisted mode with side-by-side comparison, a recommendation based on resolution, size and duration, and one-click or one-key decisions.
+- Drives ranked by recoverable duplicate space.
 
-| Section | URL |
+### Remote playback
+- Watch any video from your phone or another browser through the Companion's outbound tunnel, without sharing Windows paths or mounting drives on the server.
+- Touch-friendly player: double-tap to seek, next video and shuffle across connected drives.
+- Optional temporary MP4 remux for H.264/AAC in unsupported containers. Optional Chromecast with signed, short-lived links.
+
+### To download
+- A queue that copies videos from connected drives to a local Windows folder, with per-file progress, pause and clear.
+- Random selection by target size in GB, limited to drives or folders, without repeating what was already downloaded.
+
+### Organization, administration and audit
+- Custom colored categories, several per video, and automatic tags from file names.
+- **Usage map**: a folder map by size you can drill into.
+- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup.
+- Audit of grouped errors and actions, with search, filters and CSV export.
+- PIN-protected folders matched by name patterns, excluded from duplicate detection.
+
+### Interface
+- Spanish and English, light, dark, OLED or system themes, six accent colors and comfortable or compact density.
+- Responsive: collapsible sidebar on desktop, tab bar and bottom sheets on phones.
+- Every section has its own URL (`/catalogo`, `/review`, `/duplicados`…), also reachable through its English equivalent.
+
+### Windows Companion
+- Installs with a Setup.exe, without administrator rights, and **updates itself** from GitHub Releases.
+- Pairs with a one-time code and keeps an individual credential encrypted by Windows.
+- Monitors marked drives and manually added paths, and rescans periodically without repeating work.
+- Reconciles missing files without losing tags or history, and reactivates them if they come back.
+- Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
+
+<details>
+<summary><strong>More screenshots</strong></summary>
+
+| Review | Duplicates |
 | --- | --- |
-| Catalog | `/catalogo` |
-| Review | `/review` |
-| Downloads | `/a-descargar` |
-| Duplicates | `/duplicados` |
-| Usage scheme | `/esquema-de-uso` |
-| Audit | `/auditoria` |
-| Administration | `/administracion` |
-| Profile | `/perfil` |
+| <img src="docs/screenshots/review.png" alt="Review session" width="440" /> | <img src="docs/screenshots/duplicates.png" alt="Probable duplicates" width="440" /> |
 
-Equivalent English paths are also accepted for shared links. The root path automatically redirects to `/catalogo`.
+| Usage map | Mobile |
+| --- | --- |
+| <img src="docs/screenshots/usage.png" alt="Folder usage map" width="440" /> | <img src="docs/screenshots/mobile-catalog.png" alt="Catalog on a phone" width="160" /> <img src="docs/screenshots/mobile-review.png" alt="Review on a phone" width="160" /> |
 
-## Windows Companion
+Screenshots use the demo catalog (`npm run seed:demo`).
+</details>
 
-The companion turns the agent into a Windows tray app. It lets you use VideoCAT without opening a terminal.
+## Quick start
 
-Main features:
+### 1. Server with Docker
 
-- Runs in the background from the Windows system tray.
-- Starts and keeps the local companion active.
-- Pairs with a one-time code and stores an individual credential encrypted by Windows.
-- Maintains an authenticated outbound control tunnel to VideoCAT without exposing Windows ports; Administration shows its state.
-- Supports authenticated remote playback through HTTP Range and the outbound tunnel, without exposing local paths or permanently copying videos to the server. The modal shows connection, buffering and disconnect states.
-- Detects browser compatibility before playback. An optional Companion fallback can temporarily remux H.264/AAC to MP4; full transcoding is never enabled automatically.
-- Configures `SERVER_URL`, `WEB_URL`, the optional legacy `AGENT_TOKEN`, and local options from a window.
-- Shows a live activity/log window.
-- Detects mounted drives that contain `.videocat-disk.json`.
-- Lets you add local/network drives or folders as monitored paths from the companion configuration.
-- Lets you stop monitoring manual paths and ignore detected VideoCAT drives without deleting their marker.
-- Periodically checks for newly connected drives.
-- Periodically rescans monitored paths to detect new content.
-- Rebuilds each drive's lightweight scan state from the server, avoiding repeated metadata and thumbnail work for unchanged files even if the companion's local state was lost.
-- Reconciles missing files after complete scans: hides them without losing tags, metadata or history and reactivates them if they return.
-- Builds visual fingerprints incrementally for new and existing videos to improve cross-resolution duplicate detection.
-- Scans drives or paths on demand.
-- Processes pending deletes automatically.
-- Keeps deletion and failure history with date, drive, path and size; the web UI can also request immediate processing on connected drives.
-- Processes the `A descargar` queue, copying files into the configured local folder.
-- Opens videos with the default video player.
-- Opens the local folder for a file.
-- Reports status to the web UI so the site can show whether the companion is synced.
-- Deletes files only when the correct drive is connected and the path is safe.
-- Revalidates size, modification time and visual fingerprint immediately before deletion; replacements cancel the operation and clear the unsafe delete mark.
-- Resolves canonical paths before opening, copying or deleting to prevent symlink and junction escapes.
-- Avoids accidentally overwriting an existing file in the download folder.
-- Offers opt-in Chromecast playback from Profile through temporary signed links scoped to one streaming session.
-- Prevents two tray-app instances from running and notifies the user when the Companion is already active.
-- Restarts the worker with progressive backoff after an unexpected exit; explicitly quitting from the tray disables that restart.
+You need Docker with Compose. The installer creates a `videocat` folder, downloads `docker-compose.hub.yml`, generates secrets in `.env` and starts the stack with the official images.
 
-## Current Release
-
-The current Docker stack is `v0.2.2`. The current Windows Companion is `v0.2.3`.
-
-- Source code: <https://github.com/reiterstahl/videocat>
-- Project website: <https://videocat.centeran.com>
-- Release: <https://github.com/reiterstahl/videocat/releases/latest>
-- Windows Companion: [`VideoCAT-Companion-win-Setup.exe`](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe) installer from the latest release.
-
-The Companion installs per user (no administrator rights), adds a Start menu shortcut and keeps itself up to date: it checks GitHub for new versions, downloads them in the background and applies them on restart or from `Reiniciar para actualizar` in the tray menu. If you used the portable `.exe` (0.2.2 or earlier), close it, install with Setup.exe and delete the portable file: settings and pairing are kept.
-
-Recommended installer verification (each release publishes the SHA-256 and a provenance attestation):
-
-```powershell
-Get-FileHash .\VideoCAT-Companion-win-Setup.exe -Algorithm SHA256
-gh attestation verify .\VideoCAT-Companion-win-Setup.exe -R reiterstahl/videocat
-```
-
-## Stack
-
-- TypeScript monorepo with npm workspaces.
-- Fastify + Prisma + PostgreSQL backend.
-- React + Vite + Nginx web app.
-- Windows agent/companion with Node.js, Electron, `ffprobe` and `ffmpeg`.
-- Docker Compose for server, web and database.
-
-## Quick Start With Docker Compose
-
-Requirements:
-
-- Docker and Docker Compose.
-- Node.js only if you plan to develop or build the Windows companion.
-- `ffmpeg` and `ffprobe` on Windows for scanning.
-
-1. Copy the environment example:
-
-```bash
-cp .env.example .env
-```
-
-2. Edit `.env` and change at least:
-
-```env
-POSTGRES_PASSWORD=replace-with-64-hex-random-characters
-JWT_SECRET=replace-with-64-hex-random-characters
-AGENT_TOKEN=replace-with-64-hex-random-characters
-PROTECTED_FOLDER_PIN=replace-with-4-digit-pin
-PROTECTED_FOLDER_PATTERNS=Private,Protected
-ADMIN_USER=admin
-ADMIN_PASSWORD=replace-with-a-long-unique-password
-```
-
-You can generate secrets with:
-
-```bash
-openssl rand -hex 32
-```
-
-3. Start the platform:
-
-```bash
-docker compose up -d --build
-```
-
-4. Open the web app:
-
-```text
-http://localhost:8081
-```
-
-Default services:
-
-- Web: `http://localhost:8081`
-- Locally published API: `http://127.0.0.1:4001`
-- PostgreSQL: internal Docker network
-- Thumbnails: persistent `thumbnails_data` volume
-
-## Reverse Proxy
-
-For upgrades, backup/restore, Portainer, existing-volume permissions and trusted proxy configuration, see [OPERATIONS.md](OPERATIONS.md).
-
-The recommended setup is to expose the `web` container to your reverse proxy. That container serves React and internally proxies:
-
-- `/api/*` to `server:4000`
-- `/thumbnails/*` to `server:4000`
-
-Recommended variables:
-
-```env
-WEB_ORIGIN=https://cat.example.com
-WEB_BIND_ADDR=0.0.0.0
-WEB_PUBLISHED_PORT=8081
-SERVER_BIND_ADDR=127.0.0.1
-SERVER_PUBLISHED_PORT=4001
-TRUST_PROXY=true
-COOKIE_SECURE=true
-PUBLIC_THUMBNAILS_BASE_URL=/thumbnails
-```
-
-External Nginx example:
-
-```nginx
-server {
-  server_name cat.example.com;
-
-  client_max_body_size 25m;
-
-  location / {
-    proxy_pass http://127.0.0.1:8081;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
-
-For local HTTP testing you can use `COOKIE_SECURE=false`. In production with HTTPS, keep it `true`.
-
-## Windows CLI Agent
-
-Requirements:
-
-- Node.js 22 or newer; Node.js 24 LTS is recommended.
-- `ffmpeg` and `ffprobe` available in `PATH`.
-- External drive mounted and manually unlocked if it uses BitLocker.
-
-Install:
-
-```powershell
-cd $env:USERPROFILE\videocat
-npm install
-```
-
-Configure variables in `apps\agent-windows\.env`:
-
-```env
-SERVER_URL=https://cat.example.com
-WEB_URL=https://cat.example.com
-AGENT_TOKEN=replace-with-agent-token
-AGENT_CONCURRENCY=2
-AGENT_STATE_DIR=
-FFMPEG_PATH=
-FFPROBE_PATH=
-COMPANION_PORT=29429
-COMPANION_ALLOWED_ORIGINS=https://cat.example.com,http://localhost:5173,http://127.0.0.1:5173
-COMPANION_DISK_POLL_MS=5000
-COMPANION_SCAN_POLL_MS=900000
-COMPANION_DELETE_POLL_MS=60000
-TRAY_DISK_POLL_MS=10000
-COMPANION_AUTO_DELETE_MARKED=true
-# Optional: enables temporary MP4 remuxing for H.264/AAC in MKV/AVI or another incompatible container.
-# REMOTE_REMUX_ENABLED=true must also be enabled on the server.
-COMPANION_REMOTE_REMUX_ENABLED=false
-# Usually edited from the companion configuration window.
-COMPANION_MONITORED_TARGETS=[]
-COMPANION_DISABLED_DISK_IDS=
-# Required for local actions. The tray app generates it when missing;
-# paste it in VideoCAT › Profile › Local Companion in each browser on this PC.
-COMPANION_TOKEN=replace-with-local-token
-```
-
-Wizard mode:
-
-```powershell
-npm run wizard -w @videocat/agent-windows
-```
-
-Direct scan:
-
-```powershell
-npm run scan -w @videocat/agent-windows -- --path "E:" --disk-name "WD 6TB Video 01"
-```
-
-Initialize a drive with a stable identifier:
-
-```powershell
-npm run init-disk -w @videocat/agent-windows -- --path "E:" --disk-name "WD 6TB Video 01" --scan-root "Videos"
-```
-
-This creates:
-
-```text
-E:\.videocat-disk.json
-```
-
-That file contains the `diskId`, friendly name and internal scan roots. If Windows changes the drive letter, VideoCAT can still recognize it.
-
-Add another scan root:
-
-```powershell
-npm run add-root -w @videocat/agent-windows -- --path "E:" --scan-root "Archive/Clients"
-```
-
-Discover marked drives:
-
-```powershell
-npm run discover -w @videocat/agent-windows
-```
-
-## Windows Companion
-
-Publishing a new version:
-
-1. Bump `version` in `apps/agent-windows/package.json`, commit and push to `main`.
-2. That's it: GitHub Actions (`release-companion.yml`) detects the new version, builds on Windows, packs with Velopack (Setup.exe, full package and deltas), creates the `vX.Y.Z` tag and publishes the release with notes, SHA-256, attestation and SBOM. Installed Companions pick it up on their own.
-
-A version that is already tagged is never published again. To start the workflow by hand: `gh workflow run release-companion.yml -f publish=true` or `.\package-companion.ps1 -PublishRelease`.
-
-Local build without publishing (needs `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
-```
-
-The script installs the exact dependencies from `package-lock.json`, type-checks, packages the app and verifies that runtime modules and the updater are inside the package. The installer is created at:
-
-```text
-apps\agent-windows\release\velopack\VideoCAT-Companion-win-Setup.exe
-```
-
-Usage:
-
-1. Install with `VideoCAT-Companion-win-Setup.exe` and open VideoCAT Companion from the Start menu.
-2. Right-click the tray icon.
-3. In the VideoCAT web app, open `Administration`, generate a pairing code, and keep it visible.
-4. Open `Configuration...` in the Companion, enter `SERVER_URL`, paste the code, and select `Pair`.
-5. The individual credential is encrypted for your Windows user; `AGENT_TOKEN` is only needed by legacy clients.
-6. Use `Ver actividad...` to inspect logs and confirm `Canal remoto seguro conectado al servidor.`
-7. Connect drives marked with `.videocat-disk.json`.
-
-### Remote Playback Compatibility
-
-Remote playback first checks whether the browser declares support for the indexed container and codecs. When an H.264/AVC video with AAC/MP3 audio is in an incompatible container, you can enable a temporary MP4 remux button without re-encoding the video:
-
-1. Set `REMOTE_REMUX_ENABLED=true` on the server and restart the `server` container.
-2. In Companion Configuration, under `Advanced options`, enable `TEMPORARY MP4 REMUX`.
-3. Ensure FFmpeg is available to the Companion.
-
-The operation is a temporary stream copy (`-c copy`), limited to one active playback and deleted on stop or expiry. VideoCAT does not automatically transcode H.265, AV1, or other codecs because that can consume substantial CPU.
-
-Optional server controls for remote playback:
-
-```env
-# Absolute maximum duration and inactivity time before the Companion is released.
-REMOTE_STREAM_SESSION_LIFETIME_MS=900000
-REMOTE_STREAM_IDLE_TIMEOUT_MS=120000
-# Limits per Companion and authenticated user.
-REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION=1
-REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
-```
-
-Each session is tied to the authenticated user that created it, has its own correlation ID, and closes when playback stops, expires, or the Companion tunnel disconnects.
-
-On mobile browsers, VideoCAT attempts to enter full screen when playback starts. Controls stay hidden during playback and appear when the video is tapped. Double-tapping the left or right half seeks backward or forward; the next button changes files directly without returning to the detail modal. Shuffle remembers the user's last choice and selects only present videos from drives reported as connected by the Companion.
-
-When changing videos, the new request safely replaces the active session. This prevents “Companion already streaming” conflicts and preserves the immersive player while the next file is prepared.
-
-### Optional Chromecast Playback
-
-Chromecast is disabled by default. Open `Profile`, enable `Allow Chromecast playback`, and save the profile to opt in. The official Google Cast SDK is loaded only when the Cast button is used. VideoCAT gives the receiver a temporary signed URL scoped to that session; it does not share the user's cookie or permanent credentials.
-
-The Chromecast must be able to reach the domain or IP where VideoCAT is open. Direct playback depends on the containers and codecs supported by the device; when eligible, VideoCAT can use the temporary MP4 remux described above.
-
-## Review And Delete Flow
-
-1. In the web app, open `Review`.
-2. Use `Iniciar Review` to get a random pending video.
-3. You can assign additional categories while reviewing.
-4. `Mantener` marks the video as kept.
-5. `Borrar` marks the video as `Marcado para borrar`.
-6. The file is not deleted immediately by the server.
-7. When the correct drive is connected and the companion is active, the companion processes pending deletes.
-8. The freed GB counter increases as files are physically deleted.
-
-If you use `Mostrar conectados`, Review picks random videos only from the selected/connected drives.
-
-## Security And Privacy
-
-- The web app requires login.
-- Each modern Companion installation uses an individual credential issued through a one-time code, encrypted with Windows user protection, and revocable from Administration.
-- The authenticated outbound tunnel serves read-only remote playback through HTTP Range; it does not accept remote write operations.
-- The bundled Nginx proxy already forwards WebSocket traffic. An external reverse proxy must allow `Upgrade` and `Connection` headers for `/api/agent/tunnel`.
-- The server stores only credential hashes. `AGENT_TOKEN` remains temporarily available for legacy clients during the transition.
-- Each installation keeps a persistent UUID identity in its state directory.
-- The Companion local listener only answers `/health` without authentication. Opening, copying, deleting and queue processing require `COMPANION_TOKEN`; the tray app generates a random one when missing and the web stores it from Profile › Local Companion.
-- Session JWTs explicitly restrict the signing algorithm and expire after 12 hours.
-- State-changing web operations validate their origin against `WEB_ORIGIN`.
-- The API enforces body and time limits, bounded rate limiting and no-store responses for sensitive data.
-- Nginx and Fastify send CSP, HSTS over HTTPS and additional hardening headers.
-- Thumbnail uploads are validated as JPEG before being stored.
-- Local paths are resolved canonically before files are opened, copied or deleted.
-- Secure cookies and `TRUST_PROXY` are supported for HTTPS deployments.
-- Folders matching `PROTECTED_FOLDER_PATTERNS` require a PIN in the web session.
-- The server does not need direct access to your external drives.
-- Original videos are not uploaded to the server.
-- Metadata, relative paths, thumbnails and audit errors are uploaded.
-- Physical deletion happens only on Windows, through the companion, when the drive is connected.
-- CI runs a clean install, dependency audit, unit/API tests with temporary PostgreSQL, typecheck and build for every change to `main` and every pull request.
-- Dependabot checks npm dependencies, base images and GitHub Actions every week.
-
-`PROTECTED_FOLDER_PATTERNS` is a comma-separated list. For a public or generic installation, use values such as `Private,Protected`. For a private deployment, set it to the real folder-name fragments you want to protect without changing the code.
-
-See [SECURITY.md](SECURITY.md) for private vulnerability reporting, [ROADMAP.md](ROADMAP.md) for the remaining security and reliability plan, [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) for the secure remote playback proposal and [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md) for the interface redesign.
-
-## Backups
-
-Back up:
-
-- PostgreSQL database.
-- `thumbnails_data` volume.
-- `.env` file.
-- Optionally the local companion `.env`.
-
-Example:
-
-```bash
-docker compose exec postgres pg_dump -U videocat videocat > videocat.sql
-```
-
-## Updating
-
-Server:
-
-```bash
-git pull
-npm install
-docker compose up -d --build server web
-```
-
-If database changes exist, the `server` container runs `prisma migrate deploy` on startup.
-
-Windows companion:
-
-```powershell
-git pull
-npm install
-npm run package:tray -w @videocat/agent-windows
-```
-
-## Local Development
-
-```bash
-npm install
-npm run prisma:generate
-npm run dev:server
-npm run dev:web
-```
-
-Run the local safety net with:
-
-```bash
-npm test
-```
-
-API tests that write to PostgreSQL are enabled with `RUN_DB_TESTS=true` and require a running database; CI enables them automatically. Selected sensitive helpers also have minimum coverage thresholds that block regressions.
-
-End-to-end UI tests run with Playwright on desktop and mobile. They use a demo catalog that **replaces the whole database content**, so run them only against a development database:
-
-```bash
-npx playwright install chromium
-E2E_SEED=1 npm run test:e2e
-```
-
-To load only the demo data: `VIDEOCAT_DEMO_SEED=1 npm run seed:demo -w @videocat/server` (it refuses to run with `NODE_ENV=production`).
-
-The Vite web app runs at:
-
-```text
-http://localhost:5173
-```
-
-## Docker Hub Images
-
-The fastest way to try VideoCAT with prebuilt images is:
-
-Linux/macOS/WSL:
+Linux, macOS or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/install.sh | sh
@@ -531,126 +147,330 @@ Windows PowerShell with Docker Desktop:
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/reiterstahl/videocat/main/install.ps1 | iex"
 ```
 
-The installer creates a `videocat` folder, downloads `docker-compose.hub.yml`, generates secrets in `.env`, pulls the images and starts the stack.
+Open `http://localhost:8081` and sign in as `admin` with the password the installer prints (it is also stored in `videocat/.env`).
 
-Then open:
-
-```text
-http://localhost:8081
-```
-
-Official images:
-
-```text
-reiterstahl/videocat-server:0.2.2
-reiterstahl/videocat-web:0.2.2
-```
-
-`latest` tags are also published:
-
-```text
-reiterstahl/videocat-server:latest
-reiterstahl/videocat-web:latest
-```
-
-Manual installation:
-
-Linux/macOS/WSL:
+<details>
+<summary>Manual installation with the Docker Hub images</summary>
 
 ```bash
-mkdir videocat
-cd videocat
+mkdir videocat && cd videocat
 curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml
-curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example
-mv .env.example .env
+curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example -o .env
 ```
 
-Windows PowerShell:
-
-```powershell
-New-Item -ItemType Directory -Force -Path videocat
-Set-Location videocat
-Invoke-WebRequest https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml -OutFile docker-compose.hub.yml
-Invoke-WebRequest https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example -OutFile .env
-```
-
-Edit `.env`, change the secrets and for local HTTP testing use:
-
-```env
-WEB_ORIGIN=http://localhost:8081
-COOKIE_SECURE=false
-```
-
-Start the stack:
+Edit `.env` and replace every `replace-with-…` value. Generate each secret with `openssl rand -hex 32`. For local testing without HTTPS, use `WEB_ORIGIN=http://localhost:8081` and `COOKIE_SECURE=false`. Then:
 
 ```bash
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-To publish new official images:
+Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.3`) and `latest`.
+</details>
+
+### 2. Windows Companion
+
+1. Install FFmpeg, which the Companion uses to read metadata and create thumbnails. It is found automatically when installed with WinGet, Scoop or Chocolatey, or in `C:\ffmpeg\bin`:
+
+   ```powershell
+   winget install Gyan.FFmpeg
+   ```
+
+2. Download and run [**VideoCAT-Companion-win-Setup.exe**](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe), then open it from the Start menu. It lives in the system tray.
+3. In the web app, open **Administration › Companions** and generate a pairing code.
+4. In the Companion, open **Configuración… › Conexión**, enter the server URL, paste the code and select **Emparejar**.
+5. In **Configuración… › Navegador**, copy the local token and paste it in the web app under **Profile › Local Companion**. That browser can then open, copy and delete files on this PC.
+
+> [!TIP]
+> If you used the portable `.exe` (0.2.2 or earlier), close it, install with Setup.exe and delete the portable file: settings and pairing are kept in `%APPDATA%\VideoCAT Companion`.
+
+The Companion's own windows are in Spanish; the names in parentheses below are their English meaning.
+
+### 3. Your drives
+
+From the Companion's **Configuración… › Rutas** (Settings › Paths) you can:
+
+- **Añadir unidad…** or **Añadir carpeta…** (add a drive or a local/network folder) to monitor and scan it automatically.
+- See the **detected VideoCAT drives**: those with a `.videocat-disk.json` file at their root. The marker gives them a stable identity even if the drive letter changes, and lets you choose which inner folders to scan.
+
+To create the marker, use the [CLI agent](#cli-agent) (`init-disk` or `wizard`) or create the file by hand at the drive root:
+
+```json
+{
+  "schemaVersion": 1,
+  "diskId": "generate-a-uuid-v4",
+  "diskName": "WD 6TB Video 01",
+  "createdAt": "2026-10-02T00:00:00.000Z",
+  "scanRoots": ["."]
+}
+```
+
+The first scan uploads metadata and thumbnails. Later scans only process new or changed files.
+
+## Everyday use
+
+### Review and safe deletion
+
+1. Open **Review** and select **Start Review**. With **Show connected**, only videos from plugged-in drives appear.
+2. Decide with the buttons or the keyboard. You can assign categories while reviewing.
+3. **Mark for deletion** deletes nothing on the server: the video goes to the *Marked for deletion* category.
+4. When the right drive is connected and the Companion is running, it deletes the pending files. It first revalidates size, modification time and visual fingerprint, and resolves the canonical path so it never follows links or junctions.
+5. The history records date, drive, path and size for every deletion or failure, and the freed-space counter updates.
+
+If you would rather the Companion not delete on its own, set **Borrar los marcados** (delete marked files) to *Solo a pedido* (on request only) in **Configuración… › Avanzado**.
+
+| Key | Review action |
+| --- | --- |
+| `F` | Keep |
+| `J` | Mark for deletion |
+| `S` | Skip |
+| `Z` | Undo the last decision |
+| `1`–`9` | Toggle a tag |
+| `←` `→` | Previous or next frame |
+| `Space` | Play the frames |
+| `G` | Switch between frame and gallery |
+| `P` | Full screen |
+| `Esc` | Exit |
+
+In **Duplicates › Start assisted mode**: `1` or `←` keeps copy A and marks B for deletion, `2` or `→` does the opposite, `Enter` applies the recommendation, `S` skips the group and `Esc` exits.
+
+### Remote playback and Chromecast
+
+The player first checks whether the browser supports the container and codecs. For H.264 videos with AAC or MP3 audio in an unsupported container, you can enable a **temporary MP4 remux**, which copies the streams without re-encoding:
+
+1. On the server, set `REMOTE_REMUX_ENABLED=true` and restart `server`.
+2. In the Companion, turn on **Remux MP4 temporal** in **Configuración… › Avanzado**.
+
+VideoCAT does not transcode H.265, AV1 or other codecs, because that would use a lot of CPU. Each session belongs to the user who created it, has duration, idle and concurrency limits, and closes when the player stops or the tunnel drops.
+
+Chromecast is off by default: enable it in **Profile**. The Google Cast SDK only loads when you use the button, and the receiver gets a signed, short-lived URL, never your credentials. The Chromecast must be able to reach VideoCAT's domain or IP.
+
+## Production deployment
+
+### Server variables
+
+The main `.env` settings (the full, commented list is in [`.env.example`](.env.example)):
+
+| Variable | Purpose |
+| --- | --- |
+| `POSTGRES_PASSWORD`, `JWT_SECRET`, `AGENT_TOKEN` | Secrets. Generate each one with `openssl rand -hex 32`. |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | Web app user. |
+| `WEB_ORIGIN` | Exact public URL (for example `https://cat.example.com`). Writes from any other origin are rejected. |
+| `COOKIE_SECURE` | `true` with HTTPS; `false` only for local testing. |
+| `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Trust in the reverse proxy; preferably limited to its CIDRs. |
+| `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Where the `web` container is published (default `0.0.0.0:8081`). |
+| `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN and folder-name fragments to protect (for example `Private,Protected`). |
+| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.3` or `latest`). |
+| `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Optional remux and remote playback limits. |
+| `*_RETENTION_DAYS` | Retention for errors, actions and scans when cleanup runs from Administration. |
+
+### Reverse proxy
+
+Expose only the `web` container: it already proxies `/api/*` and `/thumbnails/*` to `server:4000` and forwards the tunnel WebSocket. Your external proxy must also allow `Upgrade` on `/api/agent/tunnel`. Nginx example:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  server_name cat.example.com;
+  client_max_body_size 25m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8081;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+  }
+}
+```
+
+With HTTPS, use `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` and `TRUST_PROXY=true`.
+
+### Updating
+
+- **Server:** set `VIDEOCAT_VERSION` (or use `latest`) and run `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up -d`. Migrations run on start, and the `thumbnails-init` service fixes the thumbnail volume's permissions. In Portainer: *Pull and redeploy*.
+- **Companion:** updates itself. It checks for new versions a minute after starting and then every 6 hours, downloads them in the background and applies them on restart. You can also apply them with **Reiniciar para actualizar** (restart to update) in the tray or force a check with **Buscar actualizaciones** (check for updates).
+- The web app shows a notice next to the logo when Docker Hub has a newer stack version.
+
+Release notes for each version are in [OPERATIONS.md](OPERATIONS.md#upgrade).
+
+### Backups
+
+`scripts/backup.sh` (or `scripts/backup.ps1`) saves the database, the thumbnail volume, checksums and `.env`. `scripts/verify-backup.sh` checks a backup and `scripts/restore.sh` restores it. Keep backups encrypted: they contain private paths and metadata. Details and a restore drill are in [OPERATIONS.md](OPERATIONS.md).
+
+## Security and privacy
+
+**Your data**
+- Original videos never leave your drives. Only metadata, relative paths, validated JPEG thumbnails and audit errors are uploaded.
+- The server needs no access to your drives. Physical deletion only happens on Windows, by the Companion, with the right drive connected.
+- Folders whose name matches `PROTECTED_FOLDER_PATTERNS` require a PIN in each session and are left out of duplicate detection.
+
+**Companion**
+- Each installation uses an individual credential, paired with a one-time code, encrypted with the Windows user's protection and revocable from Administration. The server only stores its hash.
+- The tunnel is outbound and authenticated, and only serves reads through HTTP Range: it accepts no remote writes.
+- The local listener only answers `/health` without authentication. Opening, copying, deleting and processing queues require `COMPANION_TOKEN`.
+- Paths are resolved canonically before opening, copying or deleting, and downloads never overwrite an existing file.
+- Updates come from GitHub Releases with a SHA-256 checksum, a provenance attestation and an SBOM.
+
+**Web and API**
+- Sign-in uses fixed-algorithm JWTs that expire after 12 hours, and writes are validated against `WEB_ORIGIN`.
+- Body and time limits, rate limiting, no-cache sensitive responses, and CSP and HSTS (under HTTPS) from Nginx and Fastify.
+- Non-root containers with a read-only file system and no capabilities.
+
+**Project**
+- On every change to `main` and every pull request, CI runs a clean install, a dependency audit, type checks, unit and API tests against PostgreSQL, coverage thresholds, the build and Playwright UI tests on desktop and mobile.
+- Dependabot checks npm dependencies, base images and GitHub Actions every week.
+
+To report a vulnerability privately, see [SECURITY.md](SECURITY.md).
+
+## Companion configuration
+
+Everything is edited from **Configuración…**, organized in pages: Conexión, Navegador, Rutas, Archivos, Avanzado and Actualizaciones (connection, browser, paths, files, advanced and updates). It is stored in `%APPDATA%\VideoCAT Companion\.env`.
+
+<details>
+<summary>Companion variables</summary>
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `SERVER_URL` | — | VideoCAT server URL (required). |
+| `WEB_URL` | `SERVER_URL` | URL opened by **Abrir VideoCAT**. |
+| `COMPANION_NAME` | — | Optional name shown in Administration. |
+| `COMPANION_TOKEN` | Generated | Token for local actions; paste it in Profile › Local Companion. |
+| `AGENT_TOKEN` | — | Shared token, only for legacy unpaired clients. |
+| `COMPANION_DOWNLOAD_DIR` | — | Destination folder for **To download**. |
+| `FFMPEG_PATH`, `FFPROBE_PATH` | Auto-detected | FFmpeg paths when they are not found automatically. |
+| `AGENT_STATE_DIR` | `%LOCALAPPDATA%\VideoCAT\agent-state` | Local scan state. |
+| `COMPANION_PORT` | `29429` | Local port (`127.0.0.1` only). |
+| `COMPANION_ALLOWED_ORIGINS` | — | Web origins allowed to call the local listener. |
+| `COMPANION_AUTO_DELETE_MARKED` | `true` | Delete marked files automatically or only on request. |
+| `COMPANION_REMOTE_REMUX_ENABLED` | `false` | Temporary MP4 remux for remote playback. |
+| `COMPANION_DISK_POLL_MS` | `5000` | Drive detection. |
+| `COMPANION_SCAN_POLL_MS` | `900000` | Rescan of monitored paths. |
+| `COMPANION_HEARTBEAT_MS` | `15000` | Heartbeat to the server. |
+| `COMPANION_DELETE_POLL_MS` | `60000` | Check for pending deletions. |
+| `COMPANION_DOWNLOAD_POLL_MS` | `60000` | Check of the download queue. |
+| `COMPANION_DOWNLOAD_STALL_MS` | `30000` | Time before a copy counts as stalled. |
+| `TRAY_DISK_POLL_MS` | `10000` | Drive refresh in the tray menu. |
+</details>
+
+### CLI agent
+
+The same agent runs from the command line inside the repository (Node.js 22 or later, 24 LTS recommended, with FFmpeg on `PATH`). It reads the same settings from `apps\agent-windows\.env`.
+
+```powershell
+npm install
+npm run wizard -w @videocat/agent-windows                       # interactive assistant
+npm run init-disk -w @videocat/agent-windows -- --path "E:" --disk-name "WD 6TB Video 01" --scan-root "Videos"
+npm run add-root -w @videocat/agent-windows -- --path "E:" --scan-root "Archive/Clients"
+npm run scan -w @videocat/agent-windows -- --path "E:" --disk-name "WD 6TB Video 01"
+npm run discover -w @videocat/agent-windows                     # lists marked drives
+```
+
+## Development
+
+TypeScript monorepo with npm workspaces (Node.js 22 or later):
+
+| Folder | Contents |
+| --- | --- |
+| `apps/server` | Fastify API + Prisma + PostgreSQL. |
+| `apps/web` | React 18 + Vite app, served by Nginx in production. |
+| `apps/agent-windows` | Scan agent and Electron Companion, with the Velopack updater. |
+| `packages/shared` | Shared types and helpers. |
+| `tests`, `e2e` | Unit and API tests (`node:test`) and UI tests (Playwright). |
+| `scripts` | Backup, verification and restore. |
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.2 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.2 -t reiterstahl/videocat-web:0.2.2 -t reiterstahl/videocat-web:latest --push .
+npm install
+npm run prisma:generate
+npm run dev:server   # API on http://localhost:4000 (needs DATABASE_URL and the other variables)
+npm run dev:web      # Web app on http://localhost:5173
 ```
 
-The main `docker-compose.yml` still builds locally with `build`, which is useful for development:
+To run the whole stack built from source: `docker compose up -d --build`.
+
+Tests:
 
 ```bash
-docker compose up -d --build
+npm run typecheck
+npm test                          # unit, API and coverage thresholds
+npx playwright install chromium
+E2E_SEED=1 npm run test:e2e       # desktop and mobile
 ```
 
-The Docker Hub compose file uses:
+API tests that write to PostgreSQL run with `RUN_DB_TESTS=true`. `E2E_SEED=1` loads the demo catalog and **replaces all database content**: use it only with a development database. To load only the demo: `VIDEOCAT_DEMO_SEED=1 npm run seed:demo -w @videocat/server` (it refuses to run with `NODE_ENV=production`).
 
-```yaml
-server:
-  image: reiterstahl/videocat-server:0.2.2
+## Publishing releases
 
-web:
-  image: reiterstahl/videocat-web:0.2.2
+**Companion:** bump `version` in `apps/agent-windows/package.json` and push to `main`. The [`release-companion.yml`](.github/workflows/release-companion.yml) workflow builds on Windows, packs with Velopack (Setup.exe, full package and deltas), creates the `vX.Y.Z` tag and publishes the release with notes, SHA-256, attestation and SBOM. A version that is already tagged is never published again. To start it by hand: `gh workflow run release-companion.yml -f publish=true`.
+
+Local build without publishing (with `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 ```
 
-## Main Endpoints
+**Docker images** (amd64 and arm64; also update `VIDEOCAT_VERSION` in `docker-compose.hub.yml` and the installers):
 
-Agent:
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.3 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.3 -t reiterstahl/videocat-web:0.2.3 -t reiterstahl/videocat-web:latest --push .
+```
+
+Verifying the Companion installer:
+
+```powershell
+Get-FileHash .\VideoCAT-Companion-win-Setup.exe -Algorithm SHA256
+gh attestation verify .\VideoCAT-Companion-win-Setup.exe -R reiterstahl/videocat
+```
+
+<details>
+<summary>Main API endpoints</summary>
+
+Companion (`Authorization: Bearer` with the paired credential):
 
 - `POST /api/agent/register-disk`
-- `POST /api/agent/scan/start`
+- `POST /api/agent/scan/start`, `POST /api/agent/scan/finish`
 - `POST /api/agent/files/batch`
 - `POST /api/agent/thumbnails/upload`
-- `POST /api/agent/scan/finish`
 - `POST /api/agent/errors/batch`
+- `GET /api/agent/tunnel` (WebSocket)
 
-Web:
+Web (session):
 
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/files`
-- `GET /api/files/:id`
-- `GET /api/playback/random`
-- `GET /api/disks`
-- `GET /api/facets`
-- `GET /api/duplicates/by-size`
-- `GET /api/duplicates/recommended-disks`
-- `POST /api/duplicates/assisted/decision`
-- `POST /api/files/batch/thumbnails/regenerate`
-- `POST /api/companions/pairing-code`
-- `GET /api/companions`
-- `POST /api/stream-sessions`
-- `GET /api/stream-sessions/:id`
-- `DELETE /api/stream-sessions/:id`
+- `POST /api/auth/login`, `POST /api/auth/logout`
+- `GET /api/files`, `GET /api/files/:id`, `GET /api/facets`, `GET /api/disks`
+- `GET /api/review/summary`, `GET /api/review/next`, `GET /api/review/recoverable-space`
+- `GET /api/duplicates/by-size`, `GET /api/duplicates/recommended-disks`, `POST /api/duplicates/assisted/decision`
+- `POST /api/stream-sessions`, `GET /api/stream-sessions/:id`, `DELETE /api/stream-sessions/:id`, `GET /api/playback/random`
+- `POST /api/companions/pairing-code`, `GET /api/companions`
+- `GET /api/folder-usage`, `GET /api/folder-usage/tree`
+- `GET /api/audit/errors`, `GET /api/audit/actions`, `GET /api/audit/export`
+- `GET /api/admin/disks/overview`, `GET /api/admin/maintenance`
+- `GET /api/profile/security`, `PATCH /api/profile/security`
 - `GET /api/version/latest`
-- `GET /api/admin/disks/overview`
-- `GET /api/folder-usage`
-- `GET /api/audit/errors`
-- `GET /api/review/summary`
-- `GET /api/review/next`
-- `GET /api/review/recoverable-space`
-- `GET /api/profile/security`
-- `PATCH /api/profile/security`
+</details>
 
-## License And Support
+## Related documentation
 
-VideoCAT is distributed under the `AGPL-3.0-or-later` license. This license allows using, studying, modifying, distributing and publishing derived versions of the project while preserving the copyleft and attribution obligations required by the license.
+| Document | Contents |
+| --- | --- |
+| [OPERATIONS.md](OPERATIONS.md) | Upgrades, backups, restore and Portainer. |
+| [SECURITY.md](SECURITY.md) | Security policy and private vulnerability reporting. |
+| [apps/agent-windows/TRAY.md](apps/agent-windows/TRAY.md) | Tray Companion details (Spanish). |
+| [ROADMAP.md](ROADMAP.md) | Hardening and reliability plan. |
+| [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) | Design of secure remote playback. |
+| [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md) | Phased interface redesign. |
+| [PUBLISHING.md](PUBLISHING.md) | Checklist for publishing official artifacts. |
 
-The official distribution includes optional support links for the original author. Forks and modified versions may remove or replace those links, provided they comply with the project license and preserve required copyright and attribution notices.
+## License and support
+
+VideoCAT is released under the [`AGPL-3.0-or-later`](LICENSE) license: you can use, study, modify and distribute the project and derived versions, following its copyleft and attribution obligations.
+
+The official distribution includes optional links to support the original author ([GitHub Sponsors](https://github.com/sponsors/reiterstahl)). Forks and modified versions may remove or replace them, as long as they comply with the license and keep the required copyright and attribution notices.
