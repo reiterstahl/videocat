@@ -114,6 +114,12 @@ export function compareDuplicateCandidates(left: DuplicateCandidate, right: Dupl
   };
 }
 
+// A group still needs a decision while two or more of its copies are not marked for deletion,
+// which is the same rule the assisted duplicate mode uses to pick its next comparison.
+export function countPendingDuplicateGroups(groups: Array<{ fileIds: string[] }>, markedForDeletion: ReadonlySet<string>): number {
+  return groups.filter((group) => group.fileIds.filter((id) => !markedForDeletion.has(id)).length > 1).length;
+}
+
 export function findDuplicateGroups(candidates: DuplicateCandidate[]): DetectedDuplicateGroup[] {
   const parent = new Map(candidates.map((candidate) => [candidate.id, candidate.id]));
   const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));

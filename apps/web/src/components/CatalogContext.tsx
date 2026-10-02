@@ -170,7 +170,7 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
         <span>Duplicados probables</span>
         <strong>
           {formatCount(stats?.duplicateGroupCount ?? 0)}
-          {(stats?.duplicateGroupCount ?? 0) > 0 ? (
+          {(stats?.pendingDuplicateGroupCount ?? 0) > 0 ? (
             <button className="vc-kpi-link" type="button" onClick={() => switchView("duplicates")}>Revisar →</button>
           ) : null}
         </strong>

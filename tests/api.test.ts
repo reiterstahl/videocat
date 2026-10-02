@@ -664,6 +664,40 @@ test("categories, download queue and scan reconciliation work together", { skip:
   }
 });
 
+test("stats count pending duplicate groups and drop them once resolved", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  let diskId = "";
+  try {
+    const cookie = await authenticatedCookie();
+    const stats = async () => (await app.inject({ method: "GET", url: "/api/stats", headers: { cookie } })).json() as { duplicateGroupCount: number; pendingDuplicateGroupCount: number };
+    const before = await stats();
+    const disk = await prisma.disk.create({ data: { name: `Dupes ${suffix}`, volumeId: `dupes-${suffix}` } });
+    diskId = disk.id;
+    const sizeBytes = BigInt(7_000_000_000 + Math.floor(Math.random() * 1_000_000));
+    const [keep, remove] = await Promise.all(["keep", "remove"].map((name) => prisma.videoFile.create({
+      data: { diskId, filename: `${name}-${suffix}.mp4`, extension: "mp4", absolutePath: `X:/${name}-${suffix}.mp4`, relativePath: `${name}-${suffix}.mp4`, sizeBytes, durationSeconds: 600 }
+    })));
+
+    const detected = await stats();
+    assert.equal(detected.duplicateGroupCount, before.duplicateGroupCount + 1);
+    assert.equal(detected.pendingDuplicateGroupCount, before.pendingDuplicateGroupCount + 1);
+
+    const decision = await app.inject({
+      method: "POST",
+      url: "/api/duplicates/assisted/decision",
+      headers: webMutationHeaders(cookie),
+      payload: { keepFileId: keep.id, deleteFileId: remove.id, groupFileIds: [keep.id, remove.id] }
+    });
+    assert.equal(decision.statusCode, 200);
+
+    const resolved = await stats();
+    assert.equal(resolved.duplicateGroupCount, before.duplicateGroupCount + 1);
+    assert.equal(resolved.pendingDuplicateGroupCount, before.pendingDuplicateGroupCount);
+  } finally {
+    if (diskId) await prisma.disk.delete({ where: { id: diskId } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

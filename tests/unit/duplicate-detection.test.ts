@@ -80,3 +80,13 @@ test("does not expand low-information visual fingerprints into large candidate s
 
   assert.deepEqual(findDuplicateGroups(candidates), []);
 });
+
+test("pending duplicate groups need two or more copies that are not marked for deletion", async () => {
+  const { countPendingDuplicateGroups } = await import("../../apps/server/src/lib/duplicate-detection.ts");
+  const groups = [{ fileIds: ["a", "b"] }, { fileIds: ["c", "d", "e"] }, { fileIds: ["f", "g"] }];
+  assert.equal(countPendingDuplicateGroups(groups, new Set()), 3);
+  // Resolved pair, a triple with one copy still undecided against another, and an untouched pair.
+  assert.equal(countPendingDuplicateGroups(groups, new Set(["b", "c"])), 2);
+  assert.equal(countPendingDuplicateGroups(groups, new Set(["b", "c", "d", "g"])), 0);
+  assert.equal(countPendingDuplicateGroups([], new Set(["a"])), 0);
+});

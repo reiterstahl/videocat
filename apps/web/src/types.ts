@@ -66,4 +66,5 @@ export type Stats = {
   fileCount: number;
   totalBytes: number;
   duplicateGroupCount: number;
+  pendingDuplicateGroupCount: number;
 };

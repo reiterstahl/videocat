@@ -499,7 +499,6 @@ export function App() {
   useEffect(() => {
     if (!authenticated) return;
     void Promise.all([
-      api<{ stats?: never } & Stats>("/api/stats").then(setStats),
       api<{ disks: Disk[] }>("/api/disks").then((response) => {
         setDisks(response.disks);
         setConnectedDiskIds((current) => {
@@ -1461,6 +1460,15 @@ export function App() {
     };
   }
 
+  function refreshStats(): void {
+    void api<Stats>("/api/stats").then(setStats).catch(() => undefined);
+  }
+
+  // Counters such as pending duplicates follow decisions made anywhere in the app.
+  useEffect(() => {
+    if (authenticated) refreshStats();
+  }, [authenticated, catalogVersion, viewMode]);
+
   async function decideAssistedDuplicate(keepFileId: string) {
     const session = duplicateAssistant;
     if (!session || duplicateAssistantBusy) return;
@@ -1488,6 +1496,7 @@ export function App() {
         files: group.files.map((file) => updatedById.get(file.id) ?? file)
       })));
       duplicateAssistantDirtyRef.current = true;
+      refreshStats();
       const next = advanceDuplicateAssistant(session, response.keepFile);
       setDuplicateAssistant(next);
       setDuplicateAssistantFeedback(null);
@@ -1900,7 +1909,7 @@ export function App() {
     { mode: "catalog", label: "Catálogo", icon: <LayoutGrid size={18} /> },
     { mode: "review", label: "Review", icon: <Shuffle size={18} /> },
     { mode: "downloads", label: "A descargar", icon: <Download size={18} />, badge: queuedDownloadCount > 0 ? formatCount(queuedDownloadCount) : undefined },
-    { mode: "duplicates", label: "Duplicados", icon: <Copy size={18} />, badge: (stats?.duplicateGroupCount ?? 0) > 0 ? formatCount(stats?.duplicateGroupCount ?? 0) : undefined },
+    { mode: "duplicates", label: "Duplicados", icon: <Copy size={18} />, badge: (stats?.pendingDuplicateGroupCount ?? 0) > 0 ? formatCount(stats?.pendingDuplicateGroupCount ?? 0) : undefined },
     { mode: "usage", label: "Esquema de uso", icon: <PieChart size={18} /> },
     { mode: "audit", label: "Auditoría", icon: <ListChecks size={18} /> },
     { mode: "admin", label: "Administración", icon: <Server size={18} /> },

@@ -40,3 +40,24 @@ test("Resolve starts at the chosen group; S skips and Enter keeps the recommenda
   await page.keyboard.press("Escape");
   await expect(assistant).toHaveCount(0);
 });
+
+test("the Duplicates badge counts only groups that still need a decision", async ({ page }) => {
+  await openView(page, "/duplicados");
+  const navBadge = page.locator(".vc-nav-item", { hasText: "Duplicados" }).locator(".vc-nav-badge");
+  const pendingInView = page.locator(".vc-count-badge.is-inverse");
+  await expect(pendingInView).toBeVisible();
+  const before = Number(await pendingInView.textContent());
+  await expect(navBadge).toHaveText(String(before));
+
+  // A pair is resolved by a single decision; larger groups need one per extra copy.
+  const pairIndex = await page.locator(".vc-dup-group").evaluateAll((groups) =>
+    groups.findIndex((group) => group.querySelector(".vc-button.is-small") && group.querySelectorAll(".vc-dup-file").length === 2)
+  );
+  expect(pairIndex).toBeGreaterThanOrEqual(0);
+  await page.locator(".vc-dup-group").nth(pairIndex).locator(".vc-button.is-small").click();
+  await expect(page.locator(".vc-dup-assistant")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(navBadge).toHaveText(String(before - 1));
+  await page.keyboard.press("Escape");
+  await expect(pendingInView).toHaveText(String(before - 1));
+});

@@ -9,7 +9,7 @@ import { isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
-import { compareDuplicateCandidates, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
+import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
@@ -2449,22 +2449,27 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     applyHiddenPathFilter(visibleWhere);
     if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(visibleWhere);
 
-    const [diskCount, fileCount, totalSize, duplicateSizeGroups] = await Promise.all([
+    const [diskCount, fileCount, totalSize, duplicateCandidateFiles, markedForDeletion] = await Promise.all([
       prisma.disk.count(),
       prisma.videoFile.count({ where: visibleWhere }),
       prisma.videoFile.aggregate({ where: visibleWhere, _sum: { sizeBytes: true } }),
-      prisma.videoFile.groupBy({
-        by: ["sizeBytes"],
-        where: duplicateEligibleWhere(),
-        having: { sizeBytes: { _count: { gt: 1 } } }
+      duplicateCandidates(duplicateEligibleWhere()),
+      prisma.videoFile.findMany({
+        where: duplicateEligibleWhere({
+          OR: [{ curationStatus: "delete" }, { categories: { some: { categoryKey: "delete" } } }]
+        }),
+        select: { id: true }
       })
     ]);
+    // Same detection as the Duplicates view, so the counters always match what it lists.
+    const duplicateGroups = findDuplicateGroups(duplicateCandidateFiles);
 
     return {
       diskCount,
       fileCount,
       totalBytes: Number(totalSize._sum.sizeBytes ?? 0n),
-      duplicateGroupCount: duplicateSizeGroups.length
+      duplicateGroupCount: duplicateGroups.length,
+      pendingDuplicateGroupCount: countPendingDuplicateGroups(duplicateGroups, new Set(markedForDeletion.map((file) => file.id)))
     };
   });
 
