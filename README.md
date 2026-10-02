@@ -21,7 +21,7 @@
 VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas.
 
 <p align="center">
-  <img src="docs/screenshots/catalog.png" alt="Catálogo de VideoCAT con discos, filtros y miniaturas" width="900" />
+  <img src="docs/screenshots/es/catalog.webp" alt="Catálogo de VideoCAT con discos, filtros y miniaturas" width="900" />
 </p>
 
 > [!WARNING]
@@ -118,15 +118,25 @@ flowchart LR
 <details>
 <summary><strong>Más capturas</strong></summary>
 
-| Review | Duplicados |
+| Review | Duplicados en modo asistido |
 | --- | --- |
-| <img src="docs/screenshots/review.png" alt="Sesión de review" width="440" /> | <img src="docs/screenshots/duplicates.png" alt="Duplicados probables" width="440" /> |
+| <img src="docs/screenshots/es/review.webp" alt="Sesión de review con fotogramas y decisiones" width="440" /> | <img src="docs/screenshots/es/duplicates.webp" alt="Comparación asistida de dos copias" width="440" /> |
 
-| Esquema de uso | Móvil |
+| A descargar | Esquema de uso |
 | --- | --- |
-| <img src="docs/screenshots/usage.png" alt="Esquema de uso por carpetas" width="440" /> | <img src="docs/screenshots/mobile-catalog.png" alt="Catálogo en el móvil" width="160" /> <img src="docs/screenshots/mobile-review.png" alt="Review en el móvil" width="160" /> |
+| <img src="docs/screenshots/es/downloads.webp" alt="Cola de descargas con transferencia activa" width="440" /> | <img src="docs/screenshots/es/usage.webp" alt="Mapa de carpetas por tamaño" width="440" /> |
 
-Las capturas usan el catálogo de demostración (`npm run seed:demo`).
+| Administración | Companion de Windows |
+| --- | --- |
+| <img src="docs/screenshots/es/admin.webp" alt="Capacidad por disco y Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Configuración del Companion" width="440" /> |
+
+<p align="center">
+  <img src="docs/screenshots/es/mobile-catalog.webp" alt="Catálogo en el móvil" width="200" />
+  <img src="docs/screenshots/es/mobile-review.webp" alt="Review en el móvil con el nombre fijado" width="200" />
+  <img src="docs/screenshots/es/mobile-confirm.webp" alt="Confirmación animada de una decisión" width="200" />
+</p>
+
+Todas las capturas usan datos ficticios.
 </details>
 
 ## Inicio rápido

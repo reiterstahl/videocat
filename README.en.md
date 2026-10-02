@@ -21,7 +21,7 @@
 VideoCAT indexes the videos on your external drives — even ones that are rarely plugged in — and lets you search, review, find duplicates, play remotely and free up space from a browser or your phone. **Your videos never leave your drives:** the server only stores metadata, relative paths and thumbnails.
 
 <p align="center">
-  <img src="docs/screenshots/catalog.png" alt="VideoCAT catalog with drives, filters and thumbnails" width="900" />
+  <img src="docs/screenshots/en/catalog.webp" alt="VideoCAT catalog with drives, filters and thumbnails" width="900" />
 </p>
 
 > [!WARNING]
@@ -118,15 +118,25 @@ flowchart LR
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-| Review | Duplicates |
+| Review | Assisted duplicates |
 | --- | --- |
-| <img src="docs/screenshots/review.png" alt="Review session" width="440" /> | <img src="docs/screenshots/duplicates.png" alt="Probable duplicates" width="440" /> |
+| <img src="docs/screenshots/en/review.webp" alt="Review session with frames and decisions" width="440" /> | <img src="docs/screenshots/en/duplicates.webp" alt="Side-by-side comparison of two copies" width="440" /> |
 
-| Usage map | Mobile |
+| To download | Usage map |
 | --- | --- |
-| <img src="docs/screenshots/usage.png" alt="Folder usage map" width="440" /> | <img src="docs/screenshots/mobile-catalog.png" alt="Catalog on a phone" width="160" /> <img src="docs/screenshots/mobile-review.png" alt="Review on a phone" width="160" /> |
+| <img src="docs/screenshots/en/downloads.webp" alt="Download queue with an active transfer" width="440" /> | <img src="docs/screenshots/en/usage.webp" alt="Folder map by size" width="440" /> |
 
-Screenshots use the demo catalog (`npm run seed:demo`).
+| Administration | Windows Companion |
+| --- | --- |
+| <img src="docs/screenshots/en/admin.webp" alt="Capacity per drive and Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Companion settings (Spanish UI)" width="440" /> |
+
+<p align="center">
+  <img src="docs/screenshots/en/mobile-catalog.webp" alt="Catalog on a phone" width="200" />
+  <img src="docs/screenshots/en/mobile-review.webp" alt="Review on a phone with the pinned file name" width="200" />
+  <img src="docs/screenshots/en/mobile-confirm.webp" alt="Animated confirmation of a decision" width="200" />
+</p>
+
+All screenshots use fictional data.
 </details>
 
 ## Quick start

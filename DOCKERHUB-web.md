@@ -2,11 +2,15 @@
 
 Web interface for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. Search your whole collection, review videos, find likely duplicates, queue copies, play remotely from your phone and free up space — **original videos never leave your drives**.
 
-![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/catalog.png)
+![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/en/catalog.webp)
 
 - Website: https://videocat.centeran.com
 - Source code and docs: https://github.com/reiterstahl/videocat
 - Windows Companion installer: https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe
+
+| Review | Assisted duplicates |
+| --- | --- |
+| ![Review session](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/en/review.webp) | ![Assisted duplicates](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/en/duplicates.webp) |
 
 ## What this image runs
 

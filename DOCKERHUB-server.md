@@ -2,7 +2,7 @@
 
 API server for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. It indexes metadata, relative paths, thumbnails, tags, duplicates and review decisions — **original videos never leave your drives**.
 
-![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/catalog.png)
+![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/en/catalog.webp)
 
 - Website: https://videocat.centeran.com
 - Source code and docs: https://github.com/reiterstahl/videocat
