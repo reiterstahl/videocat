@@ -1,35 +1,26 @@
 # VideoCAT Web
 
-Nginx-served React web interface for VideoCAT, a private video catalog for external hard drives.
+Web interface for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. Search your whole collection, review videos, find likely duplicates, queue copies, play remotely from your phone and free up space — **original videos never leave your drives**.
 
-VideoCAT indexes metadata, paths, thumbnails, tags, duplicates and review decisions without copying original videos to the server. It is designed for collections spread across many drives that are not always connected.
+![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/catalog.png)
 
-Project website: https://videocat.centeran.com  
-Source code: https://github.com/reiterstahl/videocat  
-Windows Companion: https://github.com/reiterstahl/videocat/releases/latest
+- Website: https://videocat.centeran.com
+- Source code and docs: https://github.com/reiterstahl/videocat
+- Windows Companion installer: https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe
 
-## What This Image Does
+## What this image runs
 
-`reiterstahl/videocat-web` serves:
+`reiterstahl/videocat-web` is the React app served by unprivileged Nginx on port `8080`:
 
-- The React/Vite VideoCAT interface.
-- Static web assets through Nginx.
-- `/api/*` proxy to the `server` container.
-- `/thumbnails/*` proxy to the `server` container.
-- Security headers and SPA routing.
+- The VideoCAT interface in Spanish and English, responsive for desktop and phones, with light, dark and OLED themes.
+- A proxy for `/api/*` and `/thumbnails/*` to the `server` container, including the WebSocket used by the Companion tunnel.
+- Security headers (CSP, HSTS under HTTPS) and SPA routing.
 
-This image should be used together with:
+Use it together with [`reiterstahl/videocat-server`](https://hub.docker.com/r/reiterstahl/videocat-server) and `postgres:16-alpine`. The official Compose file wires all three.
 
-```text
-reiterstahl/videocat-server
-postgres:16-alpine
-```
+## Quick start
 
-The easiest way to run the complete stack is the official Compose installer.
-
-## Quick Start
-
-Linux/macOS/WSL:
+Linux, macOS or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/install.sh | sh
@@ -41,92 +32,44 @@ Windows PowerShell with Docker Desktop:
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/reiterstahl/videocat/main/install.ps1 | iex"
 ```
 
-Then open:
-
-```text
-http://localhost:8081
-```
-
-## Compose
+The installer creates a `videocat` folder, generates every secret in `.env`, prints the admin password and starts the stack. Open http://localhost:8081.
 
 Manual setup:
 
 ```bash
-mkdir videocat
-cd videocat
+mkdir videocat && cd videocat
 curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml
-curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example
-mv .env.example .env
+curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example -o .env
+# Edit .env: replace every "replace-with-…" value (openssl rand -hex 32 for secrets).
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-## Ports
+## Ports and reverse proxy
 
-The web container listens on port `80`.
+The container listens on `8080`; the official Compose file publishes it on `${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PUBLISHED_PORT:-8081}`.
 
-The official Compose file publishes it as:
-
-```text
-http://localhost:8081
-```
-
-Relevant Compose variables:
-
-```env
-WEB_BIND_ADDR=0.0.0.0
-WEB_PUBLISHED_PORT=8081
-```
-
-## Reverse Proxy
-
-Publish the `web` container to your reverse proxy. The web container internally proxies:
-
-```text
-/api/*         -> server:4000
-/thumbnails/* -> server:4000
-```
-
-Example production variables:
-
-```env
-WEB_ORIGIN=https://your-domain.example
-COOKIE_SECURE=true
-TRUST_PROXY=true
-```
-
-## Tags
-
-Versioned tags are stable:
-
-```text
-reiterstahl/videocat-web:0.2.3
-```
-
-`latest` points to the newest published build:
-
-```text
-reiterstahl/videocat-web:latest
-```
-
-For predictable deployments, prefer a versioned tag.
+Publish only this container through your reverse proxy. It forwards `/api/*` and `/thumbnails/*` to `server:4000` itself. Your proxy must allow WebSocket upgrades (`Upgrade` and `Connection` headers) for `/api/agent/tunnel`. With HTTPS, set `WEB_ORIGIN=https://your-domain.example`, `COOKIE_SECURE=true` and `TRUST_PROXY=true`. A complete Nginx example is in the [README](https://github.com/reiterstahl/videocat#reverse-proxy).
 
 ## Windows Companion
 
-The Windows Companion is a tray app that detects drives, scans files, opens local videos, processes pending deletes and handles download queues.
+The Companion is a Windows tray app that detects drives (even when their letter changes), scans them with FFmpeg, uploads metadata and thumbnails, processes deletions and downloads, and serves remote playback through an outbound tunnel — no open ports on your PC.
 
-Download it from GitHub Releases:
+Install it with [VideoCAT-Companion-win-Setup.exe](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe). It installs per user without administrator rights and updates itself from GitHub Releases. Pair it from **Administration › Companions** with a one-time code.
 
-```text
-https://github.com/reiterstahl/videocat/releases/latest
-```
+## Tags and platforms
 
-## Security Notes
+- `0.2.3`, `0.2.2`, … — versioned, stable tags. Prefer them for predictable deployments.
+- `latest` — the newest published release.
 
-- Use HTTPS and `COOKIE_SECURE=true` outside localhost.
-- Keep `AGENT_TOKEN` private.
-- Original videos are not uploaded to the server.
-- Physical deletion only happens through the Windows Companion when the correct drive is connected.
+Images are built for `linux/amd64` and `linux/arm64`. The interface shows a notice when a newer stable version is published here.
+
+## Security notes
+
+- Use HTTPS outside localhost and expose only this container.
+- The container runs as a non-root user; the official Compose file also makes its root file system read-only and drops all capabilities.
+- Original videos are never stored on the server. Physical deletion only happens on Windows, by the Companion, with the right drive connected and the file revalidated.
+- Report vulnerabilities privately: https://github.com/reiterstahl/videocat/security
 
 ## License
 
-VideoCAT is free and open source software under `AGPL-3.0-or-later`.
+Free and open source software under `AGPL-3.0-or-later`.

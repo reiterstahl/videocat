@@ -1,36 +1,27 @@
 # VideoCAT Server
 
-Fastify + Prisma API server for VideoCAT, a private video catalog for external hard drives.
+API server for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. It indexes metadata, relative paths, thumbnails, tags, duplicates and review decisions — **original videos never leave your drives**.
 
-VideoCAT indexes metadata, paths, thumbnails, tags, duplicates and review decisions without copying original videos to the server. It is designed for collections spread across many drives that are not always connected.
+![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/catalog.png)
 
-Project website: https://videocat.centeran.com  
-Source code: https://github.com/reiterstahl/videocat  
-Windows Companion: https://github.com/reiterstahl/videocat/releases/latest
+- Website: https://videocat.centeran.com
+- Source code and docs: https://github.com/reiterstahl/videocat
+- Windows Companion installer: https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe
 
-## What This Image Does
+## What this image runs
 
-`reiterstahl/videocat-server` runs:
+`reiterstahl/videocat-server` is the Fastify + Prisma API:
 
-- Fastify API.
-- Prisma migrations on startup.
-- Authentication and session cookies.
-- Catalog, review, duplicate, audit and admin endpoints.
-- Agent endpoints used by the Windows Companion.
-- Thumbnail upload and thumbnail serving.
+- Applies database migrations on startup, then serves the API on port `4000`.
+- Sign-in, catalog, review, duplicate detection, downloads queue, audit and administration endpoints.
+- Endpoints and the outbound WebSocket tunnel (`/api/agent/tunnel`) used by paired Windows Companions, including bounded, read-only remote playback.
+- Thumbnail uploads (validated JPEG) and serving.
 
-This image should be used together with:
+Use it together with [`reiterstahl/videocat-web`](https://hub.docker.com/r/reiterstahl/videocat-web) and `postgres:16-alpine`. The official Compose file wires all three.
 
-```text
-reiterstahl/videocat-web
-postgres:16-alpine
-```
+## Quick start
 
-The easiest way to run the complete stack is the official Compose installer.
-
-## Quick Start
-
-Linux/macOS/WSL:
+Linux, macOS or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/install.sh | sh
@@ -42,113 +33,64 @@ Windows PowerShell with Docker Desktop:
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/reiterstahl/videocat/main/install.ps1 | iex"
 ```
 
-Then open:
-
-```text
-http://localhost:8081
-```
-
-## Compose
+The installer creates a `videocat` folder, generates every secret in `.env`, prints the admin password and starts the stack. Open http://localhost:8081.
 
 Manual setup:
 
 ```bash
-mkdir videocat
-cd videocat
+mkdir videocat && cd videocat
 curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/docker-compose.hub.yml
-curl -fsSLO https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example
-mv .env.example .env
+curl -fsSL https://raw.githubusercontent.com/reiterstahl/videocat/main/.env.example -o .env
+# Edit .env: replace every "replace-with-…" value (openssl rand -hex 32 for secrets).
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-## Required Environment
+## Main environment variables
 
-Important variables for the server container:
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string. |
+| `JWT_SECRET`, `AGENT_TOKEN` | Secrets; generate each with `openssl rand -hex 32`. |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | Web sign-in. |
+| `WEB_ORIGIN` | Exact public URL; writes from other origins are rejected. |
+| `COOKIE_SECURE` | `true` with HTTPS, `false` only for local testing. |
+| `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Reverse proxy trust, preferably limited to its CIDRs. |
+| `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN and folder-name fragments to protect. |
+| `THUMBNAILS_DIR` | Thumbnail storage, `/data/video-catalog/thumbnails` by default. |
+| `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Optional MP4 remux and remote playback limits. |
+| `AGENT_ERROR_RETENTION_DAYS`, `ACTION_AUDIT_RETENTION_DAYS`, `SCAN_RETENTION_DAYS` | Retention applied by the cleanup in Administration. |
 
-```env
-DATABASE_URL=postgresql://videocat:strong-password@postgres:5432/videocat
-JWT_SECRET=replace-with-64-hex-random-characters
-AGENT_TOKEN=replace-with-64-hex-random-characters
-ADMIN_USER=admin
-ADMIN_PASSWORD=replace-with-a-long-unique-password
-WEB_ORIGIN=http://localhost:8081
-COOKIE_SECURE=false
-TRUST_PROXY=true
-PROTECTED_FOLDER_PIN=replace-with-a-private-4-digit-pin
-PROTECTED_FOLDER_PATTERNS=Private,Protected
-THUMBNAILS_DIR=/data/video-catalog/thumbnails
-PUBLIC_THUMBNAILS_BASE_URL=/thumbnails
-# Optional server-side gate for temporary MP4 remuxing by paired Windows Companions.
-REMOTE_REMUX_ENABLED=false
-# Bounded, read-only remote playback controls.
-REMOTE_STREAM_SESSION_LIFETIME_MS=900000
-REMOTE_STREAM_IDLE_TIMEOUT_MS=120000
-REMOTE_STREAM_MAX_SESSIONS_PER_COMPANION=1
-REMOTE_STREAM_MAX_SESSIONS_PER_USER=2
-```
+The full commented list is in [`.env.example`](https://github.com/reiterstahl/videocat/blob/main/.env.example).
 
-For public HTTPS deployments:
+## Volumes and permissions
 
-```env
-WEB_ORIGIN=https://your-domain.example
-COOKIE_SECURE=true
-TRUST_PROXY=true
-```
+Thumbnails live in `/data/video-catalog/thumbnails`, mounted by Compose as the `thumbnails_data` volume. The container runs as the non-root user `node` (uid 1000); the official Compose file also makes its root file system read-only and drops all capabilities. Volumes created by releases before 0.2.0 (which ran as root) are handed to uid 1000 automatically by the one-shot `thumbnails-init` service in the official Compose file. If you run the image without it and uploads answer `507`, run `chown -R 1000:1000` on the volume once.
 
-## Volumes
+## Tags and platforms
 
-The server stores thumbnails in:
+- `0.2.3`, `0.2.2`, … — versioned, stable tags. Prefer them for predictable deployments.
+- `latest` — the newest published release.
 
-```text
-/data/video-catalog/thumbnails
-```
+Images are built for `linux/amd64` and `linux/arm64`.
 
-The official Compose file mounts this as:
+## Updating and backups
 
-```text
-thumbnails_data
-```
-
-Back up this volume together with PostgreSQL.
-
-## Tags
-
-Versioned tags are stable:
-
-```text
-reiterstahl/videocat-server:0.2.3
-```
-
-`latest` points to the newest published build:
-
-```text
-reiterstahl/videocat-server:latest
-```
-
-For predictable deployments, prefer a versioned tag.
-
-## Backup
-
-Database backup example:
+Set `VIDEOCAT_VERSION` in `.env` (or use `latest`), then:
 
 ```bash
-docker compose -f docker-compose.hub.yml exec postgres pg_dump -U videocat videocat > videocat.sql
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
 ```
 
-Also back up:
+Back up PostgreSQL, the `thumbnails_data` volume and `.env`. The repository includes `scripts/backup.sh`, `verify-backup.sh` and `restore.sh`; see [OPERATIONS.md](https://github.com/reiterstahl/videocat/blob/main/OPERATIONS.md).
 
-- `.env`
-- `postgres_data`
-- `thumbnails_data`
+## Security notes
 
-## Security Notes
-
-- Change every generated secret before exposing VideoCAT publicly.
-- Keep `AGENT_TOKEN` private.
-- Use HTTPS and `COOKIE_SECURE=true` outside localhost.
-- Original videos are not uploaded to the server.
-- Physical deletion only happens through the Windows Companion when the correct drive is connected.
+- Use HTTPS, `COOKIE_SECURE=true` and an exact `WEB_ORIGIN` outside localhost, and expose only the `web` container.
+- Each Companion pairs with a one-time code and an individual, revocable credential; the server stores only its hash.
+- Original videos are never stored on the server. Physical deletion only happens on Windows, by the Companion, with the right drive connected and the file revalidated.
+- Report vulnerabilities privately: https://github.com/reiterstahl/videocat/security
 
 ## License
 
-VideoCAT is free and open source software under `AGPL-3.0-or-later`.
+Free and open source software under `AGPL-3.0-or-later`.
