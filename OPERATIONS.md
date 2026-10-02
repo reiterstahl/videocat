@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.4
+
+- The Duplicates badge in the menu now counts only groups that still need a decision (two or more copies not marked for deletion), using the same detection as the Duplicates view. No configuration changes; the Windows Companion stays on 0.2.3.
+
 ## Upgrading to 0.2.3
 
 - Docker stack: the mobile Review confirms each decision with a short animation, keeps the file name pinned at the top and returns to the top after every decision. No configuration changes.
