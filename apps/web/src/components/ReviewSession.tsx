@@ -23,6 +23,14 @@ export function defaultFrameIndex(file: VideoFile): number {
 
 type ReviewLayout = "frame" | "gallery";
 
+type ReviewFlash = { status: ReviewDecision | "skip"; id: number };
+
+const reviewFlashLabels: Record<ReviewFlash["status"], string> = {
+  keep: "Mantenido",
+  delete: "Marcado para borrar",
+  skip: "Saltado"
+};
+
 const reviewLayoutKey = "videocat-review-layout";
 
 const galleryGap = 8;
@@ -85,6 +93,8 @@ export function ReviewSession({
   const galleryRef = useRef<HTMLDivElement | null>(null);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [history, setHistory] = useState<ReviewSessionEntry[]>([]);
+  const [flash, setFlash] = useState<ReviewFlash | null>(null);
+  const skippedFileIdRef = useRef<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const tagCategories = categories.filter((category) => category.key !== "keep" && category.key !== "delete");
   const frames = file.thumbnails;
@@ -98,6 +108,15 @@ export function ReviewSession({
   useEffect(() => {
     setFrameIndex(defaultFrameIndex(file));
     setGalleryIndex(null);
+    // A skip only counts once the next video is on screen; with nothing left it stays put.
+    if (skippedFileIdRef.current && skippedFileIdRef.current !== file.id) setFlash({ status: "skip", id: Date.now() });
+    skippedFileIdRef.current = null;
+    // On phones the whole session scrolls: start every video from the top.
+    const root = rootRef.current;
+    if (root && root.scrollTop > 0) {
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      root.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    }
   }, [file.id]);
 
   useEffect(() => {
@@ -137,12 +156,20 @@ export function ReviewSession({
   async function decide(status: ReviewDecision) {
     if (loading) return;
     const previous = file;
+    skippedFileIdRef.current = null;
     try {
       await onDecision(status);
       setHistory((current) => [{ previous, status }, ...current].slice(0, 20));
+      setFlash({ status, id: Date.now() });
     } catch {
       // The session shows the error message provided by the parent.
     }
+  }
+
+  async function skip() {
+    if (loading) return;
+    skippedFileIdRef.current = file.id;
+    await onSkip();
   }
 
   async function undo() {
@@ -178,7 +205,7 @@ export function ReviewSession({
       } else if (key === "j") {
         void decide("delete");
       } else if (key === "s") {
-        if (!loading) void onSkip();
+        void skip();
       } else if (key === "z") {
         void undo();
       } else if (key === "g") {
@@ -238,6 +265,10 @@ export function ReviewSession({
       </header>
 
       <div className="vc-review-body">
+        <div className="vc-review-titlebar" title={file.filename}>
+          <strong>{file.filename}</strong>
+          <span>{[file.disk?.name, formatBytes(file.sizeBytes), formatDuration(file.durationSeconds)].filter(Boolean).join(" · ")}</span>
+        </div>
         <section className="vc-review-stage-column" aria-label="Video actual">
           {layout === "gallery" ? (
             <div
@@ -320,7 +351,7 @@ export function ReviewSession({
               <span>Mantener</span>
               <kbd>F</kbd>
             </button>
-            <button className="vc-review-decision is-skip" onClick={() => void onSkip()} disabled={loading} type="button">
+            <button className="vc-review-decision is-skip" onClick={() => void skip()} disabled={loading} type="button">
               <SkipForward size={20} />
               <span>Saltar</span>
               <kbd>S</kbd>
@@ -432,6 +463,19 @@ export function ReviewSession({
           onMove={(offset) => setGalleryIndex((current) => (current == null ? current : Math.min(frames.length - 1, Math.max(0, current + offset))))}
           onClose={() => setGalleryIndex(null)}
         />
+      ) : null}
+      {flash ? (
+        <div
+          key={flash.id}
+          className={`vc-review-flash is-${flash.status}`}
+          role="status"
+          onAnimationEnd={() => setFlash((current) => (current?.id === flash.id ? null : current))}
+        >
+          <span className="vc-review-flash-icon" aria-hidden="true">
+            {flash.status === "keep" ? <Check size={34} /> : flash.status === "delete" ? <Trash2 size={30} /> : <SkipForward size={30} />}
+          </span>
+          <strong>{reviewFlashLabels[flash.status]}</strong>
+        </div>
       ) : null}
     </div>
   );

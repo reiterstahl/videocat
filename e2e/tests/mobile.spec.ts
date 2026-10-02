@@ -53,3 +53,28 @@ test("long press selects cards and docks bulk actions above the tab bar", async 
   const tabsBox = await page.locator(".vc-tabbar").boundingBox();
   expect(bulkBox && tabsBox && bulkBox.y + bulkBox.height <= tabsBox.y).toBeTruthy();
 });
+
+test("review pins the file name, confirms each decision and returns to the top", async ({ page }) => {
+  await openView(page, "/review");
+  await page.locator(".vc-review-hero .vc-button.is-primary").click();
+  const session = page.locator(".vc-review");
+  await expect(session).toBeVisible();
+
+  const title = page.locator(".vc-review-titlebar strong");
+  const first = await title.textContent();
+  await expect(page.locator(".vc-review-side h3")).toHaveText(first ?? "");
+  await session.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  await expect.poll(() => session.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(title).toBeInViewport();
+
+  await page.locator(".vc-review-decision.is-keep").tap();
+  await expect(page.locator(".vc-review-flash.is-keep")).toContainText("Mantenido");
+  await expect(title).not.toHaveText(first ?? "");
+  await expect.poll(() => session.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page.locator(".vc-review-flash")).toHaveCount(0);
+
+  const second = await title.textContent();
+  await page.locator(".vc-review-decision.is-skip").tap();
+  await expect(page.locator(".vc-review-flash.is-skip")).toContainText("Saltado");
+  await expect(title).not.toHaveText(second ?? "");
+});

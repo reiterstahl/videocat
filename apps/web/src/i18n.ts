@@ -175,6 +175,7 @@ const en: Record<string, string> = {
   "Salir del review": "Exit review",
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
+  "Saltado": "Skipped",
   "Deshacer": "Undo",
   "en esta sesión": "this session",
   "Video actual": "Current video",
