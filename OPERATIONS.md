@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.7
+
+- VideoCAT is now an installable web app (PWA). Browsers only offer installation over HTTPS (or `localhost`); keep the reverse proxy forwarding every path to the `web` container so `/sw.js` and `/manifest.webmanifest` are served with their own cache headers.
+- Security fix in the `web` image: the HTML and static files were served without CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and HSTS because nginx drops server-level headers in locations that set their own. Every route now sends them. If your reverse proxy adds its own CSP, make sure it allows `worker-src 'self'` and `manifest-src 'self'`.
+- No configuration changes; the Windows Companion stays on 0.2.3.
+
 ## Upgrading to 0.2.6
 
 - Security update: `@fastify/busboy` 3.2.2 fixes a high-severity denial of service through malformed multipart uploads (GHSA-xjh9-v7x6-24jw, GHSA-x8mw-p69m-v3mx), and `fastify` 5.12.5 / `fast-uri` fix two moderate advisories. Upgrade from 0.2.5 or earlier; no configuration changes.
