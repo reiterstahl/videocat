@@ -78,3 +78,36 @@ test("review pins the file name, confirms each decision and returns to the top",
   await expect(page.locator(".vc-review-flash.is-skip")).toContainText("Saltado");
   await expect(title).not.toHaveText(second ?? "");
 });
+
+test("the fullscreen gallery moves between frames with horizontal swipes", async ({ page }) => {
+  await openView(page, "/review");
+  await page.locator(".vc-review-hero .vc-button.is-primary").click();
+  await expect(page.locator(".vc-review")).toBeVisible();
+  await page.locator(".vc-review-frame").tap();
+  const gallery = page.locator(".gallery-backdrop");
+  const count = gallery.locator(".gallery-count");
+  await expect(count).toHaveText("8 / 15");
+
+  const swipe = async (dx: number, dy = 0) => {
+    const init = { pointerId: 7, pointerType: "touch", isPrimary: true, clientX: 200, clientY: 420 };
+    await gallery.dispatchEvent("pointerdown", init);
+    for (const step of [0.3, 0.6, 1]) {
+      await gallery.dispatchEvent("pointermove", { ...init, clientX: 200 + dx * step, clientY: 420 + dy * step });
+    }
+    await gallery.dispatchEvent("pointerup", { ...init, clientX: 200 + dx, clientY: 420 + dy });
+  };
+
+  await swipe(-140);
+  await expect(count).toHaveText("9 / 15");
+  await swipe(140);
+  await expect(count).toHaveText("8 / 15");
+  await swipe(-30);
+  await expect(count).toHaveText("8 / 15");
+  await swipe(-120, 200);
+  await expect(count).toHaveText("8 / 15");
+
+  for (let index = 0; index < 8; index += 1) await swipe(-140);
+  await expect(count).toHaveText("15 / 15");
+  await page.locator(".gallery-close").tap();
+  await expect(gallery).toHaveCount(0);
+});

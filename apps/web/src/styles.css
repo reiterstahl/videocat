@@ -2310,6 +2310,43 @@ tbody tr.curation-row {
   border-radius: 8px;
   cursor: default;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  transition: transform 180ms ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Horizontal swipes go to the gallery; vertical panning and pinch zoom stay with the browser. */
+.gallery-backdrop {
+  touch-action: pan-y pinch-zoom;
+}
+
+.gallery-stage img.is-dragging {
+  transition: none;
+}
+
+.gallery-stage img.is-entering-from-right {
+  animation: gallery-enter-right 200ms ease-out;
+}
+
+.gallery-stage img.is-entering-from-left {
+  animation: gallery-enter-left 200ms ease-out;
+}
+
+@keyframes gallery-enter-right {
+  from { opacity: 0.4; transform: translateX(48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes gallery-enter-left {
+  from { opacity: 0.4; transform: translateX(-48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gallery-stage img.is-entering-from-right,
+  .gallery-stage img.is-entering-from-left {
+    animation: none;
+  }
 }
 
 .gallery-close {
