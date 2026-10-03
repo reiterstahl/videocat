@@ -45,7 +45,9 @@ test("the Duplicates badge counts only groups that still need a decision", async
   await openView(page, "/duplicados");
   const navBadge = page.locator(".vc-nav-item", { hasText: "Duplicados" }).locator(".vc-nav-badge");
   const pendingInView = page.locator(".vc-count-badge.is-inverse");
-  await expect(pendingInView).toBeVisible();
+  // The count is only meaningful once the groups have loaded.
+  await expect(page.locator(".vc-dup-group").first()).toBeVisible();
+  await expect(pendingInView).not.toHaveText("0");
   const before = Number(await pendingInView.textContent());
   await expect(navBadge).toHaveText(String(before));
 

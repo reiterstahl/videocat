@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { LogOut, MoreHorizontal, Palette } from "lucide-react";
+import { InstallAppButton } from "./InstallApp";
 import type { NavigationItem, ViewMode } from "../lib/app-types";
 import type { Disk } from "../types";
 
@@ -72,6 +73,7 @@ export function MobileNav({ companionIndicatorLabel, companionIndicatorState, co
                 <span className="vc-nav-label">{item.label}</span>
               </button>
             ))}
+            <InstallAppButton onInstalled={() => setMobileMenuOpen(false)} />
             <button
               className="vc-nav-item"
               onClick={() => {

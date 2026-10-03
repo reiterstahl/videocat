@@ -99,4 +99,18 @@ export function applyTheme(resolved: ResolvedAppearance, preferences: ThemePrefe
   root.dataset.surface = resolved === "oled" ? "oled" : "default";
   root.dataset.accent = preferences.accent;
   root.dataset.density = preferences.density;
+  syncThemeColor(root);
+}
+
+// Installed apps and mobile browsers tint their title bar with theme-color; follow the active surface.
+function syncThemeColor(root: HTMLElement): void {
+  const color = getComputedStyle(root).getPropertyValue("--vc-surface").trim();
+  if (!color) return;
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = color;
 }

@@ -17,6 +17,7 @@ Web interface for **VideoCAT**, a private, self-hosted catalog for videos spread
 `reiterstahl/videocat-web` is the React app served by unprivileged Nginx on port `8080`:
 
 - The VideoCAT interface in Spanish and English, responsive for desktop and phones, with light, dark and OLED themes.
+- An installable web app (PWA) for Chrome, Edge, Firefox on Windows and Android, and Safari on iPhone, iPad and macOS. Its service worker caches only the app shell — never API responses, thumbnails or videos — and offers updates when a new image is deployed. Installing requires HTTPS.
 - A proxy for `/api/*` and `/thumbnails/*` to the `server` container, including the WebSocket used by the Companion tunnel.
 - Security headers (CSP, HSTS under HTTPS) and SPA routing.
 

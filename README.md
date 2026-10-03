@@ -104,6 +104,7 @@ flowchart LR
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
 
 ### Interfaz
+- **App instalable (PWA)** en Windows, macOS, Android, iPhone y iPad: se abre desde su propio ícono en una ventana sin pestañas, se actualiza sola con cada versión del servidor y avisa cuando no hay conexión. No guarda datos del catálogo en el dispositivo.
 - Español e inglés, temas claro, oscuro, OLED o del sistema, seis colores de acento y densidad cómoda o compacta.
 - Responsive: barra lateral contraíble en escritorio, barra de pestañas y hojas desplegables en el móvil.
 - Cada sección tiene su URL (`/catalogo`, `/review`, `/duplicados`…), que también se puede abrir con su equivalente en inglés.
@@ -214,6 +215,20 @@ Para crear el marcador, usa el [agente CLI](#agente-cli) (`init-disk` o `wizard`
 
 El primer escaneo sube metadatos y miniaturas. Los siguientes solo procesan lo nuevo o modificado.
 
+### 4. Instalar como app (opcional)
+
+VideoCAT se puede instalar como app desde el navegador. En **Perfil › App de VideoCAT** verás el botón o las instrucciones para tu navegador:
+
+- **Chrome y Edge** (Windows, macOS, Linux, Android): botón **Instalar app** en la barra lateral, o el ícono de instalar en la barra de direcciones.
+- **Firefox 143 o posterior en Windows**: ícono **Añadir a la barra de tareas** a la derecha de la barra de direcciones. En Android: menú › **Instalar**.
+- **iPhone y iPad**: **Compartir › Agregar a pantalla de inicio**.
+- **Safari en macOS**: **Archivo › Añadir al Dock**.
+
+> [!NOTE]
+> Los navegadores solo instalan apps desde **HTTPS** (o `localhost`). Si abres VideoCAT por `http://` con una IP de tu red, primero publícalo con HTTPS detrás de tu reverse proxy.
+
+La app guarda en el dispositivo solo su propio código (interfaz, estilos e íconos) para abrir rápido. Las respuestas de la API, las miniaturas y los videos siempre se piden al servidor, así que no queda información del catálogo en el equipo. Cuando publicas una versión nueva del stack, la app muestra **Hay una nueva versión de VideoCAT · Actualizar**.
+
 ## Uso diario
 
 ### Review y borrado seguro
@@ -299,7 +314,7 @@ server {
 }
 ```
 
-Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRUST_PROXY=true`.
+Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRUST_PROXY=true`. HTTPS también es necesario para instalar VideoCAT como app.
 
 ### Actualizar
 

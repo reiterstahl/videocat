@@ -66,3 +66,15 @@ test("downloads shows the transfer and random selection panels", async ({ page }
   await expect(page.getByRole("button", { name: "Procesar cola" })).toBeVisible();
   await expect(page.locator(".vc-queue")).toBeVisible();
 });
+
+test("profile explains how to install the app and the shell warns when offline", async ({ page, context }) => {
+  await openView(page, "/perfil");
+  const panel = page.locator("section.vc-panel", { has: page.locator("#profile-install-title") });
+  await expect(panel).toBeVisible();
+  await expect(panel.locator(".vc-install-status, .vc-install-actions").first()).toBeVisible();
+
+  await context.setOffline(true);
+  await expect(page.locator(".vc-offline-banner")).toBeVisible();
+  await context.setOffline(false);
+  await expect(page.locator(".vc-offline-banner")).toHaveCount(0);
+});

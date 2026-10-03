@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Cast, KeyRound, Lock, Palette, Shield } from "lucide-react";
+import { InstallAppPanel } from "../components/InstallApp";
 import { ThemeControls } from "../components/ThemeControls";
 import type { Language } from "../i18n";
 import { api } from "../lib/api";
@@ -226,6 +227,8 @@ export function ProfileView({
             </div>
           </div>
         </section>
+
+        <InstallAppPanel />
 
         <section className="vc-panel" aria-labelledby="profile-appearance-title">
           <div className="vc-panel-head">
