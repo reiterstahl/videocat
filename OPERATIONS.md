@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.6
+
+- Security update: `@fastify/busboy` 3.2.2 fixes a high-severity denial of service through malformed multipart uploads (GHSA-xjh9-v7x6-24jw, GHSA-x8mw-p69m-v3mx), and `fastify` 5.12.5 / `fast-uri` fix two moderate advisories. Upgrade from 0.2.5 or earlier; no configuration changes.
+
 ## Upgrading to 0.2.5
 
 - On phones and tablets, the fullscreen frame gallery (Review and file detail) moves between frames with horizontal swipes. No configuration changes; the Windows Companion stays on 0.2.3.
