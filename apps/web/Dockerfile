@@ -15,7 +15,7 @@ ARG VITE_VIDEOCAT_VERSION=0.2.7
 ENV VITE_VIDEOCAT_VERSION=$VITE_VIDEOCAT_VERSION
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/web
 
-FROM nginxinc/nginx-unprivileged:1.30.4-alpine
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/security-headers.conf /etc/nginx/snippets/videocat-security-headers.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
