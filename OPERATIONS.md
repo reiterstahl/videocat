@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.10
+
+- Review shows vertical videos whole: a vertical canvas on phones, a blurred fill instead of black bars, and 9:16 gallery tiles. No configuration changes.
+
 ## Upgrading to 0.2.9
 
 - The "new version" prompt of the installed app always reloads into the new version. If an older prompt does nothing, close every VideoCAT window and tab and open it again. No configuration changes.

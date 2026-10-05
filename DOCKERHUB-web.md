@@ -63,7 +63,7 @@ Install it with [VideoCAT-Companion-win-Setup.exe](https://github.com/reiterstah
 
 ## Tags and platforms
 
-- `0.2.9`, `0.2.8`, … — versioned, stable tags. Prefer them for predictable deployments.
+- `0.2.10`, `0.2.9`, … — versioned, stable tags. Prefer them for predictable deployments.
 - `latest` — the newest published release.
 
 Images are built for `linux/amd64` and `linux/arm64`. The interface shows a notice when a newer stable version is published here.
