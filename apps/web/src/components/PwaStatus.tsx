@@ -3,13 +3,33 @@ import { RefreshCw, WifiOff, X } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 const updateCheckIntervalMs = 60 * 60 * 1000;
+const updateReloadFallbackMs = 4000;
+
+// Activates the waiting service worker and always ends in a reload, even when the library's
+// "controlling" event never arrives (another window already activated it, or it was missed).
+async function applyWaitingUpdate(): Promise<void> {
+  let reloaded = false;
+  const reload = () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  };
+  const registration = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
+  if (!registration?.waiting) {
+    reload();
+    return;
+  }
+  navigator.serviceWorker.addEventListener("controllerchange", reload, { once: true });
+  registration.waiting.postMessage({ type: "SKIP_WAITING" });
+  window.setTimeout(reload, updateReloadFallbackMs);
+}
 
 // Offers new versions of the web app instead of swapping the code under an open session.
 export function PwaUpdatePrompt() {
+  const [updating, setUpdating] = useState(false);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
-    offlineReady: [, setOfflineReady],
-    updateServiceWorker
+    offlineReady: [, setOfflineReady]
   } = useRegisterSW({
     onRegisteredSW(swUrl, registration) {
       if (!registration) return;
@@ -37,7 +57,17 @@ export function PwaUpdatePrompt() {
     <div className="vc-pwa-toast" role="status">
       <RefreshCw size={16} aria-hidden="true" />
       <span>Hay una nueva versión de VideoCAT.</span>
-      <button className="vc-button is-primary is-small" onClick={() => void updateServiceWorker(true)} type="button">Actualizar</button>
+      <button
+        className="vc-button is-primary is-small"
+        disabled={updating}
+        onClick={() => {
+          setUpdating(true);
+          void applyWaitingUpdate();
+        }}
+        type="button"
+      >
+        {updating ? "Actualizando…" : "Actualizar"}
+      </button>
       <button className="vc-icon-button is-ghost is-small" onClick={() => setNeedRefresh(false)} type="button" aria-label="Más tarde" title="Más tarde">
         <X size={15} />
       </button>

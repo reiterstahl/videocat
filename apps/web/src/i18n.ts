@@ -175,6 +175,7 @@ const en: Record<string, string> = {
   "Salir del review": "Exit review",
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
+  "Actualizando…": "Updating…",
   "Modo privacidad": "Privacy mode",
   "Modo privacidad (Espacio)": "Privacy mode (Space)",
   "Salir del modo privacidad": "Leave privacy mode",
