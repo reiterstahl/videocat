@@ -122,6 +122,8 @@ jobs:
           npm run prisma:generate
           npm run build -w @videocat/shared
       - name: Install Chromium
+        # A stuck apt mirror or browser download should fail fast instead of eating the job budget.
+        timeout-minutes: 8
         run: npx playwright install --with-deps chromium
       - name: Run end-to-end tests
         run: npm run test:e2e
