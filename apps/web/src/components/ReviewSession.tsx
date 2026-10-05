@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, EyeOff, Image, LayoutGrid, Maximize, Pause, Play, RectangleHorizontal, SkipForward, Trash2 } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { FullscreenGallery } from "./FullscreenGallery";
@@ -35,13 +35,13 @@ const reviewLayoutKey = "videocat-review-layout";
 
 const galleryGap = 8;
 
-// Picks the column count that makes every 16:9 frame as large as possible inside the available box.
-function bestGalleryTileWidth(count: number, width: number, height: number): number {
+// Picks the column count that makes every frame (16:9, vertical or any other shape) as large as possible.
+function bestGalleryTileWidth(count: number, width: number, height: number, aspect: number): number {
   let best = 0;
   for (let columns = 1; columns <= count; columns += 1) {
     const rows = Math.ceil(count / columns);
     const byWidth = (width - galleryGap * (columns - 1)) / columns;
-    const byHeight = ((height - galleryGap * (rows - 1)) / rows) * (16 / 9);
+    const byHeight = ((height - galleryGap * (rows - 1)) / rows) * aspect;
     best = Math.max(best, Math.min(byWidth, byHeight));
   }
   return Math.floor(best);
@@ -89,6 +89,10 @@ export function ReviewSession({
   const [frameIndex, setFrameIndex] = useState(() => defaultFrameIndex(file));
   const [framesPlaying, setFramesPlaying] = useState(false);
   const [privacy, setPrivacy] = useState(false);
+  // Frames keep the video's real orientation (FFmpeg applies phone rotation), unlike the stored
+  // width and height, so the shape comes from the first decoded image.
+  // Keyed by file so a measurement from a preloaded frame never leaks into the next video.
+  const [frameShape, setFrameShape] = useState<{ fileId: string; aspect: number } | null>(null);
   const [layout, setLayout] = useState<ReviewLayout>(storedReviewLayout);
   const [galleryTileWidth, setGalleryTileWidth] = useState<number | null>(null);
   const galleryRef = useRef<HTMLDivElement | null>(null);
@@ -102,6 +106,8 @@ export function ReviewSession({
   const activeFrame = frames[frameIndex] ?? frames[0];
   const galleryThumb = galleryIndex == null ? null : frames[galleryIndex];
   const lastEntry = history[0] ?? null;
+  const aspect = frameShape?.fileId === file.id ? frameShape.aspect : 16 / 9;
+  const portrait = aspect < 0.95;
   const sessionFreedBytes = history.reduce((total, entry) => total + (entry.status === "delete" ? entry.previous.sizeBytes : 0), 0);
   const badge = resolutionBadge(file);
   const folder = /[\\/]/.test(file.relativePath) ? folderPath(file.relativePath) : "";
@@ -138,11 +144,15 @@ export function ReviewSession({
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       // On narrow screens the gallery flows with the page instead of filling a fixed box.
-      setGalleryTileWidth(height > 160 && window.innerWidth > 980 ? bestGalleryTileWidth(frames.length, width, height) : null);
+      setGalleryTileWidth(height > 160 && window.innerWidth > 980 ? bestGalleryTileWidth(frames.length, width, height, aspect) : null);
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [frames.length, layout]);
+  }, [aspect, frames.length, layout]);
+
+  function measureFrame(image: HTMLImageElement) {
+    if (image.naturalWidth > 0 && image.naturalHeight > 0) setFrameShape({ fileId: file.id, aspect: image.naturalWidth / image.naturalHeight });
+  }
 
   function changeLayout(next: ReviewLayout) {
     setLayout(next);
@@ -295,10 +305,13 @@ export function ReviewSession({
         <section className="vc-review-stage-column" aria-label="Video actual">
           {layout === "gallery" ? (
             <div
-              className="vc-review-gallery"
+              className={`vc-review-gallery ${portrait ? "is-portrait" : ""}`}
               aria-label="Todos los fotogramas"
               ref={galleryRef}
-              style={galleryTileWidth ? { gridTemplateColumns: `repeat(auto-fill, ${galleryTileWidth}px)` } : undefined}
+              style={{
+                "--vc-frame-aspect": aspect,
+                ...(galleryTileWidth ? { gridTemplateColumns: `repeat(auto-fill, ${galleryTileWidth}px)` } : {})
+              } as CSSProperties}
             >
               {frames.length > 0 ? frames.map((thumb, index) => (
                 <button
@@ -308,7 +321,7 @@ export function ReviewSession({
                   type="button"
                   aria-label={`Ver fotograma ${index + 1} en grande`}
                 >
-                  <img src={thumbnailSrc(thumb.url)} alt="" decoding="async" loading="eager" />
+                  <img src={thumbnailSrc(thumb.url)} alt="" decoding="async" loading="eager" onLoad={index === 0 ? (event) => measureFrame(event.currentTarget) : undefined} />
                   {thumb.timestampSeconds != null ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(thumb.timestampSeconds)}</span> : null}
                 </button>
               )) : (
@@ -317,10 +330,11 @@ export function ReviewSession({
               {loading ? <span className="vc-review-loading" aria-hidden="true" /> : null}
             </div>
           ) : (
-          <div className="vc-review-stage">
+          <div className={`vc-review-stage ${portrait ? "is-portrait" : ""}`}>
             {activeFrame ? (
               <button className="vc-review-frame" onClick={() => setGalleryIndex(frameIndex)} type="button" title="Ver fotograma en grande">
-                <img src={thumbnailSrc(activeFrame.url)} alt="" decoding="async" />
+                {portrait ? <img className="vc-review-frame-ambient" src={thumbnailSrc(activeFrame.url)} alt="" aria-hidden="true" /> : null}
+                <img src={thumbnailSrc(activeFrame.url)} alt="" decoding="async" onLoad={(event) => measureFrame(event.currentTarget)} />
               </button>
             ) : (
               <div className="vc-review-empty-frame"><Image size={40} aria-hidden="true" /><span>Sin miniaturas</span></div>

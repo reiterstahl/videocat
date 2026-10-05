@@ -27,7 +27,7 @@ export default defineConfig({
     {
       name: "mobile",
       dependencies: ["setup"],
-      testMatch: /mobile\.spec\.ts/,
+      testMatch: /(mobile|review-portrait)\.spec\.ts/,
       use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 }, storageState: "e2e/.auth/admin.json" }
     }
   ],
