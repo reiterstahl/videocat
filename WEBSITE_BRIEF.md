@@ -15,7 +15,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - GitHub Sponsors: <https://github.com/sponsors/reiterstahl>
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
-- Stack Docker actual: `0.2.8`
+- Stack Docker actual: `0.2.9`
 - Companion Windows actual: `0.2.3` (instalador con actualización automática)
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`

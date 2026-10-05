@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.9
+
+- The "new version" prompt of the installed app always reloads into the new version. If an older prompt does nothing, close every VideoCAT window and tab and open it again. No configuration changes.
+
 ## Upgrading to 0.2.8
 
 - Review shortcuts changed: `Space` now toggles a privacy mode (black screen, decisions disabled) and `Enter` plays the frames. Decisions show a short confirmation at every screen size. No configuration changes; the Windows Companion stays on 0.2.3.
