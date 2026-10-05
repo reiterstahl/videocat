@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.8
+
+- Review shortcuts changed: `Space` now toggles a privacy mode (black screen, decisions disabled) and `Enter` plays the frames. Decisions show a short confirmation at every screen size. No configuration changes; the Windows Companion stays on 0.2.3.
+
 ## Upgrading to 0.2.7
 
 - VideoCAT is now an installable web app (PWA). Browsers only offer installation over HTTPS (or `localhost`); keep the reverse proxy forwarding every path to the `web` container so `/sw.js` and `/manifest.webmanifest` are served with their own cache headers.
