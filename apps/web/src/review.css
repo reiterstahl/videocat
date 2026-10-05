@@ -728,7 +728,7 @@
   line-height: 1.9;
 }
 
-/* Phone and tablet helpers: pinned file name and a short confirmation of each decision. */
+/* Short confirmation of each decision, plus the pinned file name on phones and tablets. */
 
 .vc-review-titlebar {
   display: none;
@@ -738,7 +738,7 @@
   position: fixed;
   inset: 0;
   z-index: 95;
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -797,10 +797,6 @@
 @media (max-width: 1080px) {
   .vc-review-last {
     display: none;
-  }
-
-  .vc-review-flash {
-    display: flex;
   }
 }
 
@@ -929,4 +925,13 @@
     width: 100%;
     justify-content: center;
   }
+}
+
+/* Privacy mode: Space blacks out the whole screen until Space, Esc or a click. */
+.vc-review-privacy {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000000;
+  cursor: none;
 }

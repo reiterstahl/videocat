@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Image, LayoutGrid, Maximize, Pause, Play, RectangleHorizontal, SkipForward, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, EyeOff, Image, LayoutGrid, Maximize, Pause, Play, RectangleHorizontal, SkipForward, Trash2 } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { FullscreenGallery } from "./FullscreenGallery";
 import { thumbnailSrc } from "../lib/api";
@@ -88,6 +88,7 @@ export function ReviewSession({
 }) {
   const [frameIndex, setFrameIndex] = useState(() => defaultFrameIndex(file));
   const [framesPlaying, setFramesPlaying] = useState(false);
+  const [privacy, setPrivacy] = useState(false);
   const [layout, setLayout] = useState<ReviewLayout>(storedReviewLayout);
   const [galleryTileWidth, setGalleryTileWidth] = useState<number | null>(null);
   const galleryRef = useRef<HTMLDivElement | null>(null);
@@ -183,6 +184,13 @@ export function ReviewSession({
     setFrameIndex((current) => (current + offset + frames.length) % frames.length);
   }
 
+  function enterPrivacy() {
+    // Drop focus first: the Space keyup would otherwise click the last decision button.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setFramesPlaying(false);
+    setPrivacy(true);
+  }
+
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
@@ -196,7 +204,22 @@ export function ReviewSession({
       if (galleryIndex != null || isEditableTarget(event.target)) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === "escape") {
+      if (privacy) {
+        // A black screen must never take decisions; only Space or Esc bring the session back.
+        event.preventDefault();
+        if (key === " " || key === "escape") setPrivacy(false);
+        return;
+      }
+      if (key === " ") {
+        event.preventDefault();
+        enterPrivacy();
+      } else if (key === "enter") {
+        // Enter on a focused button keeps activating that button.
+        if (event.target instanceof HTMLElement && event.target.closest("button, a")) return;
+        if (layout !== "frame") return;
+        event.preventDefault();
+        setFramesPlaying((playing) => !playing);
+      } else if (key === "escape") {
         if (document.fullscreenElement) return;
         onClose();
       } else if (key === "f") {
@@ -213,9 +236,6 @@ export function ReviewSession({
       } else if (layout === "frame" && (key === "arrowleft" || key === "arrowright")) {
         event.preventDefault();
         moveFrame(key === "arrowleft" ? -1 : 1);
-      } else if (key === " " && layout === "frame") {
-        event.preventDefault();
-        setFramesPlaying((playing) => !playing);
       } else if (key === "p") {
         toggleFullscreen();
       } else if (/^[1-9]$/.test(key)) {
@@ -248,6 +268,9 @@ export function ReviewSession({
             <LayoutGrid size={16} />
           </button>
         </div>
+        <button className="vc-icon-button is-ghost vc-review-privacy-button" onClick={enterPrivacy} type="button" aria-label="Modo privacidad" title="Modo privacidad (Espacio)">
+          <EyeOff size={17} />
+        </button>
         <div className="vc-header-spacer" />
         {lastEntry ? (
           <span className={`vc-review-last is-${lastEntry.status}`} role="status">
@@ -448,7 +471,7 @@ export function ReviewSession({
           </div>
 
           <p className="vc-review-keys">
-            <kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Espacio</kbd> reproducir · <kbd>P</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
+            <kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Enter</kbd> reproducir · <kbd>Espacio</kbd> privacidad · <kbd>P</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
           </p>
         </aside>
       </div>
@@ -476,6 +499,9 @@ export function ReviewSession({
           </span>
           <strong>{reviewFlashLabels[flash.status]}</strong>
         </div>
+      ) : null}
+      {privacy ? (
+        <div className="vc-review-privacy" onClick={() => setPrivacy(false)} role="presentation" title="Salir del modo privacidad" />
       ) : null}
     </div>
   );

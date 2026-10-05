@@ -78,7 +78,7 @@ flowchart LR
 - Sesión inmersiva a pantalla completa con videos pendientes al azar, filtrable por discos conectados.
 - Atajos de mano izquierda y derecha: **F** mantener, **J** marcar para borrar, más saltar, deshacer y etiquetas numeradas.
 - Vista de fotograma o **galería** con todas las miniaturas a la vez.
-- En el móvil: confirmación animada de cada decisión, nombre del archivo siempre visible y vuelta automática arriba.
+- Confirmación animada de cada decisión y **modo privacidad** con la barra espaciadora (pantalla en negro). En el móvil, además, el nombre del archivo queda fijo arriba y la vista vuelve sola al inicio.
 - Precarga del siguiente video, indicadores de pendientes, racha semanal y espacio marcado para liberar.
 
 ### Duplicados
@@ -249,7 +249,8 @@ Si prefieres que el Companion no borre solo, cambia **Borrar los marcados** a *S
 | `Z` | Deshacer la última decisión |
 | `1`–`9` | Activar o quitar una etiqueta |
 | `←` `→` | Fotograma anterior o siguiente |
-| `Espacio` | Reproducir los fotogramas |
+| `Enter` | Reproducir los fotogramas |
+| `Espacio` | Modo privacidad: pantalla en negro hasta otro `Espacio`, `Esc` o un clic, sin tomar decisiones |
 | `G` | Alternar fotograma y galería |
 | `P` | Pantalla completa |
 | `Esc` | Salir |

@@ -78,7 +78,7 @@ flowchart LR
 - Immersive full-screen session with random pending videos, optionally limited to connected drives.
 - Left- and right-hand shortcuts: **F** keeps, **J** marks for deletion, plus skip, undo and numbered tags.
 - Single-frame view or a **gallery** with every thumbnail at once.
-- On phones: an animated confirmation for each decision, the file name always visible and an automatic jump back to the top.
+- An animated confirmation for each decision and a **privacy mode** on the space bar (black screen). On phones, the file name also stays pinned at the top and the view jumps back to the top.
 - The next video is preloaded; counters show pending videos, the weekly streak and space marked to free.
 
 ### Duplicates
@@ -251,7 +251,8 @@ If you would rather the Companion not delete on its own, set **Borrar los marcad
 | `Z` | Undo the last decision |
 | `1`–`9` | Toggle a tag |
 | `←` `→` | Previous or next frame |
-| `Space` | Play the frames |
+| `Enter` | Play the frames |
+| `Space` | Privacy mode: black screen until another `Space`, `Esc` or a click, without taking decisions |
 | `G` | Switch between frame and gallery |
 | `P` | Full screen |
 | `Esc` | Exit |

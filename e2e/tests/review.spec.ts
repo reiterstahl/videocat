@@ -66,3 +66,46 @@ test("review gallery shows every frame at once and remembers the layout", async 
   expect(await page.evaluate(() => localStorage.getItem("videocat-review-layout"))).toBe("frame");
   await page.keyboard.press("Escape");
 });
+
+test("Space blacks out the session without taking decisions and Enter plays the frames", async ({ page }) => {
+  await openView(page, "/review");
+  await page.locator(".vc-review-hero .vc-button.is-primary").click();
+  const name = page.locator(".vc-review-file h3");
+  const decisions = page.locator(".vc-review-session strong");
+  await expect(name).toBeVisible();
+
+  // The decision is confirmed on desktop too; the clicked button keeps focus afterwards.
+  const first = await name.textContent();
+  await page.locator(".vc-review-decision.is-keep").click();
+  await expect(page.locator(".vc-review-flash.is-keep")).toBeVisible();
+  await expect(name).not.toHaveText(first ?? "");
+  await expect(decisions).toHaveText("1");
+  const second = await name.textContent();
+
+  const privacy = page.locator(".vc-review-privacy");
+  await page.keyboard.press(" ");
+  await expect(privacy).toBeVisible();
+  for (const key of ["j", "f", "s", "Enter", "ArrowRight"]) await page.keyboard.press(key);
+  await page.keyboard.press(" ");
+  await expect(privacy).toHaveCount(0);
+  await expect(name).toHaveText(second ?? "");
+  await expect(decisions).toHaveText("1");
+
+  const play = page.locator(".vc-review-stage-controls .vc-review-round.is-primary");
+  await expect(play).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Enter");
+  await expect(play).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Enter");
+  await expect(play).toHaveAttribute("aria-pressed", "false");
+
+  await page.locator(".vc-review-privacy-button").click();
+  await expect(privacy).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(privacy).toHaveCount(0);
+  await expect(page.locator(".vc-review")).toBeVisible();
+  await page.locator(".vc-review-privacy-button").click();
+  await privacy.click();
+  await expect(privacy).toHaveCount(0);
+  await expect(decisions).toHaveText("1");
+  await page.keyboard.press("Escape");
+});
