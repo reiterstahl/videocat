@@ -14,7 +14,10 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/server apps/server
-RUN npm run build -w @videocat/shared && npm run build -w @videocat/server
+# npm only creates a workspace node_modules when a dependency cannot be hoisted to the root;
+# keep the directory so the runtime stage can always copy it.
+RUN npm run build -w @videocat/shared && npm run build -w @videocat/server \
+  && mkdir -p apps/server/node_modules
 
 FROM base AS runtime
 ENV NODE_ENV=production
