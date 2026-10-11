@@ -11,6 +11,7 @@ import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
+import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
@@ -88,6 +89,14 @@ const auditExportQuerySchema = auditErrorsQuerySchema.extend({
 const folderTreeQuerySchema = diskIdsQuerySchema.extend({
   prefix: z.string().max(2000).optional()
 });
+const folderGroupExclusionsKey = "folder_group_exclusions";
+const folderGroupExclusionsSchema = z.object({
+  names: z.array(z.string().trim().min(1).max(255)).max(500)
+});
+const folderLocationsSchema = z.array(z.object({
+  d: z.string().uuid(),
+  p: z.string().trim().min(1).max(2000)
+})).min(1).max(100);
 const maximumAuditGroupingRows = 5_000;
 const maximumAuditExportRows = 10_000;
 
@@ -624,6 +633,37 @@ async function attachCategoryKeys<T extends { id: string; curationStatus: string
   }));
 }
 
+// Folders merged by name live at different paths on different drives: match each pair exactly.
+function applyLocationFilter(where: Prisma.VideoFileWhereInput, locations: Array<{ d: string; p: string }>): void {
+  if (locations.length === 0) return;
+  where.AND = [
+    ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
+    {
+      OR: locations.map((location) => {
+        const path = location.p.replace(/[\\/]+$/, "");
+        return {
+          diskId: location.d,
+          OR: [
+            { relativePath: { startsWith: `${path}/` } },
+            { relativePath: { startsWith: `${path}\\` } }
+          ]
+        };
+      })
+    }
+  ];
+}
+
+async function folderGroupExclusions(): Promise<string[]> {
+  const raw = await appSettingValue(folderGroupExclusionsKey);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function applyFolderFilter(where: Prisma.VideoFileWhereInput, folders: string[]): void {
   if (folders.length === 0) return;
 
@@ -970,7 +1010,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return { folders, tags, extensions, curationStatuses, protectedUnlocked };
   });
 
-  app.get("/api/files", { preHandler: requireWebAuth }, async (request) => {
+  app.get("/api/files", { preHandler: requireWebAuth }, async (request, reply) => {
     const query = filesQuerySchema.parse(request.query);
     const protectedUnlocked = isProtectedFolderUnlocked(request);
     const diskIds = commaList(query.diskIds);
@@ -1018,6 +1058,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     }
 
     applyFolderFilter(where, folders);
+    if (query.locations) {
+      let parsedLocations: unknown;
+      try {
+        parsedLocations = JSON.parse(query.locations);
+      } catch {
+        return reply.code(400).send({ message: "Invalid locations" });
+      }
+      applyLocationFilter(where, folderLocationsSchema.parse(parsedLocations));
+    }
 
     let detectedDuplicateCountById: Map<string, number> | null = null;
     if (query.duplicateOnly) {
@@ -1400,6 +1449,46 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
       query.prefix ?? ""
     );
+  });
+
+  app.get("/api/folder-groups", { preHandler: requireWebAuth }, async (request) => {
+    const query = diskIdsQuerySchema.parse(request.query);
+    const diskIds = commaList(query.diskIds);
+    const where: Prisma.VideoFileWhereInput = diskIds.length > 0 ? { diskId: { in: diskIds } } : {};
+    applyHiddenPathFilter(where);
+    if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(where);
+    const [files, excludedNames] = await Promise.all([
+      prisma.videoFile.findMany({
+        where,
+        select: { diskId: true, relativePath: true, sizeBytes: true, disk: { select: { name: true } } }
+      }),
+      folderGroupExclusions()
+    ]);
+    return {
+      excludedNames,
+      ...buildFolderGroups(
+        files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
+        { excludedNames }
+      )
+    };
+  });
+
+  app.put("/api/folder-groups/exclusions", { preHandler: requireWebAuth }, async (request) => {
+    const body = folderGroupExclusionsSchema.parse(request.body);
+    // Keep one display spelling per normalized name.
+    const byKey = new Map<string, string>();
+    for (const name of body.names) {
+      const key = normalizeFolderName(name);
+      if (key && !byKey.has(key)) byKey.set(key, name);
+    }
+    const names = [...byKey.values()].sort((left, right) => left.localeCompare(right));
+    await prisma.appSetting.upsert({
+      where: { key: folderGroupExclusionsKey },
+      create: { key: folderGroupExclusionsKey, value: JSON.stringify(names) },
+      update: { value: JSON.stringify(names) }
+    });
+    await recordAction({ action: "folder-groups.exclusions", actorType: "web", actorId: "admin", result: { count: names.length } });
+    return { excludedNames: names };
   });
 
   app.get("/api/admin/maintenance", { preHandler: requireWebAuth }, async () => {

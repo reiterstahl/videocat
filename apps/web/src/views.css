@@ -1463,3 +1463,315 @@ a.vc-button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Uso por carpeta: nested treemap of folders merged by name. */
+
+.vc-folders {
+  display: grid;
+  gap: var(--vc-gap);
+}
+
+.vc-folders-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+
+.vc-folders-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 720px;
+}
+
+.vc-folders-title > svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--vc-accent);
+}
+
+.vc-folders-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.vc-folders-title p {
+  margin: 2px 0 0;
+  color: var(--vc-muted);
+  font-size: 0.86rem;
+}
+
+.vc-folders-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--vc-gap);
+  align-items: start;
+}
+
+.vc-folders-map {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.vc-folders-canvas {
+  position: relative;
+  height: clamp(420px, calc(100vh - 330px), 900px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--vc-text) 6%, var(--vc-surface));
+  transition: opacity 160ms ease;
+}
+
+.vc-folders-canvas.is-loading {
+  opacity: 0.55;
+}
+
+.vc-folder-tile {
+  --tile-light: calc(36% + var(--tile-depth) * 7%);
+  position: absolute;
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.28);
+  border-radius: calc(9px - var(--tile-depth) * 2px);
+  background:
+    radial-gradient(120% 120% at 28% 18%, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(160deg, hsl(var(--tile-hue) 58% calc(var(--tile-light) + 6%)), hsl(var(--tile-hue) 62% var(--tile-light)));
+  color: #ffffff;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 120ms ease, box-shadow 120ms ease;
+}
+
+.vc-folder-tile.is-parent {
+  background: hsl(var(--tile-hue) 45% calc(var(--tile-light) - 10%));
+}
+
+.vc-folder-tile.is-rest {
+  background: repeating-linear-gradient(135deg, hsl(220 8% 42%), hsl(220 8% 42%) 6px, hsl(220 8% 38%) 6px, hsl(220 8% 38%) 12px);
+  cursor: default;
+}
+
+.vc-folder-tile.is-files {
+  background:
+    radial-gradient(120% 120% at 28% 18%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 55%),
+    hsl(var(--tile-hue) 22% calc(var(--tile-light) - 4%));
+}
+
+.vc-folder-tile:not(:disabled):hover,
+.vc-folder-tile.is-hovered {
+  z-index: 2;
+  filter: brightness(1.12);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.vc-folder-tile.is-parent:hover,
+.vc-folder-tile.is-parent.is-hovered {
+  z-index: auto;
+}
+
+.vc-folder-tile:focus-visible {
+  z-index: 3;
+  outline: 2px solid var(--vc-accent);
+  outline-offset: -2px;
+}
+
+.vc-folder-tile-label {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  left: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.vc-folder-tile:not(.is-parent) .vc-folder-tile-label {
+  flex-direction: column;
+  gap: 0;
+}
+
+.vc-folder-tile-label strong {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+
+.vc-folder-tile-label small {
+  flex: 0 0 auto;
+  opacity: 0.85;
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+}
+
+.vc-folders-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  min-height: 2.6em;
+  color: var(--vc-muted);
+  font-size: 0.84rem;
+}
+
+.vc-folders-status strong {
+  color: var(--vc-text);
+}
+
+.vc-folders-paths {
+  flex-basis: 100%;
+  overflow: hidden;
+  font-family: var(--vc-font-mono);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-folders-groups {
+  position: sticky;
+  top: calc(var(--vc-header-height, 64px) + 12px);
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.vc-folders-groups h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.vc-folders-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--vc-border);
+  border-radius: 10px;
+  background: var(--vc-surface);
+  padding: 0 10px;
+  color: var(--vc-muted);
+}
+
+.vc-folders-search input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--vc-text);
+  font: inherit;
+  outline: none;
+}
+
+.vc-folders-empty {
+  margin: 0;
+  color: var(--vc-muted);
+  font-size: 0.86rem;
+}
+
+.vc-folders-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-folders-list > li {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--vc-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.vc-folders-list > li.is-excluded {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.vc-folders-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vc-folders-item-head span {
+  color: var(--vc-muted);
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+}
+
+.vc-folders-locations {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.vc-folders-locations li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  color: var(--vc-muted);
+}
+
+.vc-folders-locations code {
+  overflow: hidden;
+  color: var(--vc-text);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-folders-locations em {
+  font-family: var(--vc-font-mono);
+  font-style: normal;
+}
+
+.vc-folders-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vc-folders-actions .vc-button.is-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--vc-muted);
+}
+
+@media (max-width: 1100px) {
+  .vc-folders-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vc-folders-groups {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .vc-folders-canvas {
+    height: 62svh;
+  }
+
+  .vc-folders-map {
+    padding: 8px;
+  }
+}

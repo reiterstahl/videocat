@@ -68,3 +68,42 @@ export type Stats = {
   duplicateGroupCount: number;
   pendingDuplicateGroupCount: number;
 };
+
+export type FolderGroupLocation = {
+  diskId: string;
+  diskName: string;
+  path: string;
+  sizeBytes: number;
+};
+
+export type FolderGroupNode = {
+  key: string;
+  name: string;
+  kind: "group" | "folder" | "files" | "rest";
+  sizeBytes: number;
+  fileCount: number;
+  locations: FolderGroupLocation[];
+  children: FolderGroupNode[];
+};
+
+export type FolderGroupSummary = {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  fileCount: number;
+  locations: FolderGroupLocation[];
+  excluded: boolean;
+};
+
+export type FolderGroupMap = {
+  sizeBytes: number;
+  fileCount: number;
+  roots: FolderGroupNode[];
+  repeated: FolderGroupSummary[];
+  excludedNames: string[];
+};
+
+export type CatalogLocationScope = {
+  label: string;
+  locations: Array<{ d: string; p: string }>;
+};

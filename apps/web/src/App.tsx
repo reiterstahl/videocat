@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   ListChecks,
   Moon,
+  Layers,
   PieChart,
   Server,
   Shield,
@@ -94,7 +95,7 @@ import type {
   VersionCheckResponse,
   ViewMode
 } from "./lib/app-types";
-import type { Disk, Stats, VideoFile } from "./types";
+import type { CatalogLocationScope, Disk, Stats, VideoFile } from "./types";
 import { AdminView } from "./views/AdminView";
 import { AuditView } from "./views/AuditView";
 import { CatalogView } from "./views/CatalogView";
@@ -103,6 +104,7 @@ import { DuplicatesView } from "./views/DuplicatesView";
 import { ProfileView } from "./views/ProfileView";
 import { ReviewHomeView } from "./views/ReviewHomeView";
 import { UsageView } from "./views/UsageView";
+import { FolderUsageView } from "./views/FolderUsageView";
 
 export function App() {
   const { themePreferences, resolvedAppearance, theme, toggleTheme, updateThemePreferences } = useThemePreferences();
@@ -155,6 +157,8 @@ export function App() {
   const [q, setQ] = useState("");
   const [extension, setExtension] = useState("");
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
+  // Folders merged by "Uso por carpeta": exact drive + path pairs, independent of the drive selection.
+  const [locationScope, setLocationScope] = useState<CatalogLocationScope | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
   const [folderSearch, setFolderSearch] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -660,7 +664,7 @@ export function App() {
 
   useEffect(() => {
     if (!authenticated) return;
-    if (disks.length > 0 && connectedDiskIds.length === 0) {
+    if (!locationScope && disks.length > 0 && connectedDiskIds.length === 0) {
       setFiles([]);
       setTotal(0);
       return;
@@ -672,7 +676,8 @@ export function App() {
       sortDirection
     });
     if (q.trim()) params.set("q", q.trim());
-    if (diskQuery) params.set("diskIds", diskQuery);
+    if (locationScope) params.set("locations", JSON.stringify(locationScope.locations));
+    else if (diskQuery) params.set("diskIds", diskQuery);
     if (extension) params.set("extension", extension);
     if (selectedFolders.length > 0) params.set("folders", selectedFolders.join(","));
     if (selectedTags.length > 0) params.set("tags", selectedTags.join(","));
@@ -695,6 +700,7 @@ export function App() {
     duplicateOnly,
     curationStatus,
     extension,
+    locationScope,
     page,
     pageSize,
     q,
@@ -1866,8 +1872,17 @@ export function App() {
     navigateToView("catalog");
   }
 
+  function openLocationsInCatalog(scope: CatalogLocationScope) {
+    setLocationScope(scope);
+    setSelectedFolders([]);
+    setPage(1);
+    setSelected(null);
+    navigateToView("catalog");
+  }
+
   function clearCatalogFilters() {
     setExtension("");
+    setLocationScope(null);
     setSelectedFolders([]);
     setSelectedTags([]);
     setDuplicateOnly(false);
@@ -1876,6 +1891,11 @@ export function App() {
   }
 
   const activeCatalogFilters: Array<{ key: string; label: string; onRemove: () => void }> = [
+    ...(locationScope ? [{
+      key: "locations",
+      label: `Carpeta: ${locationScope.label}${locationScope.locations.length > 1 ? ` (${locationScope.locations.length} ubicaciones)` : ""}`,
+      onRemove: () => { setLocationScope(null); setPage(1); }
+    }] : []),
     ...(extension ? [{ key: "extension", label: extension.toUpperCase(), onRemove: () => { setExtension(""); setPage(1); } }] : []),
     ...selectedFolders.map((folder) => ({
       key: `folder:${folder}`,
@@ -1911,6 +1931,7 @@ export function App() {
     { mode: "downloads", label: "A descargar", icon: <Download size={18} />, badge: queuedDownloadCount > 0 ? formatCount(queuedDownloadCount) : undefined },
     { mode: "duplicates", label: "Duplicados", icon: <Copy size={18} />, badge: (stats?.pendingDuplicateGroupCount ?? 0) > 0 ? formatCount(stats?.pendingDuplicateGroupCount ?? 0) : undefined },
     { mode: "usage", label: "Esquema de uso", icon: <PieChart size={18} /> },
+    { mode: "folders", label: "Uso por carpeta", icon: <Layers size={18} /> },
     { mode: "audit", label: "Auditoría", icon: <ListChecks size={18} /> },
     { mode: "admin", label: "Administración", icon: <Server size={18} /> },
     { mode: "profile", label: "Perfil", icon: <User size={18} /> }
@@ -2419,6 +2440,15 @@ export function App() {
           noDisksSelected={disks.length > 0 && connectedDiskIds.length === 0}
           refreshKey={catalogVersion}
           onOpenInCatalog={openFolderInCatalog}
+        />
+      ) : null}
+
+      {viewMode === "folders" ? (
+        <FolderUsageView
+          diskQuery={diskQuery}
+          noDisksSelected={disks.length > 0 && connectedDiskIds.length === 0}
+          refreshKey={catalogVersion}
+          onOpenLocations={openLocationsInCatalog}
         />
       ) : null}
 

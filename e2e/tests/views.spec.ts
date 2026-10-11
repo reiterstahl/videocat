@@ -78,3 +78,32 @@ test("profile explains how to install the app and the shell warns when offline",
   await context.setOffline(false);
   await expect(page.locator(".vc-offline-banner")).toHaveCount(0);
 });
+
+test("folder usage merges same-named folders, opens them in the catalog and can keep a name apart", async ({ page }) => {
+  await openView(page, "/uso-por-carpeta");
+  const tiles = page.locator(".vc-folder-tile.is-group");
+  await expect(tiles.first()).toBeVisible();
+  const groups = page.locator(".vc-folders-list > li");
+  await expect(groups.first()).toBeVisible();
+  const firstGroup = groups.first();
+  const name = (await firstGroup.locator(".vc-folders-item-head strong").textContent())!.trim();
+  expect(await firstGroup.locator(".vc-folders-locations li").count()).toBeGreaterThan(1);
+
+  // Hovering shows the path; clicking opens the catalog scoped to every location of the group.
+  const tile = page.locator(".vc-folder-tile.is-group", { hasText: name }).first();
+  // Subfolders cover the body of a parent block; its title strip is what opens the whole folder.
+  await tile.hover({ position: { x: 10, y: 6 } });
+  await expect(page.locator(".vc-folders-status strong")).toContainText(name);
+  await tile.click({ position: { x: 10, y: 6 } });
+  await expect(page).toHaveURL(/\/catalogo$/);
+  await expect(page.locator(".vc-filter-chip", { hasText: `Carpeta: ${name}` })).toBeVisible();
+  await expect(page.locator(".vc-card").first()).toBeVisible();
+
+  await openView(page, "/uso-por-carpeta");
+  const group = page.locator(".vc-folders-list > li", { has: page.locator("strong", { hasText: new RegExp(`^${name}$`) }) });
+  await group.getByRole("button", { name: "No agrupar" }).click();
+  await expect(group).toHaveClass(/is-excluded/);
+  await expect(page.locator(".vc-folder-tile.is-group", { hasText: name })).toHaveCount(0);
+  await group.getByRole("button", { name: "Agrupar de nuevo" }).click();
+  await expect(group).not.toHaveClass(/is-excluded/);
+});

@@ -729,6 +729,45 @@ test("stats count pending duplicate groups and drop them once resolved", { skip:
   }
 });
 
+test("folder groups merge same-named folders, filter the catalog by location and honour exclusions", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const name = `Testing${suffix}`;
+  const disks = await Promise.all(["E", "F"].map((letter) => prisma.disk.create({ data: { name: `Grupo ${letter} ${suffix}`, volumeId: `group-${letter}-${suffix}` } })));
+  const cookie = await authenticatedCookie();
+  try {
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: disks[0].id, filename: "a.mp4", extension: "mp4", absolutePath: `E:/${name}/a.mp4`, relativePath: `${name}/a.mp4`, sizeBytes: 1700n },
+        { diskId: disks[1].id, filename: "b.mp4", extension: "mp4", absolutePath: `F:/Proyectos/${name}/b.mp4`, relativePath: `Proyectos/${name}/b.mp4`, sizeBytes: 230n },
+        { diskId: disks[1].id, filename: "c.mp4", extension: "mp4", absolutePath: "F:/Proyectos/Otro/c.mp4", relativePath: "Proyectos/Otro/c.mp4", sizeBytes: 40n }
+      ]
+    });
+    const diskIds = disks.map((disk) => disk.id).join(",");
+    const map = (await app.inject({ method: "GET", url: `/api/folder-groups?diskIds=${diskIds}`, headers: { cookie } })).json();
+    const group = map.roots.find((root: { name: string }) => root.name === name);
+    assert.equal(group.kind, "group");
+    assert.equal(group.sizeBytes, 1930);
+    assert.equal(group.locations.length, 2);
+
+    const locations = group.locations.map((location: { diskId: string; path: string }) => ({ d: location.diskId, p: location.path }));
+    const files = await app.inject({ method: "GET", url: `/api/files?locations=${encodeURIComponent(JSON.stringify(locations))}&pageSize=50`, headers: { cookie } });
+    assert.equal(files.statusCode, 200);
+    assert.deepEqual(files.json().files.map((file: { filename: string }) => file.filename).sort(), ["a.mp4", "b.mp4"]);
+    const invalid = await app.inject({ method: "GET", url: "/api/files?locations=not-json", headers: { cookie } });
+    assert.equal(invalid.statusCode, 400);
+
+    const saved = await app.inject({ method: "PUT", url: "/api/folder-groups/exclusions", headers: webMutationHeaders(cookie), payload: { names: [name, name.toUpperCase()] } });
+    assert.equal(saved.statusCode, 200);
+    assert.deepEqual(saved.json().excludedNames, [name]);
+    const apart = (await app.inject({ method: "GET", url: `/api/folder-groups?diskIds=${diskIds}`, headers: { cookie } })).json();
+    assert.equal(apart.roots.some((root: { kind: string; name: string }) => root.kind === "group" && root.name === name), false);
+    assert.equal(apart.repeated.find((entry: { name: string }) => entry.name === name).excluded, true);
+  } finally {
+    await app.inject({ method: "PUT", url: "/api/folder-groups/exclusions", headers: webMutationHeaders(cookie), payload: { names: [] } });
+    for (const disk of disks) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

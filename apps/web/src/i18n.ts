@@ -175,6 +175,22 @@ const en: Record<string, string> = {
   "Salir del review": "Exit review",
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
+  "Uso por carpeta": "Folder usage",
+  "Las carpetas con el mismo nombre se muestran juntas, estén en el disco y en el nivel que estén. Haz clic en cualquier bloque para ver su contenido en el catálogo.": "Folders with the same name are shown together, whatever drive or level they are on. Click any block to see its contents in the catalog.",
+  "Selecciona al menos un disco para ver el uso por carpeta.": "Select at least one drive to see folder usage.",
+  "No se pudo calcular el uso por carpeta.": "Folder usage could not be calculated.",
+  "Pasa el cursor por un bloque para ver su ruta y sus ubicaciones.": "Hover over a block to see its path and locations.",
+  "Carpetas repetidas": "Repeated folders",
+  "Excluye nombres genéricos (como RAW o 2019) para verlos por separado.": "Exclude generic names (such as RAW or 2019) to see them separately.",
+  "Buscar carpeta repetida": "Search repeated folders",
+  "No hay carpetas con el mismo nombre en los discos seleccionados.": "There are no folders with the same name on the selected drives.",
+  "Ninguna carpeta coincide con la búsqueda.": "No folder matches the search.",
+  "Sin agrupar": "Not merged",
+  "Ver en catálogo": "View in catalog",
+  "Agrupar de nuevo": "Merge again",
+  "No agrupar": "Don't merge",
+  "No se pudo guardar la exclusión.": "The exclusion could not be saved.",
+  "Archivos sueltos": "Loose files",
   "Actualizando…": "Updating…",
   "Modo privacidad": "Privacy mode",
   "Modo privacidad (Espacio)": "Privacy mode (Space)",
@@ -675,6 +691,24 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) carpetas agrupadas$/);
+  if (match) return `${match[1]} merged folders`;
+
+  match = text.match(/^([\d.,\s]+) carpetas? más$/);
+  if (match) return `${match[1]} more ${match[1].trim() === "1" ? "folder" : "folders"}`;
+
+  match = text.match(/^Raíz de (.+)$/);
+  if (match) return `${match[1]} root`;
+
+  match = text.match(/^Carpeta: (.+?) \(([\d.,]+) ubicaciones\)$/);
+  if (match) return `Folder: ${match[1]} (${match[2]} locations)`;
+
+  match = text.match(/^Carpeta: (.+)$/);
+  if (match) return `Folder: ${match[1]}`;
+
+  match = text.match(/^(.+?) · ([\d.,\s]+) videos · ([\d.,]+) ubicaciones$/);
+  if (match) return `${match[1]} · ${match[2]} videos · ${match[3]} locations`;
 
   match = text.match(/^Carpeta (.+)$/);
   if (match) return `Folder ${match[1]}`;

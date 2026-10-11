@@ -111,6 +111,8 @@ export const filesQuerySchema = z.object({
   diskIds: z.string().max(4000).optional(),
   extension: z.string().max(20).optional(),
   folders: z.string().max(4000).optional(),
+  // JSON array of {"d": diskId, "p": folder path}: folders that "Uso por carpeta" merged by name.
+  locations: z.string().max(24000).optional(),
   tags: z.string().max(2000).optional(),
   minSize: z.coerce.number().optional(),
   maxSize: z.coerce.number().optional(),
