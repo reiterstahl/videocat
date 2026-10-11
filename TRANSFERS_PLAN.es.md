@@ -1,6 +1,6 @@
 # Plan: traslados seguros, consolidar carpetas y agrupar archivos
 
-Estado: **propuesta para aprobar**. Nada de esto está implementado todavía. "Uso por carpeta" (solo lectura) ya está entregado en `v0.2.13`.
+Estado: **fase 1 de 4 terminada** (motor de traslados). "Uso por carpeta" (solo lectura) está entregado en `v0.2.13`.
 
 ## Objetivo
 
@@ -48,8 +48,19 @@ Un archivo **nunca existe en menos de un lugar verificado**:
 3. **Agrupar archivos**: búsqueda por nombre, sesión estilo Review con F/J y su traslado.
 4. **Cierre**: pruebas e2e del flujo completo con un Companion simulado, documentación (README, OPERATIONS) y versión nueva del Companion (se actualiza solo).
 
-## Por confirmar
+## Decisiones confirmadas
 
-1. **"Marcar un disco"**: lo interpreto como un permiso por disco, **Permitir traslados desde este disco**, en Administración. Un disco sin ese permiso nunca pierde archivos, aunque aparezca en un grupo. ¿Es así o te referías a elegir el disco al crear cada traslado?
-2. **Coincidencia en Agrupar archivos**: "el nombre del archivo contiene el de la carpeta" (con la normalización de arriba). ¿Te sirve, o necesitás también parecidos con una letra distinta (`testng001`)?
-3. **Ubicación**: Traslados como sección propia, y Consolidar / Agrupar como acciones desde Uso por carpeta y el catálogo. ¿Ok?
+1. **Carpeta destino con estrella ⭐**: solo una carpeta marcada puede recibir archivos. Debe ser la ubicación más grande de su grupo; si hay otra más grande, la interfaz lo avisa.
+2. **Agrupar archivos** encuentra también nombres con una letra distinta (`testng001`), además de las variantes de mayúsculas, acentos, puntos y separadores.
+3. **Traslados** es la sección principal y agrupa **Consolidar** y **Agrupar**, cada una con una explicación breve de lo que hace.
+
+## Avance
+
+- [x] **Fase 1 — Motor de traslados**
+  - Servidor: tablas `TransferDestination`, `TransferJob` y `TransferItem` (migración `0021_transfers`), con un índice que impide que un archivo esté en dos traslados activos; máquina de estados en `transfer-states.ts`; rutas para el Companion (`/api/agent/transfers/work`, `transition`, `lookup`) y para la web (carpetas con estrella, crear, listar, pausar, reanudar y cancelar traslados), con control de espacio del destino (último escaneo menos lo que ya está en camino, dejando libre el 1 %, mínimo 1 GB) y archivos idénticos ya presentes en el destino excluidos.
+  - Los escaneos no ocultan un archivo que está en la carpeta temporal y la cola de borrados no toca archivos en traslado.
+  - Companion: `transfer-engine.ts` (copia con SHA-256, verificación releyendo, borrado solo tras verificar y registrar, reanudación desde cualquier estado, nombres `(2)`, duplicados idénticos, espacio del 5 % en la carpeta temporal y del destino, limpieza de copias de traslados terminados). Carpeta temporal en Configuración › Archivos (`COMPANION_STAGING_DIR`).
+  - Pruebas: 16 del motor (incluidos 7 cortes simulados en cada paso), 4 de la máquina de estados y 3 de API.
+- [ ] **Fase 2 — Consolidar carpetas**: estrella en Uso por carpeta, plan previo con espacio, sección Traslados con progreso y avisos de "conecta el disco" y de espacio.
+- [ ] **Fase 3 — Agrupar archivos**: búsqueda por nombre con parecidos de una letra, sesión estilo Review con F/J.
+- [ ] **Fase 4 — Cierre**: flujo completo e2e con un Companion simulado, documentación y nueva versión del stack y del Companion.
