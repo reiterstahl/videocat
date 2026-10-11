@@ -29,6 +29,7 @@ import { startCompanionControlTunnel, type CompanionControlTunnel } from "./cont
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
+import { processTransferItem, staleStagingFiles, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import {
   deletionFingerprintFrameIndexes,
   validateDeletionFingerprint,
@@ -607,6 +608,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   let running = false;
   let deleteReviewRunning = false;
   let downloadReviewRunning = false;
+  let transferReviewRunning = false;
   let heartbeatRunning = false;
   let lastHandledDeleteRequestAt = 0;
   let lastHandledDownloadRequestAt = 0;
@@ -703,6 +705,55 @@ async function startCompanionDiskWatcher(): Promise<void> {
     }
   }
 
+  // Moves files between drives through the local staging folder (Traslados). One file at a time;
+  // every step is verified and reported, so it can always resume after a stop.
+  async function reviewTransfers(): Promise<void> {
+    const stagingDir = process.env.COMPANION_STAGING_DIR?.trim();
+    if (transferReviewRunning || !stagingDir || !companionAgentApiEnabled()) return;
+    transferReviewRunning = true;
+    try {
+      const mounted = await discoverCompanionTargets();
+      const roots = new Map(mounted.map(({ root, marker }) => [marker.diskId, root]));
+      const work = await companionAgentApi<{ items: TransferWorkItem[] }>(
+        `/api/agent/transfers/work?mounted=${encodeURIComponent([...roots.keys()].join(","))}`
+      );
+      for (const item of work.items) {
+        try {
+          await processTransferItem({
+            stagingDir,
+            resolveRoot: (identifiers) => identifiers.map((identifier) => roots.get(identifier)).find(Boolean) ?? null,
+            log: (level, message) => (level === "warn" ? console.warn(message) : console.log(message)),
+            transition: async (current, to, extra) => {
+              try {
+                await companionAgentApi(`/api/agent/transfers/items/${current.id}/transition`, {
+                  method: "POST",
+                  body: JSON.stringify({ from: current.state, to, ...extra })
+                });
+                return "ok";
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (message.startsWith("409")) return message.includes("path_taken") ? "path_taken" : "conflict";
+                throw error;
+              }
+            }
+          }, item);
+        } catch (error) {
+          console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
+        }
+      }
+      const stale = await staleStagingFiles(stagingDir, async (ids) => {
+        const response = await companionAgentApi<{ items: Array<{ id: string; state: TransferState }> }>("/api/agent/transfers/lookup", {
+          method: "POST",
+          body: JSON.stringify({ ids })
+        });
+        return new Map(response.items.map((entry) => [entry.id.toLowerCase(), entry.state]));
+      });
+      for (const file of stale) await fs.rm(file, { force: true }).catch(() => undefined);
+    } finally {
+      transferReviewRunning = false;
+    }
+  }
+
   async function sendHeartbeat(): Promise<void> {
     if (heartbeatRunning || !companionAgentApiEnabled()) return;
     heartbeatRunning = true;
@@ -766,10 +817,19 @@ async function startCompanionDiskWatcher(): Promise<void> {
       console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
     });
   }, downloadPollMs);
+  const transferPollMs = Math.max(15_000, Number(process.env.COMPANION_TRANSFER_POLL_MS ?? 60_000) || 60_000);
+  setInterval(() => {
+    void reviewTransfers().catch((error) => {
+      console.warn(`Fallo revisando traslados: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, transferPollMs);
   console.log(`Detector de discos VideoCAT activo cada ${pollMs}ms.`);
   console.log(`Reescaneo de rutas monitoreadas activo cada ${scanPollMs}ms.`);
   console.log(`Revision de borrados pendientes activa cada ${deletePollMs}ms.`);
   console.log(`Revision de descargas pendientes activa cada ${downloadPollMs}ms.`);
+  console.log(process.env.COMPANION_STAGING_DIR?.trim()
+    ? `Traslados activos cada ${transferPollMs}ms con carpeta temporal ${process.env.COMPANION_STAGING_DIR.trim()}.`
+    : "Traslados inactivos: falta la carpeta temporal (COMPANION_STAGING_DIR) en la configuracion.");
   console.log(`Heartbeat del companion activo cada ${heartbeatMs}ms.`);
 }
 

@@ -68,6 +68,8 @@ const configKeys = [
   "COMPANION_DOWNLOAD_POLL_MS",
   "COMPANION_DOWNLOAD_STALL_MS",
   "COMPANION_DOWNLOAD_DIR",
+  "COMPANION_STAGING_DIR",
+  "COMPANION_TRANSFER_POLL_MS",
   "COMPANION_REMOTE_REMUX_ENABLED",
   "COMPANION_AUTO_DELETE_MARKED",
   "COMPANION_MONITORED_TARGETS",
@@ -787,6 +789,7 @@ function configHtml(logoDataUrl: string): string {
     label code { justify-self: start; overflow: hidden; max-width: 100%; color: var(--muted); font: 10.5px ui-monospace, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
     .label-row { display: grid; gap: 0; }
     .required { color: var(--accent); }
+    .field-hint { color: var(--muted); font-size: 11.5px; font-weight: 400; }
     .card-head > .hint { white-space: nowrap; }
     input, select, textarea { width: 100%; height: 34px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 10px; font: inherit; }
     textarea { height: auto; min-height: 64px; padding: 8px 10px; resize: vertical; }
@@ -965,10 +968,11 @@ function configHtml(logoDataUrl: string): string {
       <div class="page" id="page-files" role="tabpanel" data-page="files">
         <section class="card">
           <div class="card-head">
-            <div><h2>Archivos y herramientas</h2><p>Destino de las copias y rutas opcionales de FFmpeg.</p></div>
+            <div><h2>Archivos y herramientas</h2><p>Destino de las copias, carpeta temporal de traslados y rutas opcionales de FFmpeg.</p></div>
           </div>
           <div class="fields">
             <label class="wide"><span class="label-row"><span>Carpeta de descargas</span><code>COMPANION_DOWNLOAD_DIR</code></span><input name="COMPANION_DOWNLOAD_DIR" placeholder="C:\\Users\\tu_usuario\\Desktop\\VideoCAT" /></label>
+            <label class="wide"><span class="label-row"><span>Carpeta temporal de traslados</span><code>COMPANION_STAGING_DIR</code></span><input name="COMPANION_STAGING_DIR" placeholder="Ej. D:\\VideoCAT\\Traslados (vacío = traslados desactivados)" /><small class="field-hint">Los archivos que se mueven entre discos esperan aquí hasta conectar el disco de destino. Siempre se deja libre el 5 % de esta unidad.</small></label>
             <label><span class="label-row"><span>FFmpeg</span><code>FFMPEG_PATH</code></span><input name="FFMPEG_PATH" placeholder="Detección automática" /></label>
             <label><span class="label-row"><span>FFprobe</span><code>FFPROBE_PATH</code></span><input name="FFPROBE_PATH" placeholder="Detección automática" /></label>
             <label class="wide"><span class="label-row"><span>Carpeta de estado</span><code>AGENT_STATE_DIR</code></span><input name="AGENT_STATE_DIR" placeholder="Automática: %LOCALAPPDATA%\\VideoCAT\\agent-state" /></label>
@@ -993,6 +997,7 @@ function configHtml(logoDataUrl: string): string {
             <label><span class="label-row"><span>Revisión de descargas (ms)</span><code>COMPANION_DOWNLOAD_POLL_MS</code></span><input name="COMPANION_DOWNLOAD_POLL_MS" placeholder="60000" /></label>
             <label><span class="label-row"><span>Copia estancada (ms)</span><code>COMPANION_DOWNLOAD_STALL_MS</code></span><input name="COMPANION_DOWNLOAD_STALL_MS" placeholder="30000" /></label>
             <label><span class="label-row"><span>Discos en la bandeja (ms)</span><code>TRAY_DISK_POLL_MS</code></span><input name="TRAY_DISK_POLL_MS" placeholder="10000" /></label>
+            <label><span class="label-row"><span>Revisión de traslados (ms)</span><code>COMPANION_TRANSFER_POLL_MS</code></span><input name="COMPANION_TRANSFER_POLL_MS" placeholder="60000" /></label>
           </div>
         </section>
       </div>
