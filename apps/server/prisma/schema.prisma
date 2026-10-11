@@ -8,42 +8,43 @@ datasource db {
 }
 
 model Disk {
-  id              String           @id @default(uuid()) @db.Uuid
-  name            String
-  volumeLabel     String?
-  volumeId        String?
-  driveLetter     String?
-  totalBytes      BigInt?
-  freeBytes       BigInt?
-  fileSystem      String?
-  firstScannedAt  DateTime         @default(now())
-  lastScannedAt   DateTime         @default(now())
-  notes           String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  scans           Scan[]
-  files           VideoFile[]
-  agentErrors     AgentError[]
-  deletionRecords DeletionRecord[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String
+  volumeLabel          String?
+  volumeId             String?
+  driveLetter          String?
+  totalBytes           BigInt?
+  freeBytes            BigInt?
+  fileSystem           String?
+  firstScannedAt       DateTime              @default(now())
+  lastScannedAt        DateTime              @default(now())
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  scans                Scan[]
+  files                VideoFile[]
+  agentErrors          AgentError[]
+  deletionRecords      DeletionRecord[]
+  transferDestinations TransferDestination[]
 
   @@index([name])
   @@index([volumeId])
 }
 
 model Scan {
-  id          String       @id @default(uuid()) @db.Uuid
-  diskId      String       @db.Uuid
-  rootPath    String
-  status      String       @default("running")
-  startedAt   DateTime     @default(now())
-  finishedAt  DateTime?
-  fileCount   Int          @default(0)
-  errorCount  Int          @default(0)
-  leaseOwner  String?
-  generation  Int          @default(0)
+  id             String       @id @default(uuid()) @db.Uuid
+  diskId         String       @db.Uuid
+  rootPath       String
+  status         String       @default("running")
+  startedAt      DateTime     @default(now())
+  finishedAt     DateTime?
+  fileCount      Int          @default(0)
+  errorCount     Int          @default(0)
+  leaseOwner     String?
+  generation     Int          @default(0)
   leaseExpiresAt DateTime?
-  disk        Disk         @relation(fields: [diskId], references: [id], onDelete: Cascade)
-  agentErrors AgentError[]
+  disk           Disk         @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  agentErrors    AgentError[]
 
   @@index([diskId])
   @@index([status])
@@ -90,6 +91,7 @@ model VideoFile {
   categories         VideoFileCategory[]
   downloadQueue      DownloadQueue?
   streamSessions     StreamSession[]
+  transferItems      TransferItem[]
 
   @@unique([diskId, relativePath])
   @@index([diskId])
@@ -179,24 +181,24 @@ model AgentError {
 }
 
 model ActionAudit {
-  id             String   @id @default(uuid()) @db.Uuid
-  action          String
-  status          String   @default("started")
-  actorType       String
-  actorId         String?
-  requestId       String?
-  idempotencyKey  String?  @unique
-  diskId          String?  @db.Uuid
-  videoFileId     String?  @db.Uuid
-  target          String?
-  metadata        Json?
-  result          Json?
-  errorCode       String?
-  errorMessage    String?
-  startedAt       DateTime @default(now())
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(uuid()) @db.Uuid
+  action         String
+  status         String    @default("started")
+  actorType      String
+  actorId        String?
+  requestId      String?
+  idempotencyKey String?   @unique
+  diskId         String?   @db.Uuid
+  videoFileId    String?   @db.Uuid
+  target         String?
+  metadata       Json?
+  result         Json?
+  errorCode      String?
+  errorMessage   String?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([action, createdAt])
   @@index([status, createdAt])
@@ -244,20 +246,20 @@ model AppSetting {
 }
 
 model CompanionAgent {
-  installationId   String    @id @db.Uuid
-  name             String?
-  version          Int       @default(0)
-  mountedDiskCount Int       @default(0)
-  mountedDiskIds   Json?
-  capabilities     Json?
-  firstSeenAt      DateTime  @default(now())
-  lastSeenAt       DateTime  @default(now())
-  revokedAt        DateTime?
-  credentialHash   String?   @unique
+  installationId     String    @id @db.Uuid
+  name               String?
+  version            Int       @default(0)
+  mountedDiskCount   Int       @default(0)
+  mountedDiskIds     Json?
+  capabilities       Json?
+  firstSeenAt        DateTime  @default(now())
+  lastSeenAt         DateTime  @default(now())
+  revokedAt          DateTime?
+  credentialHash     String?   @unique
   credentialIssuedAt DateTime?
-  authMode         String    @default("legacy")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  authMode           String    @default("legacy")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([lastSeenAt])
   @@index([revokedAt])
@@ -276,21 +278,21 @@ model CompanionPairingCode {
 }
 
 model StreamSession {
-  id                String    @id @default(uuid()) @db.Uuid
-  videoFileId       String    @db.Uuid
-  companionId       String    @db.Uuid
-  ownerUsername     String
-  status            String    @default("opening")
-  mode              String    @default("original")
-  fileSizeBytes     BigInt?
-  mimeType          String?
-  expiresAt         DateTime
-  lastAccessedAt    DateTime?
-  completedAt       DateTime?
-  errorCode         String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  videoFile         VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid()) @db.Uuid
+  videoFileId    String    @db.Uuid
+  companionId    String    @db.Uuid
+  ownerUsername  String
+  status         String    @default("opening")
+  mode           String    @default("original")
+  fileSizeBytes  BigInt?
+  mimeType       String?
+  expiresAt      DateTime
+  lastAccessedAt DateTime?
+  completedAt    DateTime?
+  errorCode      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  videoFile      VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
 
   @@index([videoFileId])
   @@index([companionId, status])
@@ -307,5 +309,67 @@ model Thumbnail {
   videoFile        VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
 
   @@unique([videoFileId, kind])
+  @@index([videoFileId])
+}
+
+// Folders marked with a star: the only places that may receive transferred files.
+model TransferDestination {
+  id        String        @id @default(uuid()) @db.Uuid
+  diskId    String        @db.Uuid
+  path      String
+  nameKey   String
+  createdAt DateTime      @default(now())
+  disk      Disk          @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  jobs      TransferJob[]
+
+  @@unique([diskId, path])
+  @@index([nameKey])
+}
+
+model TransferJob {
+  id            String              @id @default(uuid()) @db.Uuid
+  kind          String
+  destinationId String              @db.Uuid
+  status        String              @default("active")
+  label         String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  destination   TransferDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+  items         TransferItem[]
+
+  @@index([status])
+}
+
+// One file on its way from a source drive, through the Companion's local staging folder,
+// to the destination folder. The state machine lives in src/lib/transfer-states.ts.
+model TransferItem {
+  id                 String      @id @default(uuid()) @db.Uuid
+  jobId              String      @db.Uuid
+  videoFileId        String?     @db.Uuid
+  filename           String
+  sourceDiskId       String      @db.Uuid
+  sourceRelativePath String
+  targetDiskId       String      @db.Uuid
+  targetFolder       String
+  targetRelativePath String?
+  sizeBytes          BigInt
+  expectedModifiedAt DateTime?
+  sha256             String?
+  state              String      @default("pending")
+  claimedBy          String?     @db.Uuid
+  attempts           Int         @default(0)
+  error              String?
+  stagedAt           DateTime?
+  deliveredAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  job                TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  // Kept after the catalog entry is removed (identical file already at the destination).
+  videoFile          VideoFile?  @relation(fields: [videoFileId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([state])
+  @@index([sourceDiskId, state])
+  @@index([targetDiskId, state])
   @@index([videoFileId])
 }

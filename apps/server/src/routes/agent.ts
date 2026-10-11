@@ -21,6 +21,7 @@ import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 import { recordAction } from "../lib/action-audit.js";
 import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
 import { agentDiskIdentifierSchema, isUuid } from "../lib/disk-identifiers.js";
+import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -594,7 +595,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const files = await prisma.videoFile.findMany({
       where: {
         diskId: disk.id,
-        curationStatus: "delete"
+        curationStatus: "delete",
+        // Never delete a file that a transfer is moving; it is handled when the transfer ends.
+        transferItems: { none: { state: { in: unfinishedStates } } }
       },
       select: {
         id: true,
@@ -880,7 +883,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           isPresent: true,
           AND: [
             scannedScopeWhere(scanRoots),
-            { OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }] }
+            { OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }] },
+            // A file on its way to another drive is legitimately missing from its old place.
+            { transferItems: { none: { state: { in: inTransitStates } } } }
           ]
         },
         data: { isPresent: false, missingSince: new Date() }
