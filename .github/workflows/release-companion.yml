@@ -134,7 +134,7 @@ jobs:
           [IO.File]::WriteAllText("$setup.sha256", "$hash  $env:PACK_ID-win-Setup.exe`r`n", [Text.Encoding]::ASCII)
           Get-ChildItem -LiteralPath $env:RELEASE_DIR -File | Sort-Object Name | ForEach-Object { "{0,12:N0}  {1}" -f $_.Length, $_.Name }
 
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         if: env.PUBLISH == 'true'
         with:
           subject-path: ${{ env.RELEASE_DIR }}/${{ env.PACK_ID }}-win-Setup.exe
@@ -187,6 +187,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: v${{ needs.detect.outputs.version }}
         run: gh release upload "$TAG" videocat.spdx.json --clobber
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: videocat.spdx.json
