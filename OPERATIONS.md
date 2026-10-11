@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.13
+
+- New section **Uso por carpeta** (`/uso-por-carpeta`): folders with the same name are merged across drives and levels; exclusions are stored on the server. No configuration changes; the Windows Companion stays on 0.2.5.
+
 ## Upgrading to 0.2.12 (Companion 0.2.5)
 
 - Dependency maintenance: nginx 1.31.6, @fastify/multipart, cookie and cors, ws and Vite updates. Prisma stays on 6.12 because 6.13 through 7.x pull a vulnerable deepmerge-ts into the migration CLI.
