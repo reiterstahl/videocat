@@ -22,6 +22,7 @@ import {
 import { companionStreamMaxRangeBytes } from "@videocat/shared";
 import { env } from "../lib/env.js";
 import { rateLimit } from "../lib/security.js";
+import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 
 const streamSessionSchema = z.object({
   fileId: z.string().uuid(),
@@ -151,12 +152,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     const mountedIdentifiers = [...new Set(companions.flatMap((companion) => mountedDiskIds(companion.mountedDiskIds)))];
     const mountedDisks = mountedIdentifiers.length > 0
       ? await prisma.disk.findMany({
-          where: {
-            OR: [
-              { id: { in: mountedIdentifiers } },
-              { volumeId: { in: mountedIdentifiers } }
-            ]
-          },
+          where: disksByAgentIdentifiers(mountedIdentifiers),
           select: { id: true, volumeId: true }
         })
       : [];

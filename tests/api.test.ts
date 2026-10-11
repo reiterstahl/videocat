@@ -329,6 +329,37 @@ test("a paired streaming Companion serves a bounded HTTP range without exposing 
   }
 });
 
+test("folders added by hand with legacy ids keep heartbeats, deletions and downloads working", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  const legacyId = `target-${Date.now().toString(36)}-ab12cd`;
+  const disk = await prisma.disk.create({ data: { name: `Manual ${legacyId}`, volumeId: legacyId } });
+  try {
+    const heartbeat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { version: 7, companionId, companionName: "Legacy folders", mountedDiskCount: 3, mountedDiskIds: [crypto.randomUUID(), legacyId, "bad id with spaces"] }
+    });
+    assert.equal(heartbeat.statusCode, 200);
+    const stored = await prisma.companionAgent.findUnique({ where: { installationId: companionId } });
+    assert.deepEqual((stored?.mountedDiskIds as string[]).includes(legacyId), true);
+    assert.equal((stored?.mountedDiskIds as string[]).includes("bad id with spaces"), false);
+
+    const cookie = await authenticatedCookie();
+    const status = await app.inject({ method: "GET", url: "/api/companion/status", headers: { cookie } });
+    assert.equal(status.statusCode, 200);
+    assert.ok((status.json().mountedDiskIds as string[]).includes(disk.id));
+
+    for (const url of [`/api/agent/disks/${legacyId}/delete-queue`, `/api/agent/disks/${legacyId}/scan-index`, `/api/agent/downloads/queue?diskId=${legacyId}`]) {
+      const response = await app.inject({ method: "GET", url, headers: { ...agentHeaders, "x-videocat-companion-id": companionId } });
+      assert.equal(response.statusCode, 200, url);
+    }
+  } finally {
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("valid agent heartbeat reaches PostgreSQL", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const companionId = crypto.randomUUID();
   const response = await app.inject({

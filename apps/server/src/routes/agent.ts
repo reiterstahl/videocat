@@ -20,6 +20,7 @@ import { serializeDisk } from "../lib/serialize.js";
 import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 import { recordAction } from "../lib/action-audit.js";
 import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
+import { agentDiskIdentifierSchema, isUuid } from "../lib/disk-identifiers.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -140,7 +141,7 @@ async function diskByAgentIdentifier(identifier: string) {
   return prisma.disk.findFirst({
     where: {
       OR: [
-        { id: identifier },
+        ...(isUuid(identifier) ? [{ id: identifier }] : []),
         { volumeId: identifier }
       ]
     }
@@ -156,7 +157,10 @@ const downloadStatusSchema = z.object({
 const companionHeartbeatSchema = z.object({
   version: z.number().int().nonnegative().optional(),
   mountedDiskCount: z.number().int().nonnegative().optional(),
-  mountedDiskIds: z.array(z.string().uuid()).max(100).optional(),
+  // Unknown identifiers are dropped instead of rejecting the heartbeat, so one odd folder
+  // never makes the whole Companion look offline.
+  mountedDiskIds: z.array(z.string().max(200)).max(100).optional()
+    .transform((ids) => ids?.filter((id) => agentDiskIdentifierSchema.safeParse(id).success).map((id) => id.trim())),
   companionId: z.string().uuid().optional(),
   companionName: z.string().trim().min(1).max(120).optional()
 });
@@ -328,7 +332,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/agent/disks/:id/scan-index", { preHandler: requireAgentAuth }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: agentDiskIdentifierSchema }).parse(request.params);
     const disk = await diskByAgentIdentifier(id);
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
 
@@ -353,7 +357,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/agent/disks/:id/fingerprint-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: agentDiskIdentifierSchema }).parse(request.params);
     const disk = await diskByAgentIdentifier(id);
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
     const patterns = await protectedFolderPatterns();
@@ -393,7 +397,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/agent/disks/:id/thumbnail-repair-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: agentDiskIdentifierSchema }).parse(request.params);
     const disk = await diskByAgentIdentifier(id);
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
 
@@ -583,7 +587,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/agent/disks/:id/delete-queue", { preHandler: requireAgentAuth }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: agentDiskIdentifierSchema }).parse(request.params);
     const disk = await diskByAgentIdentifier(id);
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
 
@@ -616,7 +620,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/agent/downloads/queue", { preHandler: requireAgentAuth }, async (request) => {
     const query = z.object({
-      diskId: z.string().uuid().optional(),
+      diskId: agentDiskIdentifierSchema.optional(),
       staleMs: z.coerce.number().int().min(5000).max(24 * 60 * 60 * 1000).optional()
     }).parse(request.query);
     const paused = await appMetricValue("download_queue_paused") > 0;

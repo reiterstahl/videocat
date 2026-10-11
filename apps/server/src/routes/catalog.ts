@@ -10,6 +10,7 @@ import { env } from "../lib/env.js";
 import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
+import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
@@ -270,12 +271,7 @@ async function companionPresence(): Promise<{
 
   const mountedDisks = mountedIdentifiers.length > 0
     ? await prisma.disk.findMany({
-        where: {
-          OR: [
-            { id: { in: mountedIdentifiers } },
-            { volumeId: { in: mountedIdentifiers } }
-          ]
-        },
+        where: disksByAgentIdentifiers(mountedIdentifiers),
         select: { id: true }
       })
     : [];
