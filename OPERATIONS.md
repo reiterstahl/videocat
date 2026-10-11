@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.11 (Companion 0.2.4)
+
+- Fixes Companion heartbeats failing with `400 Invalid uuid` on `mountedDiskIds`. Folders added by hand in the tray had non-UUID ids; the server now accepts them, so those Companions show as online again and their delete and download queues are processed. Deploy the server first: it fixes existing installations without touching the Companion.
+- Windows Companion 0.2.4 gives newly added folders real UUIDs. Installed Companions update themselves; existing folders keep their ids and catalog.
+
 ## Upgrading to 0.2.10
 
 - Review shows vertical videos whole: a vertical canvas on phones, a blurred fill instead of black bars, and 9:16 gallery tiles. No configuration changes.
