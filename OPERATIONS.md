@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.12 (Companion 0.2.5)
+
+- Dependency maintenance: nginx 1.31.6, @fastify/multipart, cookie and cors, ws and Vite updates. Prisma stays on 6.12 because 6.13 through 7.x pull a vulnerable deepmerge-ts into the migration CLI.
+- Windows Companion 0.2.5 moves to Electron 42.11.12 (Chromium security fixes); installed Companions update themselves.
+- No configuration changes.
+
 ## Upgrading to 0.2.11 (Companion 0.2.4)
 
 - Fixes Companion heartbeats failing with `400 Invalid uuid` on `mountedDiskIds`. Folders added by hand in the tray had non-UUID ids; the server now accepts them, so those Companions show as online again and their delete and download queues are processed. Deploy the server first: it fixes existing installations without touching the Companion.
