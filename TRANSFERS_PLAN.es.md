@@ -1,6 +1,6 @@
 # Plan: traslados seguros, consolidar carpetas y agrupar archivos
 
-Estado: **fases 1 y 2 de 4 terminadas** (motor de traslados y Consolidar carpetas, entregadas en `v0.2.14` con el Companion `0.2.6`).
+Estado: **fases 1, 2 y 3 de 4 terminadas** (motor de traslados y Consolidar carpetas en `v0.2.14` con el Companion `0.2.6`; Agrupar archivos en `v0.2.15`).
 
 ## Objetivo
 
@@ -67,5 +67,11 @@ Un archivo **nunca existe en menos de un lugar verificado**:
   - Sección **Traslados** (`/traslados`, con contador en el menú): explicación de Consolidar y Agrupar, avisos "Conecta *disco* para continuar" y "Libera espacio en *disco*" (`GET /api/transfers/summary`), estado de la carpeta temporal que el Companion informa en su heartbeat, carpetas con estrella, y traslados con progreso, detalle por archivo, pausar, reanudar y cancelar.
   - Catálogo: marca **Por trasladar / En tránsito / Sin espacio** en tarjetas y detalle.
   - Pruebas: 3 unitarias del resumen, 1 de API (plan, creación, catálogo, heartbeat y avisos) y 1 e2e (estrella → plan → Traslados → pausa → cancelación).
-- [ ] **Fase 3 — Agrupar archivos**: búsqueda por nombre con parecidos de una letra, sesión estilo Review con F/J.
+- [x] **Fase 3 — Agrupar archivos**
+  - Comparación de nombres (`name-match.ts`): ignora mayúsculas, acentos, puntos, espacios y separadores, y acepta **una letra de diferencia** desde 5 caracteres. La letra distinta nunca es un número: `testng001` es parecido a `testing001`, pero `testing002` no (suele ser otro proyecto). La extensión no cuenta.
+  - Entrada desde **Traslados › Agrupar archivos** (buscar la carpeta por nombre; la elegida queda con estrella y avisa si hay otra más grande con el mismo nombre), desde **Carpetas con estrella** y desde **Uso por carpeta** (botón *Agrupar archivos* junto a *Consolidar*).
+  - Sesión que **reutiliza Review** (`ReviewSession` ahora acepta textos, íconos y estadísticas): `F` agrupar en la carpeta, `J` ignorar (no vuelve a proponerse para esa carpeta; tabla `TransferGroupIgnore`, migración `0022`), `S` saltar, `Z` deshacer, con la misma animación. Primero los que contienen el nombre, después los parecidos, cada uno marcado.
+  - Cada `F` suma el archivo a un único traslado de tipo *Agrupar* por carpeta, con el mismo control de espacio; deshacer lo saca mientras siga pendiente (si el Companion ya lo tomó, termina su camino). Se excluyen los que ya están en la carpeta, en otro traslado, ignorados o con una copia idéntica en el destino (quedan para Duplicados).
+  - Pruebas: 4 unitarias de nombres, 1 de API (búsqueda, candidatos, F, J, Z y carpetas protegidas) y 1 e2e de la sesión.
+  - Pendiente para la fase 4: acceso desde el árbol de carpetas del catálogo.
 - [ ] **Fase 4 — Cierre**: flujo completo e2e con un Companion simulado, documentación y nueva versión del stack y del Companion.
