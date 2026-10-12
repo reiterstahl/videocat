@@ -131,6 +131,11 @@ export type TransferDestination = {
   nameKey: string;
   freeBytes: number | null;
   totalBytes: number | null;
+  // Size of the starred folder and its namesakes on other drives (what Consolidar brings in).
+  sizeBytes: number;
+  fileCount: number;
+  namesakes: Array<{ diskId: string; diskName: string; path: string; sizeBytes: number }>;
+  largest: boolean;
 };
 
 export type ConsolidatePlan = {

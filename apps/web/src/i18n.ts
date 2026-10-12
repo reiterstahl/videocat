@@ -176,6 +176,25 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Para continuar": "To continue",
+  "No se pudieron cargar las carpetas con estrella.": "Starred folders could not be loaded.",
+  "Sin informar": "Not reported",
+  "Sin configurar": "Not set",
+  "Configura la carpeta temporal en el Companion": "Set the staging folder in the Companion",
+  "Elige una carpeta en Companion › Configuración › Archivos › Carpeta temporal de traslados. Hasta entonces los traslados no avanzan.": "Choose a folder in Companion › Settings › Files › Transfer staging folder. Until then transfers do not move.",
+  "El Companion todavía no informó su carpeta temporal: actualízalo a la última versión, conéctalo y elige la carpeta en Configuración › Archivos.": "The Companion has not reported its staging folder yet: update it to the latest version, connect it and choose the folder in Settings › Files.",
+  "Son las únicas que pueden recibir archivos. Desde cada una puedes consolidar sus carpetas iguales o agrupar archivos parecidos.": "They are the only folders that can receive files. From each one you can consolidate its namesakes or group similar files.",
+  "Ninguna todavía. Márcalas en Uso por carpeta › Carpetas repetidas o elige una carpeta en Agrupar archivos.": "None yet. Star them in Folder usage › Repeated folders or choose a folder in Group files.",
+  "Contenido": "Contents",
+  "Libre en el disco": "Free on the drive",
+  "Sin carpetas iguales en otros discos": "No folders with this name on other drives",
+  "No hay carpetas con este nombre en otros discos": "There are no folders with this name on other drives",
+  "Traer aquí el contenido de las carpetas iguales": "Bring the contents of the namesake folders here",
+  "o usa Consolidar en una carpeta con estrella.": "or use Consolidate on a starred folder.",
+  "Consolidaciones": "Consolidations",
+  "Agrupaciones": "Groupings",
+  "Sin consolidaciones todavía.": "No consolidations yet.",
+  "Sin archivos agrupados todavía.": "No grouped files yet.",
   "Buscar archivos de esta carpeta en todos los discos (Agrupar archivos)": "Find this folder's files on every drive (Group files)",
   "Ese archivo ya está en esta carpeta.": "That file is already in this folder",
   "Ese archivo ya está en otro traslado.": "That file is already in another transfer",
@@ -809,6 +828,18 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) carpetas iguales en otros discos · (.+)$/);
+  if (match) return `${match[1]} namesake folders on other drives · ${match[2]}`;
+
+  match = text.match(/^1 carpeta igual en otros discos · (.+)$/);
+  if (match) return `1 namesake folder on another drive · ${match[1]}`;
+
+  match = text.match(/^(.+) disponibles · reserva 5 %$/);
+  if (match) return `${match[1]} available · 5 % reserve`;
+
+  match = text.match(/^(.+) · ([\d.,\s]+) videos$/);
+  if (match) return `${match[1]} · ${match[2]} videos`;
 
   match = text.match(/^Agrupar archivos en (.+)$/);
   if (match) return `Group files into ${match[1]}`;

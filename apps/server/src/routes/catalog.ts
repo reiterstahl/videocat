@@ -669,7 +669,7 @@ function applyLocationFilter(where: Prisma.VideoFileWhereInput, locations: Array
   ];
 }
 
-async function folderGroupExclusions(): Promise<string[]> {
+export async function folderGroupExclusions(): Promise<string[]> {
   const raw = await appSettingValue(folderGroupExclusionsKey);
   if (!raw) return [];
   try {

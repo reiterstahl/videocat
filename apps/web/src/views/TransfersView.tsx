@@ -20,6 +20,7 @@ import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
 import { needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
+import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
 
@@ -31,7 +32,10 @@ type TransfersViewProps = {
   onInitialGroupQueryUsed?: () => void;
 };
 
+type JobKind = TransferJob["kind"];
+
 const pollMs = 10_000;
+const recentClosedJobs = 5;
 const finishedStates: TransferState[] = ["done", "duplicate", "cancelled"];
 const jobStatusLabels: Record<TransferJob["status"], string> = {
   active: "En curso",
@@ -57,16 +61,29 @@ function jobTotals(job: TransferJob) {
   return { files, bytes, finishedFiles, finishedBytes, ratio: bytes > 0 ? finishedBytes / bytes : files === 0 ? 1 : 0 };
 }
 
+// Still has files on their way, whatever its status (a cancelled transfer finishes what left its drive).
+function jobIsOpen(job: TransferJob): boolean {
+  const totals = jobTotals(job);
+  return job.status === "active" || job.status === "paused" || totals.finishedFiles < totals.files;
+}
+
+function folderName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
+}
+
 export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGroupQuery = "", onInitialGroupQueryUsed }: TransfersViewProps) {
   const [summary, setSummary] = useState<TransferSummary | null>(null);
   const [jobs, setJobs] = useState<TransferJob[] | null>(null);
-  const [destinations, setDestinations] = useState<TransferDestination[]>([]);
+  const [destinations, setDestinations] = useState<TransferDestination[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [items, setItems] = useState<TransferItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState<TransferJob | null>(null);
   const [groupQuery, setGroupQuery] = useState(initialGroupQuery);
+  const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
+  const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
+  const [consolidating, setConsolidating] = useState<TransferDestination | null>(null);
   const groupCardRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -75,8 +92,6 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     groupCardRef.current?.scrollIntoView({ block: "center" });
     onInitialGroupQueryUsed?.();
   }, [initialGroupQuery, onInitialGroupQueryUsed]);
-  const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
-  const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
 
   useEffect(() => {
     const term = groupQuery.trim();
@@ -98,46 +113,40 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     };
   }, [groupQuery]);
 
-  async function startGrouping(folder: GroupFolder) {
-    if (folder.destinationId) {
-      setGroupingDestinationId(folder.destinationId);
-      return;
-    }
-    setBusy(true);
-    setError("");
+  // Progress changes every few seconds; the starred folders (sizes and namesakes) only when something is decided.
+  const loadProgress = useCallback(async () => {
     try {
-      const response = await api<{ destination: { id: string } }>("/api/transfers/destinations", { method: "POST", body: JSON.stringify({ diskId: folder.diskId, path: folder.path }) });
-      setGroupingDestinationId(response.destination.id);
-      void load();
-    } catch (reason) {
-      setError(transferError(reason, "No se pudo marcar la carpeta."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const load = useCallback(async () => {
-    try {
-      const [nextSummary, nextJobs, nextDestinations] = await Promise.all([
+      const [nextSummary, nextJobs] = await Promise.all([
         api<TransferSummary>("/api/transfers/summary"),
-        api<{ jobs: TransferJob[] }>("/api/transfers"),
-        api<{ destinations: TransferDestination[] }>("/api/transfers/destinations")
+        api<{ jobs: TransferJob[] }>("/api/transfers")
       ]);
       setSummary(nextSummary);
       setJobs(nextJobs.jobs);
-      setDestinations(nextDestinations.destinations);
     } catch (reason) {
       setError(transferError(reason, "No se pudieron cargar los traslados."));
     }
   }, []);
 
+  const loadDestinations = useCallback(async () => {
+    try {
+      const response = await api<{ destinations: TransferDestination[] }>("/api/transfers/destinations");
+      setDestinations(response.destinations);
+    } catch (reason) {
+      setError(transferError(reason, "No se pudieron cargar las carpetas con estrella."));
+    }
+  }, []);
+
+  const reload = useCallback(async () => {
+    await Promise.all([loadProgress(), loadDestinations()]);
+  }, [loadDestinations, loadProgress]);
+
   useEffect(() => {
-    void load();
+    void reload();
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void loadProgress();
     }, pollMs);
     return () => window.clearInterval(timer);
-  }, [load, refreshKey]);
+  }, [loadProgress, refreshKey, reload]);
 
   useEffect(() => {
     if (!expanded) {
@@ -161,7 +170,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     try {
       await api(`/api/transfers/${job.id}/${action}`, { method: "POST" });
       setConfirmCancel(null);
-      await load();
+      await loadProgress();
       onChanged();
     } catch (reason) {
       setError(transferError(reason, "No se pudo actualizar el traslado."));
@@ -175,9 +184,27 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     setError("");
     try {
       await api(`/api/transfers/destinations/${destination.id}`, { method: "DELETE" });
-      await load();
+      await loadDestinations();
     } catch (reason) {
       setError(transferError(reason, "No se pudo quitar la estrella."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startGrouping(folder: GroupFolder) {
+    if (folder.destinationId) {
+      setGroupingDestinationId(folder.destinationId);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api<{ destination: { id: string } }>("/api/transfers/destinations", { method: "POST", body: JSON.stringify({ diskId: folder.diskId, path: folder.path }) });
+      setGroupingDestinationId(response.destination.id);
+      void loadDestinations();
+    } catch (reason) {
+      setError(transferError(reason, "No se pudo marcar la carpeta."));
     } finally {
       setBusy(false);
     }
@@ -186,12 +213,87 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
   const staging = summary?.staging ?? null;
   const stagingReserve = staging?.totalBytes ? staging.totalBytes * stagingReserveRatio : 0;
   const stagingUsable = staging?.freeBytes != null ? Math.max(0, staging.freeBytes - stagingReserve) : null;
-  const openJobs = jobs?.filter((job) => job.status === "active" || job.status === "paused" || jobTotals(job).finishedFiles < jobTotals(job).files) ?? [];
-  const closedJobs = jobs?.filter((job) => !openJobs.includes(job)) ?? [];
+  const openJobs = jobs?.filter(jobIsOpen) ?? [];
+  const stagingMissing = openJobs.length > 0 && (!staging || !staging.configured);
+
+  function jobsOf(kind: JobKind) {
+    const ofKind = jobs?.filter((job) => job.kind === kind) ?? [];
+    return [...ofKind.filter(jobIsOpen), ...ofKind.filter((job) => !jobIsOpen(job)).slice(0, recentClosedJobs)];
+  }
+
+  function renderJob(job: TransferJob) {
+    const totals = jobTotals(job);
+    const open = expanded === job.id;
+    const running = job.status === "active" || job.status === "paused";
+    return (
+      <li key={job.id} className={`vc-transfers-job is-${job.kind} is-${job.status}`}>
+        <div className="vc-transfers-job-head">
+          <button className="vc-transfers-expand" onClick={() => setExpanded(open ? null : job.id)} type="button" aria-expanded={open}>
+            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <strong>{job.label || folderName(job.destination.path)}</strong>
+          </button>
+          <span className={`vc-badge ${job.status === "paused" ? "is-warning" : job.status === "done" ? "is-success" : ""}`}>{jobStatusLabels[job.status]}</span>
+        </div>
+        <p className="vc-transfers-job-route">
+          <span className={`vc-kind-tag is-${job.kind}`}>{job.kind === "consolidate" ? "Consolidar" : "Agrupar"}</span>
+          <Star size={12} aria-hidden="true" />
+          <span>{`${job.destination.diskName}: ${job.destination.path}`}</span>
+        </p>
+        <div className="vc-transfers-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(totals.ratio * 100)}>
+          <span style={{ width: `${Math.round(totals.ratio * 100)}%` }} />
+        </div>
+        <p className="vc-transfers-job-meta">
+          {`${formatCount(totals.finishedFiles)} de ${formatCount(totals.files)} archivos · ${formatBytes(totals.finishedBytes)} de ${formatBytes(totals.bytes)}`}
+        </p>
+        <ul className="vc-transfers-states">
+          {(Object.entries(job.states) as Array<[TransferState, { files: number; bytes: number }]>)
+            .filter(([state]) => state !== "done")
+            .map(([state, value]) => (
+              <li key={state}>{`${transferStateLabels[state]}: ${formatCount(value.files)}`}</li>
+            ))}
+        </ul>
+        {running ? (
+          <div className="vc-folders-actions">
+            {job.status === "active" ? (
+              <button className="vc-button is-small" disabled={busy} onClick={() => void act(job, "pause")} type="button"><Pause size={14} /> Pausar</button>
+            ) : (
+              <button className="vc-button is-small" disabled={busy} onClick={() => void act(job, "resume")} type="button"><Play size={14} /> Reanudar</button>
+            )}
+            <button className="vc-button is-small is-ghost" disabled={busy} onClick={() => setConfirmCancel(job)} type="button"><X size={14} /> Cancelar</button>
+          </div>
+        ) : null}
+        {open ? (
+          items === null ? <div className="loading">Cargando...</div> : (
+            <ul className="vc-transfers-items">
+              {items.map((item) => (
+                <li key={item.id} className={`is-${item.state}`}>
+                  <span className="vc-transfers-item-name" title={item.sourceRelativePath}>{item.filename}</span>
+                  <span className="vc-transfers-item-size">{formatBytes(item.sizeBytes)}</span>
+                  <span className="vc-transfers-item-state">
+                    {transferStateLabels[item.state]}{item.attempts > 0 && !finishedStates.includes(item.state) ? ` · ${item.attempts} reintentos` : ""}
+                  </span>
+                  {item.error && !finishedStates.includes(item.state) ? <span className="vc-transfers-item-error">{item.error}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
+      </li>
+    );
+  }
+
+  function renderJobs(kind: JobKind) {
+    const list = jobsOf(kind);
+    if (jobs === null) return <div className="loading">Cargando...</div>;
+    if (list.length === 0) {
+      return <p className="vc-folders-empty">{kind === "consolidate" ? "Sin consolidaciones todavía." : "Sin archivos agrupados todavía."}</p>;
+    }
+    return <ul className="vc-transfers-list">{list.map(renderJob)}</ul>;
+  }
 
   return (
     <section className="vc-view vc-transfers" aria-label="Traslados">
-      <div className="vc-panel vc-folders-head">
+      <div className="vc-panel vc-transfers-hero">
         <div className="vc-folders-title">
           <ArrowRightLeft size={18} aria-hidden="true" />
           <div>
@@ -199,71 +301,50 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             <p>Mueve videos entre discos aunque no estén conectados a la vez. Cada archivo pasa por la carpeta temporal del Companion y solo se borra de un lugar después de verificar su copia en el siguiente.</p>
           </div>
         </div>
-      </div>
-
-      <div className="vc-transfers-kinds">
-        <article className="vc-panel vc-transfers-kind">
-          <FolderInput size={20} aria-hidden="true" />
+        <dl className="vc-transfers-stats">
           <div>
-            <h3>Consolidar carpetas</h3>
-            <p>Junta en una sola las carpetas que se llaman igual en distintos discos. El contenido de las pequeñas va a la carpeta con estrella, normalmente la más grande.</p>
+            <dt>En curso</dt>
+            <dd>{formatCount(openJobs.length)}</dd>
           </div>
-          <button className="vc-button is-small" onClick={onOpenFolders} type="button">
-            <Layers size={14} /> Ir a Uso por carpeta
-          </button>
-        </article>
-        <article className="vc-panel vc-transfers-kind vc-transfers-group" ref={groupCardRef}>
-          <ArrowRightLeft size={20} aria-hidden="true" />
           <div>
-            <h3>Agrupar archivos</h3>
-            <p>Parte de una carpeta (ej. testing001) y busca en todos los discos archivos con nombres parecidos. Decides uno por uno, como en Review: F agrupar, J ignorar.</p>
+            <dt>Con estrella</dt>
+            <dd>{formatCount(destinations?.length ?? 0)}</dd>
           </div>
-          <label className="vc-folders-search">
-            <Search size={15} aria-hidden="true" />
-            <input value={groupQuery} onChange={(event) => setGroupQuery(event.target.value)} placeholder="Nombre de la carpeta destino" aria-label="Buscar carpeta para agrupar archivos" />
-          </label>
-          {groupQuery.trim().length >= 3 ? (
-            groupFolders === null ? <div className="loading">Buscando…</div> : groupFolders.length === 0 ? (
-              <p className="vc-folders-empty">Ninguna carpeta con ese nombre en el catálogo.</p>
+          <div className={`vc-transfers-staging ${!staging?.configured ? "is-warning" : ""}`}>
+            <dt><HardDrive size={13} aria-hidden="true" /> Carpeta temporal</dt>
+            {!staging ? (
+              <dd className="is-text">Sin informar</dd>
+            ) : !staging.configured ? (
+              <dd className="is-text">Sin configurar</dd>
             ) : (
-              <ul className="vc-transfers-folder-results">
-                {groupFolders.map((folder) => {
-                  const name = folder.path.split("/").pop() ?? folder.path;
-                  // Same rule as the stars: files should go to the largest folder with that name.
-                  const larger = groupFolders.find((other) => other !== folder && other.bytes > folder.bytes && (other.path.split("/").pop() ?? "").toLowerCase() === name.toLowerCase());
-                  return (
-                  <li key={`${folder.diskId}:${folder.path}`}>
-                    <span className="vc-transfers-folder-name">
-                      {folder.destinationId ? <Star size={12} aria-label="Con estrella" className="is-starred" /> : null}
-                      <strong>{folder.path.split("/").pop()}</strong>
-                      <small>{`${folder.diskName} › ${folder.path}`}</small>
-                    </span>
-                    <em>{`${formatCount(folder.files)} ${folder.files === 1 ? "video" : "videos"} · ${formatBytes(folder.bytes)}`}</em>
-                    <button className="vc-button is-small" disabled={busy} onClick={() => void startGrouping(folder)} type="button">
-                      <FolderSearch size={14} /> Agrupar aquí
-                    </button>
-                    {larger ? (
-                      <p className="vc-folders-warning">
-                        <AlertTriangle size={14} aria-hidden="true" />
-                        {`Hay una carpeta ${name} más grande en ${larger.diskName} (${formatBytes(larger.bytes)}). Conviene agrupar ahí.`}
-                      </p>
-                    ) : null}
-                  </li>
-                  );
-                })}
-              </ul>
-            )
-          ) : (
-            <p className="vc-transfers-detail">Escribe al menos 3 letras. La carpeta que elijas queda marcada con estrella.</p>
-          )}
-        </article>
+              <>
+                <dd>{formatBytes(summary?.stagingBytes ?? 0)}</dd>
+                <dd className="is-sub" title={staging.path ?? undefined}>
+                  <code>{staging.path}</code>
+                  {stagingUsable === null ? null : <span>{`${formatBytes(stagingUsable)} disponibles · reserva 5 %`}</span>}
+                </dd>
+              </>
+            )}
+          </div>
+        </dl>
       </div>
 
       {error ? <div className="form-error" role="alert">{error}</div> : null}
 
-      {summary && summary.needs.length > 0 ? (
+      {stagingMissing || (summary && summary.needs.length > 0) ? (
+        <section className="vc-transfers-needs-panel" aria-label="Para continuar">
+        <h3 className="vc-transfers-kind-subtitle is-first">Para continuar</h3>
         <div className="vc-transfers-needs" aria-live="polite">
-          {summary.needs.map((need) => (
+          {stagingMissing ? (
+            <div className="vc-status-banner is-danger">
+              <AlertTriangle size={18} />
+              <div>
+                <strong>Configura la carpeta temporal en el Companion</strong>
+                <span>{staging ? "Elige una carpeta en Companion › Configuración › Archivos › Carpeta temporal de traslados. Hasta entonces los traslados no avanzan." : "El Companion todavía no informó su carpeta temporal: actualízalo a la última versión, conéctalo y elige la carpeta en Configuración › Archivos."}</span>
+              </div>
+            </div>
+          ) : null}
+          {summary?.needs.map((need) => (
             <div key={`${need.kind}:${need.diskId}`} className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.connected ? "" : "is-warning"}`}>
               {need.kind === "free_space" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
               <div>
@@ -274,137 +355,156 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             </div>
           ))}
         </div>
+        </section>
       ) : null}
 
-      <div className="vc-transfers-layout">
-        <div className="vc-panel vc-transfers-jobs">
-          <div className="vc-panel-head">
-            <div>
-              <h3>Traslados</h3>
-              <p>Se actualiza solo cada pocos segundos mientras el Companion trabaja.</p>
-            </div>
-          </div>
-          {jobs === null ? <div className="loading">Cargando...</div> : null}
-          {jobs && openJobs.length === 0 ? <p className="vc-folders-empty">No hay traslados en curso.</p> : null}
-          <ul className="vc-transfers-list">
-            {[...openJobs, ...closedJobs.slice(0, 10)].map((job) => {
-              const totals = jobTotals(job);
-              const open = expanded === job.id;
-              const running = job.status === "active" || job.status === "paused";
+      <section className="vc-panel vc-transfers-destinations" aria-label="Carpetas con estrella">
+        <div className="vc-transfers-section-head">
+          <h3><Star size={17} aria-hidden="true" className="vc-star-icon" /> Carpetas con estrella</h3>
+          <p>Son las únicas que pueden recibir archivos. Desde cada una puedes consolidar sus carpetas iguales o agrupar archivos parecidos.</p>
+        </div>
+        {destinations === null ? <div className="loading">Cargando...</div> : destinations.length === 0 ? (
+          <p className="vc-folders-empty">Ninguna todavía. Márcalas en Uso por carpeta › Carpetas repetidas o elige una carpeta en Agrupar archivos.</p>
+        ) : (
+          <ul className="vc-starred-grid">
+            {destinations.map((destination) => {
+              const namesakeBytes = destination.namesakes.reduce((sum, namesake) => sum + namesake.sizeBytes, 0);
+              const larger = destination.namesakes.find((namesake) => namesake.sizeBytes > destination.sizeBytes);
               return (
-                <li key={job.id} className={`is-${job.status}`}>
-                  <div className="vc-transfers-job-head">
-                    <button className="vc-transfers-expand" onClick={() => setExpanded(open ? null : job.id)} type="button" aria-expanded={open}>
-                      {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      <strong>{job.label || job.destination.path}</strong>
-                    </button>
-                    <span className={`vc-badge ${job.status === "paused" ? "is-warning" : job.status === "done" ? "is-success" : ""}`}>{jobStatusLabels[job.status]}</span>
-                  </div>
-                  <p className="vc-transfers-job-route">
-                    <span>{job.kind === "consolidate" ? "Consolidar" : "Agrupar"}</span>
-                    <Star size={12} aria-hidden="true" />
-                    <span>{`${job.destination.diskName}: ${job.destination.path}`}</span>
-                  </p>
-                  <div className="vc-transfers-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(totals.ratio * 100)}>
-                    <span style={{ width: `${Math.round(totals.ratio * 100)}%` }} />
-                  </div>
-                  <p className="vc-transfers-job-meta">
-                    {`${formatCount(totals.finishedFiles)} de ${formatCount(totals.files)} archivos · ${formatBytes(totals.finishedBytes)} de ${formatBytes(totals.bytes)}`}
-                  </p>
-                  <ul className="vc-transfers-states">
-                    {(Object.entries(job.states) as Array<[TransferState, { files: number; bytes: number }]>)
-                      .filter(([state]) => state !== "done")
-                      .map(([state, value]) => (
-                        <li key={state}>{`${transferStateLabels[state]}: ${formatCount(value.files)}`}</li>
-                      ))}
-                  </ul>
-                  {running ? (
-                    <div className="vc-folders-actions">
-                      {job.status === "active" ? (
-                        <button className="vc-button is-small" disabled={busy} onClick={() => void act(job, "pause")} type="button"><Pause size={14} /> Pausar</button>
-                      ) : (
-                        <button className="vc-button is-small" disabled={busy} onClick={() => void act(job, "resume")} type="button"><Play size={14} /> Reanudar</button>
-                      )}
-                      <button className="vc-button is-small is-ghost" disabled={busy} onClick={() => setConfirmCancel(job)} type="button"><X size={14} /> Cancelar</button>
+                <li key={destination.id} className="vc-starred-card">
+                  <div className="vc-starred-head">
+                    <Star size={18} aria-hidden="true" className="vc-star-icon" />
+                    <div>
+                      <strong>{folderName(destination.path)}</strong>
+                      <span title={destination.path}>{`${destination.diskName} › ${destination.path}`}</span>
                     </div>
+                    <button className="icon-button" disabled={busy} onClick={() => void removeDestination(destination)} type="button" title="Quitar estrella">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <dl className="vc-starred-facts">
+                    <div><dt>Contenido</dt><dd>{`${formatBytes(destination.sizeBytes)} · ${formatCount(destination.fileCount)} videos`}</dd></div>
+                    <div><dt>Libre en el disco</dt><dd>{destination.freeBytes == null ? "Sin escanear" : formatBytes(destination.freeBytes)}</dd></div>
+                  </dl>
+                  <p className={`vc-starred-namesakes ${destination.namesakes.length > 0 ? "is-consolidate" : ""}`}>
+                    {destination.namesakes.length > 0
+                      ? `${destination.namesakes.length === 1 ? "1 carpeta igual" : `${formatCount(destination.namesakes.length)} carpetas iguales`} en otros discos · ${formatBytes(namesakeBytes)}`
+                      : "Sin carpetas iguales en otros discos"}
+                  </p>
+                  {larger ? (
+                    <p className="vc-folders-warning" role="note">
+                      <AlertTriangle size={14} aria-hidden="true" />
+                      {`La ubicación más grande es ${larger.diskName}: ${larger.path} (${formatBytes(larger.sizeBytes)}). Conviene que la estrella esté ahí para mover menos datos.`}
+                    </p>
                   ) : null}
-                  {open ? (
-                    items === null ? <div className="loading">Cargando...</div> : (
-                      <ul className="vc-transfers-items">
-                        {items.map((item) => (
-                          <li key={item.id} className={`is-${item.state}`}>
-                            <span className="vc-transfers-item-name" title={item.sourceRelativePath}>{item.filename}</span>
-                            <span className="vc-transfers-item-size">{formatBytes(item.sizeBytes)}</span>
-                            <span className="vc-transfers-item-state">
-                              {transferStateLabels[item.state]}{item.attempts > 0 && !finishedStates.includes(item.state) ? ` · ${item.attempts} reintentos` : ""}
-                            </span>
-                            {item.error && !finishedStates.includes(item.state) ? <span className="vc-transfers-item-error">{item.error}</span> : null}
-                          </li>
-                        ))}
-                      </ul>
-                    )
-                  ) : null}
+                  <div className="vc-starred-actions">
+                    <button className="vc-button is-small vc-kind-button is-consolidate" disabled={busy || destination.namesakes.length === 0} onClick={() => setConsolidating(destination)} type="button" title={destination.namesakes.length === 0 ? "No hay carpetas con este nombre en otros discos" : "Traer aquí el contenido de las carpetas iguales"}>
+                      <FolderInput size={14} /> Consolidar
+                    </button>
+                    <button className="vc-button is-small vc-kind-button is-group" disabled={busy} onClick={() => setGroupingDestinationId(destination.id)} type="button" title="Agrupar archivos en esta carpeta">
+                      <FolderSearch size={14} /> Agrupar archivos
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ul>
-        </div>
+        )}
+      </section>
 
-        <aside className="vc-transfers-side">
-          <div className="vc-panel vc-transfers-staging">
-            <h3><HardDrive size={16} aria-hidden="true" /> Carpeta temporal</h3>
-            {!staging ? (
-              <p className="vc-folders-empty">El Companion todavía no informó su carpeta temporal. Actualízalo y conéctalo.</p>
-            ) : !staging.configured ? (
-              <p className="vc-folders-empty">Sin configurar. Elige una carpeta en Companion › Configuración › Archivos para que los traslados avancen.</p>
-            ) : (
-              <>
-                <code>{staging.path}</code>
-                {staging.error ? <p className="form-error">{staging.error}</p> : null}
-                <dl className="vc-consolidate-facts">
-                  <div><dt>En tránsito</dt><dd>{formatBytes(summary?.stagingBytes ?? 0)}</dd></div>
-                  <div><dt>Disponible</dt><dd>{stagingUsable === null ? "—" : formatBytes(stagingUsable)}</dd></div>
-                  <div><dt>Reserva (5 %)</dt><dd>{formatBytes(stagingReserve)}</dd></div>
-                </dl>
-                {staging.companionName ? <p className="vc-transfers-detail">{`Companion: ${staging.companionName}`}</p> : null}
-              </>
-            )}
+      <div className="vc-transfers-columns">
+        <section className="vc-panel vc-transfers-kind is-consolidate" aria-label="Consolidar carpetas">
+          <header className="vc-transfers-kind-head">
+            <span className="vc-kind-icon" aria-hidden="true"><FolderInput size={20} /></span>
+            <div>
+              <h3>Consolidar carpetas</h3>
+              <p>Junta en una sola las carpetas que se llaman igual en distintos discos. El contenido de las pequeñas va a la carpeta con estrella, normalmente la más grande.</p>
+            </div>
+          </header>
+          <div className="vc-transfers-kind-start">
+            <button className="vc-button is-small" onClick={onOpenFolders} type="button">
+              <Layers size={14} /> Ir a Uso por carpeta
+            </button>
+            <span className="vc-transfers-detail">o usa Consolidar en una carpeta con estrella.</span>
           </div>
+          <h4 className="vc-transfers-kind-subtitle">Consolidaciones</h4>
+          {renderJobs("consolidate")}
+        </section>
 
-          <div className="vc-panel vc-transfers-destinations">
-            <h3><Star size={16} aria-hidden="true" /> Carpetas con estrella</h3>
-            {destinations.length === 0 ? (
-              <p className="vc-folders-empty">Ninguna todavía. Márcalas en Uso por carpeta › Carpetas repetidas.</p>
+        <section className="vc-panel vc-transfers-kind is-group vc-transfers-group" aria-label="Agrupar archivos" ref={groupCardRef}>
+          <header className="vc-transfers-kind-head">
+            <span className="vc-kind-icon" aria-hidden="true"><FolderSearch size={20} /></span>
+            <div>
+              <h3>Agrupar archivos</h3>
+              <p>Parte de una carpeta (ej. testing001) y busca en todos los discos archivos con nombres parecidos. Decides uno por uno, como en Review: F agrupar, J ignorar.</p>
+            </div>
+          </header>
+          <label className="vc-folders-search">
+            <Search size={15} aria-hidden="true" />
+            <input value={groupQuery} onChange={(event) => setGroupQuery(event.target.value)} placeholder="Nombre de la carpeta destino" aria-label="Buscar carpeta para agrupar archivos" />
+          </label>
+          {groupQuery.trim().length >= 3 ? (
+            groupFolders === null ? <div className="loading">Buscando…</div> : groupFolders.length === 0 ? (
+              <p className="vc-folders-empty">Ninguna carpeta con ese nombre en el catálogo.</p>
             ) : (
-              <ul className="vc-folders-locations">
-                {destinations.map((destination) => (
-                  <li key={destination.id}>
-                    <span>{destination.diskName}</span>
-                    <code>{destination.path}</code>
-                    <button className="icon-button" disabled={busy} onClick={() => setGroupingDestinationId(destination.id)} type="button" title="Agrupar archivos en esta carpeta">
-                      <FolderSearch size={14} />
-                    </button>
-                    <button className="icon-button" disabled={busy} onClick={() => void removeDestination(destination)} type="button" title="Quitar estrella">
-                      <Trash2 size={14} />
-                    </button>
-                  </li>
-                ))}
+              <ul className="vc-transfers-folder-results">
+                {groupFolders.map((folder) => {
+                  const name = folderName(folder.path);
+                  // Same rule as the stars: files should go to the largest folder with that name.
+                  const larger = groupFolders.find((other) => other !== folder && other.bytes > folder.bytes && folderName(other.path).toLowerCase() === name.toLowerCase());
+                  return (
+                    <li key={`${folder.diskId}:${folder.path}`}>
+                      <span className="vc-transfers-folder-name">
+                        {folder.destinationId ? <Star size={12} aria-label="Con estrella" className="is-starred" /> : null}
+                        <strong>{name}</strong>
+                        <small>{`${folder.diskName} › ${folder.path}`}</small>
+                      </span>
+                      <em>{`${formatCount(folder.files)} ${folder.files === 1 ? "video" : "videos"} · ${formatBytes(folder.bytes)}`}</em>
+                      <button className="vc-button is-small" disabled={busy} onClick={() => void startGrouping(folder)} type="button">
+                        <FolderSearch size={14} /> Agrupar aquí
+                      </button>
+                      {larger ? (
+                        <p className="vc-folders-warning">
+                          <AlertTriangle size={14} aria-hidden="true" />
+                          {`Hay una carpeta ${name} más grande en ${larger.diskName} (${formatBytes(larger.bytes)}). Conviene agrupar ahí.`}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
-            )}
-          </div>
-        </aside>
+            )
+          ) : (
+            <p className="vc-transfers-detail">Escribe al menos 3 letras. La carpeta que elijas queda marcada con estrella.</p>
+          )}
+          <h4 className="vc-transfers-kind-subtitle">Agrupaciones</h4>
+          {renderJobs("group")}
+        </section>
       </div>
+
+      {consolidating ? (
+        <ConsolidateDialog
+          destination={consolidating}
+          sources={consolidating.namesakes.map((namesake) => ({ d: namesake.diskId, p: namesake.path }))}
+          onCancel={() => setConsolidating(null)}
+          onCreated={() => {
+            setConsolidating(null);
+            void reload();
+            onChanged();
+          }}
+        />
+      ) : null}
 
       {groupingDestinationId ? (
         <GroupSession
           destinationId={groupingDestinationId}
           onClose={() => {
             setGroupingDestinationId(null);
-            void load();
+            void reload();
           }}
           onOpenTransfers={() => {
             setGroupingDestinationId(null);
-            void load();
+            void reload();
           }}
           onChanged={onChanged}
         />

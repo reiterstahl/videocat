@@ -951,6 +951,12 @@ test("consolidation plans folders, creates the transfer and tells what to connec
     const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: "Testing" } })).json().destination.id;
     const payload = { destinationId, sources: [{ d: source.id, p: "Testing" }, { d: target.id, p: "Testing" }] };
 
+    // The starred folder lists its size and its namesakes, and knows another one is larger.
+    const starredList = (await app.inject({ method: "GET", url: "/api/transfers/destinations", headers: { cookie } })).json().destinations;
+    const starredHere = starredList.find((entry: { id: string }) => entry.id === destinationId);
+    assert.deepEqual([starredHere.sizeBytes, starredHere.fileCount, starredHere.largest], [70, 1, false]);
+    assert.deepEqual(starredHere.namesakes.map((entry: { diskId: string; path: string; sizeBytes: number }) => [entry.diskId, entry.path, entry.sizeBytes]), [[source.id, "Testing", 120]]);
+
     const preview = await app.inject({ method: "POST", url: "/api/transfers/consolidate/preview", headers: webMutationHeaders(cookie), payload });
     assert.equal(preview.statusCode, 200);
     const plan = preview.json();

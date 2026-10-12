@@ -5,12 +5,12 @@ import { recordAction } from "../lib/action-audit.js";
 import { isProtectedFolderUnlocked, requireAgentAuth, requireWebAuth } from "../lib/auth.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
-import { normalizeFolderName } from "../lib/folder-groups.js";
+import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
 import { prisma } from "../lib/prisma.js";
 import { companionStagingKey, stagingBytes, transferNeeds } from "../lib/transfer-summary.js";
 import { matchKey, minSearchKeyLength, nameMatch, type NameMatch } from "../lib/name-match.js";
 import { canCompanionTransition, isTransferState, unfinishedStates, type TransferState } from "../lib/transfer-states.js";
-import { visibleFilesWhere } from "./catalog.js";
+import { folderGroupExclusions, visibleFilesWhere } from "./catalog.js";
 
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const workLimit = 50;
@@ -348,18 +348,46 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------------------------------------------------------------- Web
-  app.get("/api/transfers/destinations", { preHandler: requireWebAuth }, async () => {
+  // Starred folders with their size and their namesakes on other drives (what "Consolidar" would bring in).
+  app.get("/api/transfers/destinations", { preHandler: requireWebAuth }, async (request) => {
     const destinations = await prisma.transferDestination.findMany({ include: { disk: { select: { name: true, freeBytes: true, totalBytes: true } } }, orderBy: { createdAt: "asc" } });
+    const [files, excludedNames] = destinations.length > 0
+      ? await Promise.all([
+          prisma.videoFile.findMany({
+            where: visibleFilesWhere(isProtectedFolderUnlocked(request), { isPresent: true }),
+            select: { diskId: true, relativePath: true, sizeBytes: true, disk: { select: { name: true } } }
+          }),
+          folderGroupExclusions()
+        ])
+      : [[], []];
+    const groups = buildFolderGroups(
+      files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
+      { excludedNames, maxDepth: 1, maxChildren: 1 }
+    );
+    const samePlace = (diskId: string, path: string, other: { diskId: string; path: string }) =>
+      other.diskId === diskId && cleanFolder(other.path).toLowerCase() === path.toLowerCase();
     return {
-      destinations: destinations.map((destination) => ({
-        id: destination.id,
-        diskId: destination.diskId,
-        diskName: destination.disk.name,
-        path: destination.path,
-        nameKey: destination.nameKey,
-        freeBytes: destination.disk.freeBytes == null ? null : Number(destination.disk.freeBytes),
-        totalBytes: destination.disk.totalBytes == null ? null : Number(destination.disk.totalBytes)
-      }))
+      destinations: destinations.map((destination) => {
+        const inside = files.filter((file) => file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path));
+        const sizeBytes = inside.reduce((sum, file) => sum + Number(file.sizeBytes), 0);
+        const group = groups.repeated.find((entry) => !entry.excluded && entry.locations.some((location) => samePlace(destination.diskId, destination.path, location)));
+        const namesakes = (group?.locations ?? [])
+          .filter((location) => !samePlace(destination.diskId, destination.path, location))
+          .map((location) => ({ diskId: location.diskId, diskName: location.diskName, path: cleanFolder(location.path), sizeBytes: location.sizeBytes }));
+        return {
+          id: destination.id,
+          diskId: destination.diskId,
+          diskName: destination.disk.name,
+          path: destination.path,
+          nameKey: destination.nameKey,
+          freeBytes: destination.disk.freeBytes == null ? null : Number(destination.disk.freeBytes),
+          totalBytes: destination.disk.totalBytes == null ? null : Number(destination.disk.totalBytes),
+          sizeBytes,
+          fileCount: inside.length,
+          namesakes,
+          largest: namesakes.every((namesake) => namesake.sizeBytes <= sizeBytes)
+        };
+      })
     };
   });
 
