@@ -1,4 +1,6 @@
-FROM node:24-bookworm-slim AS deps
+# The build output is static files, the same for every platform: build once on the native
+# platform instead of under emulation (much faster and far less memory for multi-arch images).
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/web/package.json apps/web/package.json
