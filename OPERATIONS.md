@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.18
+
+- **Traslados** redesigned: summary with the staging folder at the top, a compact "Para continuar" block (drives to connect, space to free, missing staging folder), starred folders as cards with their size, free space and namesakes, and direct **Consolidar** and **Agrupar archivos** buttons. Consolidar and Agrupar now live in two columns with their own colour and their own transfers.
+- No migrations or configuration changes; the Windows Companion stays on 0.2.6.
+
 ## Upgrading to 0.2.17
 
 - Image hardening after a vulnerability scan of 0.2.16 (Docker Scout / Trivy):
