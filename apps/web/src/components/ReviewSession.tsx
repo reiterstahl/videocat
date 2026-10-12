@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, EyeOff, Image, LayoutGrid, Maximize, Pause, Play, RectangleHorizontal, SkipForward, Trash2 } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { FullscreenGallery } from "./FullscreenGallery";
@@ -25,11 +25,38 @@ type ReviewLayout = "frame" | "gallery";
 
 type ReviewFlash = { status: ReviewDecision | "skip"; id: number };
 
-const reviewFlashLabels: Record<ReviewFlash["status"], string> = {
-  keep: "Mantenido",
-  delete: "Marcado para borrar",
-  skip: "Saltado"
+type DecisionCopy = {
+  // Button text, confirmation flash, last decision in the header and badge in the history.
+  label: string;
+  flash: string;
+  done: string;
+  short: string;
+  icon: ReactNode;
+  flashIcon: ReactNode;
 };
+
+// Texts of a session; "Agrupar archivos" reuses Review with its own words for F and J.
+export type ReviewCopy = {
+  title: string;
+  exit: string;
+  dialogLabel: string;
+  keep: DecisionCopy;
+  delete: DecisionCopy;
+  lastOne: string;
+  keys: ReactNode;
+};
+
+export const reviewCopy: ReviewCopy = {
+  title: "Review",
+  exit: "Salir del review",
+  dialogLabel: "Sesión de review",
+  keep: { label: "Mantener", flash: "Mantenido", done: "Mantenido", short: "Mantener", icon: <Check size={20} />, flashIcon: <Check size={34} /> },
+  delete: { label: "Marcar para borrar", flash: "Marcado para borrar", done: "Marcado para borrar", short: "Borrar", icon: <Trash2 size={20} />, flashIcon: <Trash2 size={30} /> },
+  lastOne: "Este es el último pendiente en los discos seleccionados.",
+  keys: <><kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Enter</kbd> reproducir · <kbd>Espacio</kbd> privacidad · <kbd>P</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir</>
+};
+
+export type ReviewStat = { label: string; value: string; accent?: boolean };
 
 const reviewLayoutKey = "videocat-review-layout";
 
@@ -69,7 +96,11 @@ export function ReviewSession({
   onDecision,
   onSkip,
   onUndo,
-  onToggleCategory
+  onToggleCategory,
+  copy = reviewCopy,
+  variant = "review",
+  stats,
+  note
 }: {
   file: VideoFile;
   upcoming: VideoFile | null | undefined;
@@ -85,6 +116,12 @@ export function ReviewSession({
   onSkip: () => Promise<void>;
   onUndo: (entry: ReviewSessionEntry) => Promise<boolean>;
   onToggleCategory: (categoryKey: string, enabled: boolean) => void;
+  copy?: ReviewCopy;
+  variant?: "review" | "group";
+  // Replaces the review counters in the side panel.
+  stats?: ReviewStat[];
+  // Extra context for the current file, under its name.
+  note?: ReactNode;
 }) {
   const [frameIndex, setFrameIndex] = useState(() => defaultFrameIndex(file));
   const [framesPlaying, setFramesPlaying] = useState(false);
@@ -261,14 +298,14 @@ export function ReviewSession({
   });
 
   return (
-    <div className="vc-review" role="dialog" aria-modal="true" aria-label="Sesión de review" ref={rootRef} tabIndex={-1}>
+    <div className={`vc-review is-${variant}`} role="dialog" aria-modal="true" aria-label={copy.dialogLabel} ref={rootRef} tabIndex={-1}>
       <header className="vc-review-header">
-        <button className="vc-button" onClick={onClose} type="button" aria-label="Salir del review">
+        <button className="vc-button" onClick={onClose} type="button" aria-label={copy.exit}>
           <ChevronLeft size={17} />
-          <span className="vc-button-label">Salir del review</span>
+          <span className="vc-button-label">{copy.exit}</span>
         </button>
         <span className="vc-catmark" aria-hidden="true" />
-        <h2 className="vc-review-heading">Review</h2>
+        <h2 className="vc-review-heading">{copy.title}</h2>
         <span className="vc-review-pill">{`${remaining.toLocaleString("es-CR")} pendientes`}</span>
         <div className="vc-segmented is-icons vc-review-layout" role="group" aria-label="Vista de fotogramas">
           <button type="button" aria-pressed={layout === "frame"} onClick={() => changeLayout("frame")} title="Fotograma (G)" aria-label="Fotograma">
@@ -285,7 +322,7 @@ export function ReviewSession({
         {lastEntry ? (
           <span className={`vc-review-last is-${lastEntry.status}`} role="status">
             <span className="vc-review-last-label">
-              {lastEntry.status === "keep" ? "Mantenido" : "Marcado para borrar"}: {lastEntry.previous.filename}
+              {copy[lastEntry.status].done}: {lastEntry.previous.filename}
             </span>
             <button className="vc-link-button" onClick={() => void undo()} disabled={loading} type="button">
               Deshacer <kbd>Z</kbd>
@@ -384,8 +421,8 @@ export function ReviewSession({
 
           <div className="vc-review-decisions">
             <button className="vc-review-decision is-keep" onClick={() => void decide("keep")} disabled={loading} type="button">
-              <Check size={20} />
-              <span>Mantener</span>
+              {copy.keep.icon}
+              <span>{copy.keep.label}</span>
               <kbd>F</kbd>
             </button>
             <button className="vc-review-decision is-skip" onClick={() => void skip()} disabled={loading} type="button">
@@ -394,8 +431,8 @@ export function ReviewSession({
               <kbd>S</kbd>
             </button>
             <button className="vc-review-decision is-delete" onClick={() => void decide("delete")} disabled={loading} type="button">
-              <Trash2 size={20} />
-              <span>Marcar para borrar</span>
+              {copy.delete.icon}
+              <span>{copy.delete.label}</span>
               <kbd>J</kbd>
             </button>
           </div>
@@ -437,13 +474,18 @@ export function ReviewSession({
               {file.videoCodec ? <span>{[file.videoCodec, file.audioCodec].filter(Boolean).join(" · ")}</span> : null}
               {file.folderSizeBytes != null ? <span>{`Carpeta ${formatBytes(file.folderSizeBytes)}`}</span> : null}
             </div>
+            {note}
           </div>
 
           <div className="vc-review-stats">
-            <div><span>Pendientes</span><strong>{pendingTotal.toLocaleString("es-CR")}</strong></div>
-            <div><span>Hoy</span><strong>{markedToday.toLocaleString("es-CR")}</strong></div>
-            <div><span>Últimos 7 días</span><strong>{markedLast7Days.toLocaleString("es-CR")}</strong></div>
-            <div className="is-accent"><span>Marcado en la sesión</span><strong>{formatBytes(sessionFreedBytes)}</strong></div>
+            {(stats ?? [
+              { label: "Pendientes", value: pendingTotal.toLocaleString("es-CR") },
+              { label: "Hoy", value: markedToday.toLocaleString("es-CR") },
+              { label: "Últimos 7 días", value: markedLast7Days.toLocaleString("es-CR") },
+              { label: "Marcado en la sesión", value: formatBytes(sessionFreedBytes), accent: true }
+            ]).map((stat) => (
+              <div key={stat.label} className={stat.accent ? "is-accent" : undefined}><span>{stat.label}</span><strong>{stat.value}</strong></div>
+            ))}
           </div>
 
           <div className="vc-review-block">
@@ -460,7 +502,7 @@ export function ReviewSession({
               </div>
             ) : (
               <span className="vc-review-muted">
-                {upcoming === null ? "Este es el último pendiente en los discos seleccionados." : "Preparando el siguiente video…"}
+                {upcoming === null ? copy.lastOne : "Preparando el siguiente video…"}
               </span>
             )}
           </div>
@@ -477,16 +519,14 @@ export function ReviewSession({
                       {mainThumbnail(entry.previous) ? <img src={mainThumbnail(entry.previous)} alt="" /> : null}
                     </span>
                     <span className="vc-review-history-name">{entry.previous.filename}</span>
-                    <em className={`vc-review-history-badge is-${entry.status}`}>{entry.status === "keep" ? "Mantener" : "Borrar"}</em>
+                    <em className={`vc-review-history-badge is-${entry.status}`}>{copy[entry.status].short}</em>
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          <p className="vc-review-keys">
-            <kbd>F</kbd> mantener · <kbd>J</kbd> borrar · <kbd>S</kbd> saltar · <kbd>Z</kbd> deshacer · <kbd>←</kbd><kbd>→</kbd> fotogramas · <kbd>Enter</kbd> reproducir · <kbd>Espacio</kbd> privacidad · <kbd>P</kbd> pantalla completa · <kbd>G</kbd> galería · <kbd>Esc</kbd> salir
-          </p>
+          <p className="vc-review-keys">{copy.keys}</p>
         </aside>
       </div>
 
@@ -509,9 +549,9 @@ export function ReviewSession({
           onAnimationEnd={() => setFlash((current) => (current?.id === flash.id ? null : current))}
         >
           <span className="vc-review-flash-icon" aria-hidden="true">
-            {flash.status === "keep" ? <Check size={34} /> : flash.status === "delete" ? <Trash2 size={30} /> : <SkipForward size={30} />}
+            {flash.status === "skip" ? <SkipForward size={30} /> : copy[flash.status].flashIcon}
           </span>
-          <strong>{reviewFlashLabels[flash.status]}</strong>
+          <strong>{flash.status === "skip" ? "Saltado" : copy[flash.status].flash}</strong>
         </div>
       ) : null}
       {privacy ? (

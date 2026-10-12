@@ -8,6 +8,7 @@ import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { normalizeFolderName } from "../lib/folder-groups.js";
 import { prisma } from "../lib/prisma.js";
 import { companionStagingKey, stagingBytes, transferNeeds } from "../lib/transfer-summary.js";
+import { matchKey, minSearchKeyLength, nameMatch, type NameMatch } from "../lib/name-match.js";
 import { canCompanionTransition, isTransferState, unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { visibleFilesWhere } from "./catalog.js";
 
@@ -53,6 +54,20 @@ export function destinationReserveBytes(totalBytes: number): number {
 }
 
 const companionOnlineMs = 45_000;
+const groupCandidateLimit = 2000;
+
+const groupDecisionSchema = z.object({
+  destinationId: z.string().uuid(),
+  fileId: z.string().uuid(),
+  decision: z.enum(["group", "ignore"])
+});
+
+const groupSkipMessages: Record<string, string> = {
+  already_there: "That file is already in this folder",
+  in_transfer: "That file is already in another transfer",
+  duplicate_at_destination: "An identical file is already in this folder; it stays for review in Duplicates",
+  nothing_to_move: "Nothing to move"
+};
 
 const consolidateSchema = z.object({
   destinationId: z.string().uuid(),
@@ -138,12 +153,15 @@ async function planTransfer(destination: DestinationWithDisk, files: PlannedFile
   return { movable, skipped, neededBytes, freeBytes, pendingBytes, reserveBytes, fits, spaceProblem };
 }
 
-async function createJob(reply: FastifyReply, kind: "consolidate" | "group", destination: DestinationWithDisk, plan: TransferPlan, label?: string) {
+// Creates a transfer, or adds the files to an open one (a grouping session adds one file at a time).
+async function createJob(reply: FastifyReply, kind: "consolidate" | "group", destination: DestinationWithDisk, plan: TransferPlan, label?: string, existingJobId?: string) {
   try {
     const job = await prisma.$transaction(async (tx) => {
-      const created = await tx.transferJob.create({
-        data: { kind, destinationId: destination.id, label: label ?? destination.path.split("/").pop() ?? destination.path }
-      });
+      const created = existingJobId
+        ? await tx.transferJob.findUniqueOrThrow({ where: { id: existingJobId } })
+        : await tx.transferJob.create({
+            data: { kind, destinationId: destination.id, label: label ?? destination.path.split("/").pop() ?? destination.path }
+          });
       await tx.transferItem.createMany({
         data: plan.movable.map((file) => ({
           jobId: created.id,
@@ -424,6 +442,154 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       return createJob(reply, "consolidate", destination, plan, destination.path.split("/").pop());
     });
   }
+
+  // ------------------------------------------------------------ Group files
+  // Folders whose name contains the search, to start grouping files into one of them.
+  app.get("/api/transfers/folders", { preHandler: requireWebAuth }, async (request) => {
+    const query = z.object({ q: z.string().trim().min(1).max(200) }).parse(request.query);
+    const key = matchKey(query.q);
+    if (key.length < minSearchKeyLength) return { folders: [] };
+    const files = await prisma.videoFile.findMany({
+      where: visibleFilesWhere(isProtectedFolderUnlocked(request), { isPresent: true }),
+      select: { diskId: true, relativePath: true, sizeBytes: true }
+    });
+    const folders = new Map<string, { diskId: string; path: string; files: number; bytes: number }>();
+    for (const file of files) {
+      if (!matchKey(file.relativePath).includes(key)) continue;
+      const segments = file.relativePath.split(/[\\/]+/).filter(Boolean).slice(0, -1);
+      let prefix = "";
+      for (const segment of segments) {
+        prefix = prefix ? `${prefix}/${segment}` : segment;
+        if (!matchKey(segment).includes(key)) continue;
+        const id = `${file.diskId}|${prefix}`;
+        const entry = folders.get(id) ?? { diskId: file.diskId, path: prefix, files: 0, bytes: 0 };
+        entry.files += 1;
+        entry.bytes += Number(file.sizeBytes);
+        folders.set(id, entry);
+      }
+    }
+    const top = [...folders.values()].sort((left, right) => right.bytes - left.bytes).slice(0, 30);
+    const [names, starred] = await Promise.all([
+      diskIdentifiers([...new Set(top.map((folder) => folder.diskId))]),
+      prisma.transferDestination.findMany({ where: { diskId: { in: top.map((folder) => folder.diskId) } }, select: { id: true, diskId: true, path: true } })
+    ]);
+    return {
+      folders: top.map((folder) => ({
+        ...folder,
+        diskName: names.get(folder.diskId)?.name ?? "",
+        destinationId: starred.find((destination) => destination.diskId === folder.diskId && destination.path.toLowerCase() === folder.path.toLowerCase())?.id ?? null
+      }))
+    };
+  });
+
+  // Files on any drive whose name looks like the starred folder's name, for a Review-like session.
+  app.post("/api/transfers/group/candidates", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = z.object({ destinationId: z.string().uuid() }).parse(request.body);
+    const destination = await prisma.transferDestination.findUnique({ where: { id: body.destinationId }, include: { disk: true } });
+    if (!destination) return reply.code(404).send({ message: "Destination not found" });
+    const name = destination.path.split("/").pop() ?? destination.path;
+    const key = matchKey(name);
+    if (key.length < minSearchKeyLength) return reply.code(400).send({ message: "The folder name is too short to search for similar files" });
+
+    const [files, busy, ignored, destinationFiles] = await Promise.all([
+      prisma.videoFile.findMany({
+        where: visibleFilesWhere(isProtectedFolderUnlocked(request), { isPresent: true }),
+        select: { id: true, diskId: true, relativePath: true, filename: true, sizeBytes: true }
+      }),
+      prisma.transferItem.findMany({ where: { state: { in: unfinishedStates } }, select: { videoFileId: true } }),
+      prisma.transferGroupIgnore.findMany({ where: { destinationId: destination.id }, select: { videoFileId: true } }),
+      prisma.videoFile.findMany({
+        where: { diskId: destination.diskId, OR: [{ relativePath: { startsWith: `${destination.path}/` } }, { relativePath: { startsWith: `${destination.path}\\` } }] },
+        select: { filename: true, sizeBytes: true }
+      })
+    ]);
+    const busyIds = new Set(busy.map((item) => item.videoFileId));
+    const ignoredIds = new Set(ignored.map((entry) => entry.videoFileId));
+    const destinationKeys = new Set(destinationFiles.map((file) => `${file.filename.toLowerCase()}|${file.sizeBytes}`));
+    const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0 };
+    const candidates: Array<{ id: string; match: NameMatch; diskId: string; relativePath: string; sizeBytes: number }> = [];
+    for (const file of files) {
+      const match = nameMatch(file.filename, key);
+      if (!match) continue;
+      if (file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path)) skipped.inside += 1;
+      else if (busyIds.has(file.id)) skipped.inTransfer += 1;
+      else if (ignoredIds.has(file.id)) skipped.ignored += 1;
+      else if (destinationKeys.has(`${file.filename.toLowerCase()}|${file.sizeBytes}`)) skipped.duplicates += 1;
+      else candidates.push({ id: file.id, match, diskId: file.diskId, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) });
+    }
+    candidates.sort((left, right) => Number(left.match === "similar") - Number(right.match === "similar")
+      || left.diskId.localeCompare(right.diskId)
+      || left.relativePath.localeCompare(right.relativePath));
+    return {
+      destination: { id: destination.id, diskId: destination.diskId, diskName: destination.disk.name, path: destination.path, name },
+      key,
+      total: candidates.length,
+      totalBytes: candidates.reduce((sum, file) => sum + file.sizeBytes, 0),
+      exact: candidates.filter((file) => file.match === "exact").length,
+      similar: candidates.filter((file) => file.match === "similar").length,
+      skipped,
+      items: candidates.slice(0, groupCandidateLimit).map((file) => ({ id: file.id, match: file.match }))
+    };
+  });
+
+  // F groups the file into the folder (it joins the open grouping transfer); J leaves it alone for good.
+  app.post("/api/transfers/group/decide", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = groupDecisionSchema.parse(request.body);
+    const destination = await prisma.transferDestination.findUnique({ where: { id: body.destinationId }, include: { disk: true } });
+    if (!destination) return reply.code(404).send({ message: "Destination not found" });
+    const file = await prisma.videoFile.findFirst({
+      where: visibleFilesWhere(isProtectedFolderUnlocked(request), { id: body.fileId, isPresent: true }),
+      select: plannedFileSelect
+    });
+    if (!file) return reply.code(404).send({ message: "File not found" });
+
+    if (body.decision === "ignore") {
+      await prisma.transferGroupIgnore.upsert({
+        where: { destinationId_videoFileId: { destinationId: destination.id, videoFileId: file.id } },
+        create: { destinationId: destination.id, videoFileId: file.id },
+        update: {}
+      });
+      await recordAction({ action: "transfer.group.ignore", actorType: "web", actorId: "admin", target: file.filename, result: { destinationId: destination.id } });
+      return { ok: true, decision: "ignore" };
+    }
+
+    const plan = await planTransfer(destination, [file]);
+    if (plan.movable.length === 0) {
+      const reason = plan.skipped[0]?.reason ?? "nothing_to_move";
+      return reply.code(409).send({ message: groupSkipMessages[reason], reason });
+    }
+    if (!plan.fits) return reply.code(409).send(plan.spaceProblem);
+    const open = await prisma.transferJob.findFirst({
+      where: { destinationId: destination.id, kind: "group", status: { in: ["active", "paused"] } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true }
+    });
+    const created = await createJob(reply, "group", destination, plan, undefined, open?.id);
+    await prisma.transferGroupIgnore.deleteMany({ where: { destinationId: destination.id, videoFileId: file.id } });
+    return created;
+  });
+
+  // Z in a grouping session: forget an ignore, or take a file back out while nothing has happened to it.
+  app.post("/api/transfers/group/undo", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = groupDecisionSchema.parse(request.body);
+    if (body.decision === "ignore") {
+      await prisma.transferGroupIgnore.deleteMany({ where: { destinationId: body.destinationId, videoFileId: body.fileId } });
+      return { ok: true };
+    }
+    const item = await prisma.transferItem.findFirst({
+      where: { videoFileId: body.fileId, state: { in: unfinishedStates }, job: { destinationId: body.destinationId, kind: "group" } },
+      select: { id: true, jobId: true, filename: true }
+    });
+    if (!item) return reply.code(404).send({ message: "That file is not in a grouping transfer" });
+    // Only while still pending: once the Companion claims it, the file finishes its way safely.
+    const removed = await prisma.transferItem.deleteMany({ where: { id: item.id, state: "pending" } });
+    if (removed.count === 0) return reply.code(409).send({ message: "The Companion already started moving this file; it will finish its way to the folder", reason: "already_started" });
+    const left = await prisma.transferItem.count({ where: { jobId: item.jobId } });
+    if (left === 0) await prisma.transferJob.deleteMany({ where: { id: item.jobId } });
+    else await closeFinishedJob(item.jobId);
+    await recordAction({ action: "transfer.group.undo", actorType: "web", actorId: "admin", target: item.filename, result: { jobId: item.jobId } });
+    return { ok: true };
+  });
 
   app.get("/api/transfers/summary", { preHandler: requireWebAuth }, async () => {
     const items = await prisma.transferItem.findMany({

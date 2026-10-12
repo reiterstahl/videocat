@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, FolderInput, Star, X } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
-import { stagingReserveRatio } from "../lib/transfers";
+import { stagingReserveRatio, transferError } from "../lib/transfers";
 import type { ConsolidatePlan, TransferDestination, TransferSummary } from "../types";
 
 type ConsolidateDialogProps = {
@@ -32,7 +32,7 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
         setSummary(nextSummary);
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : "No se pudo preparar el plan.");
+        if (active) setError(transferError(reason, "No se pudo preparar el plan."));
       });
     return () => {
       active = false;
@@ -54,7 +54,7 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
       await api("/api/transfers/consolidate", { method: "POST", body: JSON.stringify({ destinationId: destination.id, sources }) });
       onCreated();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo crear el traslado.");
+      setError(transferError(reason, "No se pudo crear el traslado."));
       setSubmitting(false);
     }
   }

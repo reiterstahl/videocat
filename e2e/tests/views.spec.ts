@@ -162,3 +162,41 @@ test("a starred folder consolidates its namesakes and the transfer shows up in T
   await page.locator(".vc-transfers-destinations").getByRole("button", { name: "Quitar estrella" }).first().click();
   await expect(page.locator(".vc-transfers-destinations")).toContainText("Ninguna todavía");
 });
+
+test("grouping files finds similar names and decides them like Review", async ({ page }) => {
+  await openView(page, "/traslados");
+  const card = page.locator(".vc-transfers-group");
+  await card.getByRole("textbox", { name: "Buscar carpeta para agrupar archivos" }).fill("boda");
+  const results = card.locator(".vc-transfers-folder-results li");
+  await expect(results.first()).toBeVisible();
+  await results.first().getByRole("button", { name: "Agrupar aquí" }).click();
+
+  const session = page.getByRole("dialog", { name: "Sesión para agrupar archivos" });
+  await expect(session.getByRole("heading", { name: "Agrupar archivos" })).toBeVisible();
+  await expect(session.locator(".vc-group-note")).toContainText("Destino:");
+  const title = session.locator(".vc-review-titlebar strong");
+  const first = (await title.textContent())!;
+  expect(first.toLowerCase()).toContain("boda");
+
+  // F groups, J ignores, Z brings the last one back.
+  await page.keyboard.press("f");
+  await expect(session.locator(".vc-review-last")).toContainText(`Agrupado: ${first}`);
+  await expect(session.locator(".vc-review-stats")).toContainText("Agrupados1");
+  const second = (await title.textContent())!;
+  expect(second).not.toBe(first);
+  await page.keyboard.press("j");
+  await expect(session.locator(".vc-review-stats")).toContainText("Ignorados1");
+  await page.keyboard.press("z");
+  await expect(title).toHaveText(second);
+  await expect(session.locator(".vc-review-stats")).toContainText("Ignorados0");
+  await page.keyboard.press("Escape");
+  await expect(session).toHaveCount(0);
+
+  // The grouped file is now a grouping transfer into the chosen folder.
+  const job = page.locator(".vc-transfers-list > li", { hasText: "Agrupar" }).first();
+  await expect(job).toBeVisible();
+  await expect(job).toContainText("Boda");
+  await job.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar traslado" }).click();
+  await expect(job.locator(".vc-badge")).toHaveText("Cancelado");
+});

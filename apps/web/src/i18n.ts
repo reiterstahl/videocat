@@ -176,6 +176,45 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Ese archivo ya está en esta carpeta.": "That file is already in this folder",
+  "Ese archivo ya está en otro traslado.": "That file is already in another transfer",
+  "Ya hay un archivo idéntico en esta carpeta; se queda para revisar en Duplicados.": "An identical file is already in this folder; it stays for review in Duplicates",
+  "Nada que mover.": "Nothing to move",
+  "No hay espacio suficiente en el disco de destino.": "Not enough free space on the destination drive",
+  "Escanea primero el disco de destino para conocer su espacio libre.": "Scan the destination drive first so its free space is known",
+  "El Companion ya empezó a mover este archivo; terminará su camino hasta la carpeta.": "The Companion already started moving this file; it will finish its way to the folder",
+  "Ese archivo no está en un traslado para agrupar.": "That file is not in a grouping transfer",
+  "Esta carpeta todavía tiene archivos en camino.": "This destination still has files on their way",
+  "Esa carpeta no tiene videos catalogados en este disco.": "That folder has no catalogued videos on this disk",
+  "Algunos archivos se agregaron a otro traslado al mismo tiempo.": "Some files were added to another transfer at the same time",
+  "Salir de agrupar": "Leave grouping",
+  "Sesión para agrupar archivos": "File grouping session",
+  "Agrupado": "Grouped",
+  "Ignorar": "Ignore",
+  "Ignorado": "Ignored",
+  "Este es el último archivo parecido.": "This is the last similar file.",
+  "agrupar ·": "group ·",
+  "ignorar ·": "ignore ·",
+  "Por decidir": "To decide",
+  "Agrupados": "Grouped",
+  "Ignorados": "Ignored",
+  "Nombre parecido": "Similar name",
+  "Contiene el nombre": "Contains the name",
+  "Buscando archivos parecidos…": "Looking for similar files…",
+  "Ver en Traslados": "View in Transfers",
+  "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado.": "No file on the drives has a similar name that is not already in the folder, in another transfer or ignored.",
+  "No se pudieron buscar los archivos parecidos.": "Similar files could not be searched.",
+  "No se pudo deshacer.": "It could not be undone.",
+  "Nombre de la carpeta destino": "Destination folder name",
+  "Buscar carpeta para agrupar archivos": "Search a folder to group files into",
+  "Buscando…": "Searching…",
+  "Ninguna carpeta con ese nombre en el catálogo.": "No folder with that name in the catalog.",
+  "Con estrella": "Starred",
+  "Agrupar aquí": "Group here",
+  "Escribe al menos 3 letras. La carpeta que elijas queda marcada con estrella.": "Type at least 3 letters. The folder you choose gets a star.",
+  "Agrupar archivos en esta carpeta": "Group files into this folder",
+  "No se pudo marcar la carpeta.": "The folder could not be starred.",
+  "Busca en todos los discos archivos con un nombre parecido al de esta carpeta": "Finds files on every drive with a name similar to this folder",
   "Traslados": "Transfers",
   "Mueve videos entre discos aunque no estén conectados a la vez. Cada archivo pasa por la carpeta temporal del Companion y solo se borra de un lugar después de verificar su copia en el siguiente.": "Move videos between drives even when they are never connected at the same time. Each file goes through the Companion staging folder and is only removed from one place after its copy in the next one is verified.",
   "Consolidar carpetas": "Consolidate folders",
@@ -769,6 +808,27 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^Agrupar en (.+)$/);
+  if (match) return `Group into ${match[1]}`;
+
+  match = text.match(/^Destino: (.+)$/);
+  if (match) return `Destination: ${match[1]}`;
+
+  match = text.match(/^No hay archivos para agrupar en (.+)$/);
+  if (match) return `No files to group into ${match[1]}`;
+
+  match = text.match(/^Terminaste con (.+)$/);
+  if (match) return `You are done with ${match[1]}`;
+
+  match = text.match(/^En esta sesión · agrupados: ([\d.,\s]+) \((.+)\) · ignorados: ([\d.,\s]+)$/);
+  if (match) return `This session · grouped: ${match[1]} (${match[2]}) · ignored: ${match[3]}`;
+
+  match = text.match(/^Hay una carpeta (.+) más grande en (.+) \((.+)\)\. Conviene agrupar ahí\.$/);
+  if (match) return `There is a larger ${match[1]} folder on ${match[2]} (${match[3]}). Grouping there is better.`;
+
+  match = text.match(/^([\d.,\s]+) ya tienen una copia idéntica en la carpeta y se quedan para revisar en Duplicados\.$/);
+  if (match) return `${match[1]} already have an identical copy in the folder and stay for review in Duplicates.`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

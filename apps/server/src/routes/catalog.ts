@@ -1210,6 +1210,17 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // Full cards for a known list of files (for example the queue of a grouping session), in that order.
+  app.post("/api/files/by-ids", { preHandler: requireWebAuth }, async (request) => {
+    const body = z.object({ ids: z.array(z.string().uuid()).max(50) }).parse(request.body);
+    const files = await prisma.videoFile.findMany({
+      where: visibleFilesWhere(isProtectedFolderUnlocked(request), { id: { in: body.ids }, isPresent: true }),
+      include: fileIncludes()
+    });
+    const byId = new Map((await attachCategoryKeys(files)).map((file) => [file.id, file]));
+    return { files: body.ids.flatMap((id) => (byId.has(id) ? [serializeFile(byId.get(id)!, 0)] : [])) };
+  });
+
   app.get("/api/files/:id", { preHandler: requireWebAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const protectedUnlocked = isProtectedFolderUnlocked(request);

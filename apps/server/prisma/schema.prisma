@@ -92,6 +92,7 @@ model VideoFile {
   downloadQueue      DownloadQueue?
   streamSessions     StreamSession[]
   transferItems      TransferItem[]
+  groupIgnores       TransferGroupIgnore[]
 
   @@unique([diskId, relativePath])
   @@index([diskId])
@@ -321,9 +322,22 @@ model TransferDestination {
   createdAt DateTime      @default(now())
   disk      Disk          @relation(fields: [diskId], references: [id], onDelete: Cascade)
   jobs      TransferJob[]
+  ignored   TransferGroupIgnore[]
 
   @@unique([diskId, path])
   @@index([nameKey])
+}
+
+// Files the person chose to leave alone (J) when grouping into a folder; not proposed again.
+model TransferGroupIgnore {
+  destinationId String              @db.Uuid
+  videoFileId   String              @db.Uuid
+  createdAt     DateTime            @default(now())
+  destination   TransferDestination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  videoFile     VideoFile           @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+
+  @@id([destinationId, videoFileId])
+  @@index([videoFileId])
 }
 
 model TransferJob {

@@ -5,11 +5,13 @@ import {
   ChevronDown,
   ChevronRight,
   FolderInput,
+  FolderSearch,
   HardDrive,
   Layers,
   Pause,
   Play,
   Plug,
+  Search,
   Star,
   Trash2,
   X
@@ -17,8 +19,9 @@ import {
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
-import { needDetail, needTitle, stagingReserveRatio, transferStateLabels } from "../lib/transfers";
-import type { TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
+import { needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
+import { GroupSession } from "../components/GroupSession";
+import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
 
 type TransfersViewProps = {
   refreshKey: number;
@@ -61,6 +64,47 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState<TransferJob | null>(null);
+  const [groupQuery, setGroupQuery] = useState("");
+  const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
+  const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const term = groupQuery.trim();
+    setGroupFolders(null);
+    if (term.length < 3) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api<{ folders: GroupFolder[] }>(`/api/transfers/folders?q=${encodeURIComponent(term)}`)
+        .then((response) => {
+          if (active) setGroupFolders(response.folders);
+        })
+        .catch(() => {
+          if (active) setGroupFolders([]);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [groupQuery]);
+
+  async function startGrouping(folder: GroupFolder) {
+    if (folder.destinationId) {
+      setGroupingDestinationId(folder.destinationId);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api<{ destination: { id: string } }>("/api/transfers/destinations", { method: "POST", body: JSON.stringify({ diskId: folder.diskId, path: folder.path }) });
+      setGroupingDestinationId(response.destination.id);
+      void load();
+    } catch (reason) {
+      setError(transferError(reason, "No se pudo marcar la carpeta."));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -73,7 +117,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
       setJobs(nextJobs.jobs);
       setDestinations(nextDestinations.destinations);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudieron cargar los traslados.");
+      setError(transferError(reason, "No se pudieron cargar los traslados."));
     }
   }, []);
 
@@ -110,7 +154,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
       await load();
       onChanged();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo actualizar el traslado.");
+      setError(transferError(reason, "No se pudo actualizar el traslado."));
     } finally {
       setBusy(false);
     }
@@ -123,7 +167,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
       await api(`/api/transfers/destinations/${destination.id}`, { method: "DELETE" });
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo quitar la estrella.");
+      setError(transferError(reason, "No se pudo quitar la estrella."));
     } finally {
       setBusy(false);
     }
@@ -158,13 +202,50 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
             <Layers size={14} /> Ir a Uso por carpeta
           </button>
         </article>
-        <article className="vc-panel vc-transfers-kind is-soon">
+        <article className="vc-panel vc-transfers-kind vc-transfers-group">
           <ArrowRightLeft size={20} aria-hidden="true" />
           <div>
             <h3>Agrupar archivos</h3>
             <p>Parte de una carpeta (ej. testing001) y busca en todos los discos archivos con nombres parecidos. Decides uno por uno, como en Review: F agrupar, J ignorar.</p>
           </div>
-          <span className="vc-badge">Próximamente</span>
+          <label className="vc-folders-search">
+            <Search size={15} aria-hidden="true" />
+            <input value={groupQuery} onChange={(event) => setGroupQuery(event.target.value)} placeholder="Nombre de la carpeta destino" aria-label="Buscar carpeta para agrupar archivos" />
+          </label>
+          {groupQuery.trim().length >= 3 ? (
+            groupFolders === null ? <div className="loading">Buscando…</div> : groupFolders.length === 0 ? (
+              <p className="vc-folders-empty">Ninguna carpeta con ese nombre en el catálogo.</p>
+            ) : (
+              <ul className="vc-transfers-folder-results">
+                {groupFolders.map((folder) => {
+                  const name = folder.path.split("/").pop() ?? folder.path;
+                  // Same rule as the stars: files should go to the largest folder with that name.
+                  const larger = groupFolders.find((other) => other !== folder && other.bytes > folder.bytes && (other.path.split("/").pop() ?? "").toLowerCase() === name.toLowerCase());
+                  return (
+                  <li key={`${folder.diskId}:${folder.path}`}>
+                    <span className="vc-transfers-folder-name">
+                      {folder.destinationId ? <Star size={12} aria-label="Con estrella" className="is-starred" /> : null}
+                      <strong>{folder.path.split("/").pop()}</strong>
+                      <small>{`${folder.diskName} › ${folder.path}`}</small>
+                    </span>
+                    <em>{`${formatCount(folder.files)} ${folder.files === 1 ? "video" : "videos"} · ${formatBytes(folder.bytes)}`}</em>
+                    <button className="vc-button is-small" disabled={busy} onClick={() => void startGrouping(folder)} type="button">
+                      <FolderSearch size={14} /> Agrupar aquí
+                    </button>
+                    {larger ? (
+                      <p className="vc-folders-warning">
+                        <AlertTriangle size={14} aria-hidden="true" />
+                        {`Hay una carpeta ${name} más grande en ${larger.diskName} (${formatBytes(larger.bytes)}). Conviene agrupar ahí.`}
+                      </p>
+                    ) : null}
+                  </li>
+                  );
+                })}
+              </ul>
+            )
+          ) : (
+            <p className="vc-transfers-detail">Escribe al menos 3 letras. La carpeta que elijas queda marcada con estrella.</p>
+          )}
         </article>
       </div>
 
@@ -290,6 +371,9 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
                   <li key={destination.id}>
                     <span>{destination.diskName}</span>
                     <code>{destination.path}</code>
+                    <button className="icon-button" disabled={busy} onClick={() => setGroupingDestinationId(destination.id)} type="button" title="Agrupar archivos en esta carpeta">
+                      <FolderSearch size={14} />
+                    </button>
                     <button className="icon-button" disabled={busy} onClick={() => void removeDestination(destination)} type="button" title="Quitar estrella">
                       <Trash2 size={14} />
                     </button>
@@ -300,6 +384,21 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
           </div>
         </aside>
       </div>
+
+      {groupingDestinationId ? (
+        <GroupSession
+          destinationId={groupingDestinationId}
+          onClose={() => {
+            setGroupingDestinationId(null);
+            void load();
+          }}
+          onOpenTransfers={() => {
+            setGroupingDestinationId(null);
+            void load();
+          }}
+          onChanged={onChanged}
+        />
+      ) : null}
 
       {confirmCancel ? (
         <div className="delete-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancel-transfer-title" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setConfirmCancel(null); }}>

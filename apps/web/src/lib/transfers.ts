@@ -40,3 +40,23 @@ export function needDetail(need: TransferNeed): string {
 
 // Free space the Companion always leaves on the staging drive.
 export const stagingReserveRatio = 0.05;
+
+// Server messages about transfers, shown in Spanish (the page translator turns them into English).
+const transferMessages: Record<string, string> = {
+  "That file is already in this folder": "Ese archivo ya está en esta carpeta.",
+  "That file is already in another transfer": "Ese archivo ya está en otro traslado.",
+  "An identical file is already in this folder; it stays for review in Duplicates": "Ya hay un archivo idéntico en esta carpeta; se queda para revisar en Duplicados.",
+  "Nothing to move": "Nada que mover.",
+  "Not enough free space on the destination drive": "No hay espacio suficiente en el disco de destino.",
+  "Scan the destination drive first so its free space is known": "Escanea primero el disco de destino para conocer su espacio libre.",
+  "The Companion already started moving this file; it will finish its way to the folder": "El Companion ya empezó a mover este archivo; terminará su camino hasta la carpeta.",
+  "That file is not in a grouping transfer": "Ese archivo no está en un traslado para agrupar.",
+  "This destination still has files on their way": "Esta carpeta todavía tiene archivos en camino.",
+  "That folder has no catalogued videos on this disk": "Esa carpeta no tiene videos catalogados en este disco.",
+  "Some files were added to another transfer at the same time": "Algunos archivos se agregaron a otro traslado al mismo tiempo."
+};
+
+export function transferError(reason: unknown, fallback: string): string {
+  if (!(reason instanceof Error)) return fallback;
+  return transferMessages[reason.message] ?? reason.message;
+}

@@ -998,6 +998,76 @@ test("consolidation plans folders, creates the transfer and tells what to connec
   }
 });
 
+test("grouping finds similar file names, groups with F, ignores with J and undoes both", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const folder = `Testing${suffix}001`;
+  const target = await prisma.disk.create({ data: { name: `Destino ${suffix}`, volumeId: `gt-${suffix}`, totalBytes: 4_000_000_000_000n, freeBytes: 1_000_000_000_000n } });
+  const source = await prisma.disk.create({ data: { name: `Origen ${suffix}`, volumeId: `gs-${suffix}`, totalBytes: 1_000_000_000_000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  const file = (diskId: string, relativePath: string, sizeBytes = 10n) => ({ diskId, filename: relativePath.split("/").pop()!, extension: "mp4", absolutePath: `X:/${relativePath}`, relativePath, sizeBytes });
+  try {
+    await prisma.videoFile.createMany({
+      data: [
+        file(target.id, `Proyectos/${folder}/ya-dentro_${folder}.mp4`),
+        file(target.id, `Proyectos/${folder}/igual.mp4`, 77n),
+        file(source.id, `Sueltos/.${folder.toUpperCase()}_toma1.mp4`),
+        file(source.id, `Sueltos/${folder.replace("001", "_001")} toma2.mp4`),
+        file(source.id, `Sueltos/${folder.replace("ing", "ng")}.mp4`),
+        file(source.id, `Sueltos/${folder.replace("001", "002")}.mp4`),
+        file(source.id, `Sueltos/otro.mp4`),
+        file(source.id, `Copia/igual_${folder}.mp4`, 77n),
+        file(source.id, `Private/${folder}_secreto.mp4`)
+      ]
+    });
+    await prisma.videoFile.updateMany({ where: { diskId: source.id, filename: `igual_${folder}.mp4` }, data: { filename: "igual.mp4" } });
+
+    const folders = (await app.inject({ method: "GET", url: `/api/transfers/folders?q=${encodeURIComponent(`testing ${suffix}`)}`, headers: { cookie } })).json().folders;
+    const found = folders.find((entry: { diskId: string }) => entry.diskId === target.id);
+    assert.deepEqual([found.path, found.files, found.destinationId], [`Proyectos/${folder}`, 2, null]);
+
+    const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: found.path } })).json().destination.id;
+    const candidates = async () => (await app.inject({ method: "POST", url: "/api/transfers/group/candidates", headers: webMutationHeaders(cookie), payload: { destinationId } })).json();
+    const first = await candidates();
+    assert.equal(first.exact, 2, "upper case with a dot and the separated name");
+    assert.equal(first.similar, 1, "one letter missing; a different number does not count");
+    assert.equal(first.skipped.inside, 1);
+    assert.equal(first.skipped.duplicates, 0, "igual.mp4 does not carry the name");
+    assert.equal(first.items.length, 3);
+    assert.equal(first.items[2].match, "similar");
+
+    const cards = (await app.inject({ method: "POST", url: "/api/files/by-ids", headers: webMutationHeaders(cookie), payload: { ids: first.items.map((item: { id: string }) => item.id).reverse() } })).json().files;
+    assert.equal(cards.length, 3);
+    assert.equal(cards[0].id, first.items[2].id, "cards come back in the requested order");
+
+    const decide = (fileId: string, decision: "group" | "ignore", url = "/api/transfers/group/decide") =>
+      app.inject({ method: "POST", url, headers: webMutationHeaders(cookie), payload: { destinationId, fileId, decision } });
+    const [grouped, alsoGrouped, ignored] = first.items.map((item: { id: string }) => item.id);
+    assert.equal((await decide(grouped, "group")).statusCode, 200);
+    assert.equal((await decide(alsoGrouped, "group")).statusCode, 200);
+    assert.equal((await decide(ignored, "ignore")).statusCode, 200);
+    const jobs = await prisma.transferJob.findMany({ where: { destinationId }, include: { items: true } });
+    assert.equal(jobs.length, 1, "one grouping transfer collects the session");
+    assert.equal(jobs[0].kind, "group");
+    assert.equal(jobs[0].items.length, 2);
+    const after = await candidates();
+    assert.deepEqual([after.total, after.skipped.inTransfer, after.skipped.ignored], [0, 2, 1]);
+    assert.equal((await decide(grouped, "group")).statusCode, 409, "already in a transfer");
+
+    // Undo: an ignore is forgotten; a grouped file leaves while still pending, not once it started.
+    assert.equal((await decide(ignored, "ignore", "/api/transfers/group/undo")).statusCode, 200);
+    assert.equal((await decide(grouped, "group", "/api/transfers/group/undo")).statusCode, 200);
+    await prisma.transferItem.updateMany({ where: { videoFileId: alsoGrouped }, data: { state: "staging" } });
+    const late = await decide(alsoGrouped, "group", "/api/transfers/group/undo");
+    assert.equal(late.statusCode, 409);
+    assert.equal(late.json().reason, "already_started");
+    assert.equal((await candidates()).total, 2);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
+    for (const disk of [source, target]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

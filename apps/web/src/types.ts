@@ -194,3 +194,23 @@ export type TransferItem = {
   error: string | null;
   updatedAt: string;
 };
+
+export type GroupCandidates = {
+  destination: { id: string; diskId: string; diskName: string; path: string; name: string };
+  key: string;
+  total: number;
+  totalBytes: number;
+  exact: number;
+  similar: number;
+  skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number };
+  items: Array<{ id: string; match: "exact" | "similar" }>;
+};
+
+export type GroupFolder = {
+  diskId: string;
+  diskName: string;
+  path: string;
+  files: number;
+  bytes: number;
+  destinationId: string | null;
+};

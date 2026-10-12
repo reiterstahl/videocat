@@ -2456,6 +2456,7 @@ export function App() {
             refreshStats();
             navigateToView("transfers");
           }}
+          onTransfersChanged={refreshStats}
         />
       ) : null}
 

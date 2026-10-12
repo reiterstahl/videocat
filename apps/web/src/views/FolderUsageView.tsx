@@ -1,10 +1,12 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, EyeOff, FolderInput, FolderTree, Layers, Search, Star, Undo2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, EyeOff, FolderInput, FolderSearch, FolderTree, Layers, Search, Star, Undo2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
+import { transferError } from "../lib/transfers";
 import { formatCount } from "../lib/app-helpers";
 import { squarify } from "../lib/treemap";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
+import { GroupSession } from "../components/GroupSession";
 import type { CatalogLocationScope, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination } from "../types";
 
 type FolderUsageViewProps = {
@@ -13,6 +15,7 @@ type FolderUsageViewProps = {
   refreshKey: number;
   onOpenLocations: (scope: CatalogLocationScope) => void;
   onTransferCreated: () => void;
+  onTransfersChanged: () => void;
 };
 
 type ConsolidateRequest = {
@@ -92,7 +95,7 @@ function describe(node: FolderGroupNode): string {
   return `${formatBytes(node.sizeBytes)} · ${formatCount(node.fileCount)} videos${places > 1 ? ` · ${places} ubicaciones` : ""}`;
 }
 
-export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpenLocations, onTransferCreated }: FolderUsageViewProps) {
+export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpenLocations, onTransferCreated, onTransfersChanged }: FolderUsageViewProps) {
   const [map, setMap] = useState<FolderGroupMap | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,6 +107,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
   const [consolidating, setConsolidating] = useState<ConsolidateRequest | null>(null);
+  const [groupingId, setGroupingId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -132,7 +136,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
         if (active) setMap(response);
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : "No se pudo calcular el uso por carpeta.");
+        if (active) setError(transferError(reason, "No se pudo calcular el uso por carpeta."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -181,7 +185,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
       await api<{ excludedNames: string[] }>("/api/folder-groups/exclusions", { method: "PUT", body: JSON.stringify({ names }) });
       setReloadKey((value) => value + 1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo guardar la exclusión.");
+      setError(transferError(reason, "No se pudo guardar la exclusión."));
     } finally {
       setSaving(false);
     }
@@ -213,7 +217,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
         setDestinations(response.destinations);
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "No se pudo cambiar la carpeta destino.");
+      setError(transferError(reason, "No se pudo cambiar la carpeta destino."));
     } finally {
       setSaving(false);
     }
@@ -367,9 +371,14 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                               {`La ubicación más grande es ${largest.diskName}: ${largest.path} (${formatBytes(largest.sizeBytes)}). Conviene que la estrella esté ahí para mover menos datos.`}
                             </p>
                           ) : null}
-                          <button className="vc-button is-small is-primary" disabled={saving} onClick={() => consolidateInto(group, starredLocation)} type="button">
-                            <FolderInput size={14} /> {`Consolidar en ${starredLocation.diskName}`}
-                          </button>
+                          <div className="vc-folders-actions">
+                            <button className="vc-button is-small is-primary" disabled={saving} onClick={() => consolidateInto(group, starredLocation)} type="button">
+                              <FolderInput size={14} /> {`Consolidar en ${starredLocation.diskName}`}
+                            </button>
+                            <button className="vc-button is-small" disabled={saving} onClick={() => setGroupingId(starredIn(starredLocation)?.id ?? null)} type="button" title="Busca en todos los discos archivos con un nombre parecido al de esta carpeta">
+                              <FolderSearch size={14} /> Agrupar archivos
+                            </button>
+                          </div>
                         </>
                       );
                     })()}
@@ -389,6 +398,18 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
             )}
           </aside>
         </div>
+      ) : null}
+
+      {groupingId ? (
+        <GroupSession
+          destinationId={groupingId}
+          onClose={() => setGroupingId(null)}
+          onOpenTransfers={() => {
+            setGroupingId(null);
+            onTransferCreated();
+          }}
+          onChanged={onTransfersChanged}
+        />
       ) : null}
 
       {consolidating ? (
