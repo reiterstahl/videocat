@@ -17,6 +17,15 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.17
+
+- Image hardening after a vulnerability scan of 0.2.16 (Docker Scout / Trivy):
+  - Server image moves from Debian 12 (bookworm) to **Debian 13 (trixie)** and installs the latest security updates on every build. Critical findings go from 4 to 0; the remaining ones are Debian advisories without a published fix, in system tools the server does not use.
+  - The server image no longer ships `npm`, `npx`, `corepack` or `yarn` (the Node base image bundles them with their own vulnerable dependencies). Migrations run with the Prisma CLI directly. If you ran `npx` inside the container by hand, use `./node_modules/.bin/prisma` instead.
+  - Web image applies Alpine security updates on every build.
+  - CI scans both images with Trivy and fails on critical or high findings that already have a fix.
+- No configuration changes; the Windows Companion stays on 0.2.6.
+
 ## Upgrading to 0.2.16
 
 - Transfers: every state change reported by a Companion is now applied atomically against the state and holder it was based on, so a cancel from the web or two Companions at the same moment can never overwrite each other.
