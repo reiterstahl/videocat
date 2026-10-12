@@ -1,6 +1,8 @@
-FROM node:24-bookworm-slim AS base
+FROM node:24-trixie-slim AS base
 WORKDIR /app
+# Security updates for the base packages on every build.
 RUN apt-get update -y \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
@@ -21,6 +23,10 @@ RUN npm run build -w @videocat/shared && npm run build -w @videocat/server \
 
 FROM base AS runtime
 ENV NODE_ENV=production
+# The server never runs a package manager: drop the ones bundled with the Node image
+# (and the advisories that come with their own dependencies).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
+  /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/apps/server/node_modules ./apps/server/node_modules
 COPY --chown=node:node --from=build /app/packages/shared/dist ./packages/shared/dist
@@ -33,4 +39,4 @@ WORKDIR /app/apps/server
 USER node
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/index.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && exec node dist/index.js"]

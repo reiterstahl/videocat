@@ -149,6 +149,10 @@ jobs:
           context: .
           file: apps/server/Dockerfile
           push: false
+          load: true
+          tags: videocat-server:ci
+          # Always fetch the latest security updates of the base packages.
+          no-cache-filters: base
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
       - name: Build web image
@@ -157,5 +161,16 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: false
+          load: true
+          tags: videocat-web:ci
+          no-cache-filters: runtime
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
+      - name: Scan images for fixable vulnerabilities
+        # Fails on critical or high findings that already have a fix, so a stale base or a
+        # vulnerable dependency is caught before a release. Unfixed distro advisories are reported only.
+        run: |
+          for image in videocat-server:ci videocat-web:ci; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 \
+              image --quiet --scanners vuln --ignore-unfixed --severity CRITICAL,HIGH --exit-code 1 "$image"
+          done

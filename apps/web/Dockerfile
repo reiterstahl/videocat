@@ -11,11 +11,15 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-ARG VITE_VIDEOCAT_VERSION=0.2.16
+ARG VITE_VIDEOCAT_VERSION=0.2.17
 ENV VITE_VIDEOCAT_VERSION=$VITE_VIDEOCAT_VERSION
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/web
 
-FROM nginxinc/nginx-unprivileged:1.31.6-alpine
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine AS runtime
+# Security updates for the base packages on every build, then back to the unprivileged user.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/security-headers.conf /etc/nginx/snippets/videocat-security-headers.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
