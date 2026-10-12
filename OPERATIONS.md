@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.15
+
+- **Agrupar archivos** in Traslados: pick a folder (it gets a star) and decide, file by file like in Review, which files with a similar name on any drive move into it (`F` group, `J` ignore, `Z` undo). Files travel through the Companion staging folder exactly like a consolidation.
+- Migration `0022_transfer_group_ignores` runs automatically. No configuration changes; the Windows Companion stays on 0.2.6.
+
 ## Upgrading to 0.2.14 (Companion 0.2.6)
 
 - New section **Traslados** (`/traslados`) and **Consolidar** in Uso por carpeta: star the folder that should receive the contents of its namesakes; files move through a local staging folder of the Companion and are only removed from a place after their copy in the next one is verified with SHA-256.
