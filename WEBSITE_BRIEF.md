@@ -171,6 +171,13 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - Indicador global de Companion conectado.
 - Aviso de una versión estable más reciente publicada en Docker Hub.
 
+### Traslados
+
+- **Consolidar carpetas**: las carpetas con el mismo nombre en distintos discos (por ejemplo, varias "Testing") se juntan en la más grande, marcada con estrella. Antes de empezar se muestra el plan con lo que se mueve, cuánto ocupa y si cabe.
+- **Agrupar archivos**: desde una carpeta (por ejemplo `testing001`) se buscan en todos los discos archivos con nombres parecidos —sin importar mayúsculas, acentos, puntos, separadores ni una letra de diferencia— y se decide uno por uno como en Review: F agrupar, J ignorar.
+- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una carpeta temporal del Companion y la web avisa qué disco conectar o dónde liberar espacio.
+- Mensaje clave: **nada se borra sin una copia verificada en otro lugar**. Cada copia se comprueba con SHA-256 releyéndola entera, la carpeta temporal siempre deja libre el 5 % del disco, nada se sobrescribe y un corte a mitad de camino se retoma sin perder archivos.
+
 ### Perfil y privacidad
 
 - Cambio del PIN de cuatro dígitos.

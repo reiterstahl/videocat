@@ -13,7 +13,7 @@ API server for **VideoCAT**, a private, self-hosted catalog for videos spread ac
 `reiterstahl/videocat-server` is the Fastify + Prisma API:
 
 - Applies database migrations on startup, then serves the API on port `4000`.
-- Sign-in, catalog, review, duplicate detection, downloads queue, audit and administration endpoints.
+- Sign-in, catalog, review, duplicate detection, downloads queue, transfers (consolidate same-named folders, group files by name), audit and administration endpoints.
 - Endpoints and the outbound WebSocket tunnel (`/api/agent/tunnel`) used by paired Windows Companions, including bounded, read-only remote playback.
 - Thumbnail uploads (validated JPEG) and serving.
 
@@ -89,6 +89,7 @@ Back up PostgreSQL, the `thumbnails_data` volume and `.env`. The repository incl
 - Use HTTPS, `COOKIE_SECURE=true` and an exact `WEB_ORIGIN` outside localhost, and expose only the `web` container.
 - Each Companion pairs with a one-time code and an individual, revocable credential; the server stores only its hash.
 - Original videos are never stored on the server. Physical deletion only happens on Windows, by the Companion, with the right drive connected and the file revalidated.
+- Transfers move files through a local Companion staging folder and only remove a file from one place after its copy in the next one is verified with SHA-256; every state change is applied atomically.
 - Report vulnerabilities privately: https://github.com/reiterstahl/videocat/security
 
 ## License

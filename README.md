@@ -96,6 +96,12 @@ flowchart LR
 - Cola para copiar videos desde discos conectados a una carpeta local de Windows, con progreso por archivo, pausa y vaciado.
 - Selección aleatoria por tamaño objetivo en GB, limitada a discos o carpetas, sin repetir lo ya descargado.
 
+### Traslados
+- **Consolidar carpetas**: marca con estrella la carpeta más grande de un grupo repetido (por ejemplo, la "Testing" de 1.7 TB) y lleva ahí el contenido de las demás "Testing", estén en el disco que estén. Antes de empezar se ve el plan: qué sale de cada carpeta, cuánto ocupa y si cabe en el destino.
+- **Agrupar archivos**: parte de una carpeta (por ejemplo `testing001`) y busca en todos los discos archivos con un nombre parecido, ignorando mayúsculas, acentos, puntos y separadores, y con una letra de diferencia. Se decide uno por uno con la misma sesión de Review: `F` agrupar, `J` ignorar.
+- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una **carpeta temporal del Companion** y la sección **Traslados** avisa qué disco conectar o dónde liberar espacio.
+- **Nada se borra sin una copia verificada en otro lugar** (detalle en [Traslados seguros](#traslados-seguros)).
+
 ### Organización, administración y auditoría
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
 - **Esquema de uso** como mapa de carpetas por tamaño, navegable por niveles.
@@ -116,6 +122,7 @@ flowchart LR
 - Monitorea discos con marcador y rutas añadidas a mano, y reescanea periódicamente sin repetir trabajo.
 - Concilia archivos ausentes sin perder etiquetas ni historial, y los reactiva si reaparecen.
 - Antes de borrar, revalida tamaño, fecha y huella visual; si la ruta ya contiene otro archivo, cancela.
+- Mueve los archivos de los **Traslados** a través de una carpeta temporal local, verificando cada copia con SHA-256.
 
 <details>
 <summary><strong>Más capturas</strong></summary>
@@ -127,6 +134,10 @@ flowchart LR
 | A descargar | Esquema de uso |
 | --- | --- |
 | <img src="docs/screenshots/es/downloads.webp" alt="Cola de descargas con transferencia activa" width="440" /> | <img src="docs/screenshots/es/usage.webp" alt="Mapa de carpetas por tamaño" width="440" /> |
+
+| Traslados | Agrupar archivos |
+| --- | --- |
+| <img src="docs/screenshots/es/transfers.webp" alt="Traslados con avisos de qué disco conectar y la carpeta temporal" width="440" /> | <img src="docs/screenshots/es/group.webp" alt="Sesión para agrupar archivos con F agrupar y J ignorar" width="440" /> |
 
 | Administración | Companion de Windows |
 | --- | --- |
@@ -258,6 +269,28 @@ Si prefieres que el Companion no borre solo, cambia **Borrar los marcados** a *S
 
 En **Duplicados › Iniciar modo asistido**: `1` o `←` mantiene la copia A y marca la B para borrar, `2` o `→` hace lo contrario, `Enter` aplica la recomendación, `S` salta el grupo y `Esc` sale.
 
+### Traslados seguros
+
+1. Configura en el Companion **Configuración… › Archivos › Carpeta temporal de traslados** (por ejemplo `D:\VideoCAT\Traslados`). Sin ella, los traslados esperan.
+2. **Consolidar**: en **Uso por carpeta › Carpetas repetidas**, marca con ⭐ la ubicación que debe recibir los archivos (si hay otra más grande, la interfaz avisa) y pulsa **Consolidar en…**. **Agrupar**: en **Traslados › Agrupar archivos** (o con el ícono de búsqueda del árbol de carpetas del catálogo), elige la carpeta y decide archivo por archivo.
+3. Conecta el disco de origen: el Companion copia cada archivo a la carpeta temporal y lo borra del origen **solo después** de verificar la copia.
+4. Conecta el disco de destino: el Companion copia desde la carpeta temporal, verifica, actualiza el catálogo y **recién entonces** borra la copia temporal.
+
+Garantías en cada paso:
+- La copia se escribe a un nombre provisional, se calcula SHA-256 mientras se copia, se fuerza a disco, se renombra y **se vuelve a leer entera** para compararla. Si no coincide, se descarta y el original queda intacto.
+- Antes de borrar del origen se revalida que sea el mismo archivo del último escaneo (tamaño y fecha); si cambió, no se toca.
+- Cada paso queda registrado en el servidor antes de avanzar, así que un corte de luz o un disco desconectado a mitad de camino se retoma desde el último paso confirmado.
+- Nunca se sobrescribe: si en el destino hay un archivo idéntico, el original queda para revisarlo en Duplicados; si es distinto, el nuevo se guarda como `nombre (2).ext`.
+- La unidad de la carpeta temporal siempre conserva libre el **5 %**. En el destino se usa el espacio del último escaneo y se vuelve a medir al conectarlo; si no alcanza, el traslado espera y la web pide liberar espacio.
+- Mientras viajan, los videos siguen en el catálogo con la marca **En tránsito**. Cancelar solo detiene lo que aún no salió de su disco: lo que ya está en la carpeta temporal termina su camino.
+
+| Tecla | Acción en Agrupar archivos |
+| --- | --- |
+| `F` | Agrupar en la carpeta |
+| `J` | Ignorar (no vuelve a proponerse para esa carpeta) |
+| `S` | Saltar |
+| `Z` | Deshacer (un archivo agrupado sale del traslado mientras siga pendiente) |
+
 ### Reproducción remota y Chromecast
 
 El reproductor comprueba primero si el navegador soporta el contenedor y los codecs. Para videos H.264 con audio AAC o MP3 dentro de un contenedor incompatible, puedes habilitar un **remux temporal a MP4**, que copia los streams sin recodificar:
@@ -341,7 +374,8 @@ Las notas de cada versión están en [OPERATIONS.md](OPERATIONS.md#upgrade).
 - Cada instalación usa una credencial individual, emparejada con un código de un solo uso, cifrada con la protección del usuario de Windows y revocable desde Administración. El servidor guarda solo su hash.
 - El túnel es saliente y autenticado, y solo sirve lectura con HTTP Range: no acepta escrituras remotas.
 - El listener local solo responde `/health` sin autenticación. Abrir, copiar, borrar y procesar colas exige `COMPANION_TOKEN`.
-- Las rutas se resuelven de forma canónica antes de abrir, copiar o borrar, y nunca se sobrescribe un archivo existente al descargar.
+- Las rutas se resuelven de forma canónica antes de abrir, copiar o borrar, y nunca se sobrescribe un archivo existente al descargar ni al trasladar.
+- En los traslados, un archivo solo se borra de un lugar después de verificar con SHA-256 su copia en el siguiente; cada cambio de estado se aplica de forma atómica en el servidor, de modo que una cancelación o dos Companions a la vez no pueden pisarse.
 - Las actualizaciones llegan desde GitHub Releases con SHA-256, atestación de origen y SBOM.
 
 **Web y API**
@@ -382,6 +416,8 @@ Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Na
 | `COMPANION_DELETE_POLL_MS` | `60000` | Revisión de borrados pendientes. |
 | `COMPANION_DOWNLOAD_POLL_MS` | `60000` | Revisión de la cola de descargas. |
 | `COMPANION_DOWNLOAD_STALL_MS` | `30000` | Tiempo para dar una copia por estancada. |
+| `COMPANION_STAGING_DIR` | — | Carpeta temporal de **Traslados**; vacía desactiva los traslados. Siempre deja libre el 5 % de su unidad. |
+| `COMPANION_TRANSFER_POLL_MS` | `60000` | Revisión de traslados pendientes (mínimo 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Refresco de discos en el menú de la bandeja. |
 </details>
 
@@ -492,6 +528,7 @@ Web (sesión):
 | [ROADMAP.es.md](ROADMAP.es.md) | Plan de endurecimiento y fiabilidad. |
 | [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md) | Diseño de la reproducción remota segura. |
 | [UI_REDESIGN_PLAN.es.md](UI_REDESIGN_PLAN.es.md) | Rediseño de la interfaz por fases. |
+| [TRANSFERS_PLAN.es.md](TRANSFERS_PLAN.es.md) | Diseño y avance de Traslados (consolidar y agrupar). |
 | [PUBLISHING.md](PUBLISHING.md) | Lista de control para publicar artefactos oficiales. |
 
 ## Licencia y apoyo

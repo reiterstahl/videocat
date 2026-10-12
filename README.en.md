@@ -96,6 +96,12 @@ flowchart LR
 - A queue that copies videos from connected drives to a local Windows folder, with per-file progress, pause and clear.
 - Random selection by target size in GB, limited to drives or folders, without repeating what was already downloaded.
 
+### Transfers
+- **Consolidate folders**: star the largest folder of a repeated group (for example the 1.7 TB "Testing") and move the contents of every other "Testing" into it, whatever drive they are on. Before anything starts you see the plan: what leaves each folder, how much it takes and whether it fits at the destination.
+- **Group files**: start from a folder (for example `testing001`) and find files with a similar name on every drive, ignoring case, accents, dots and separators, plus one letter of difference. You decide one by one in the same Review session: `F` group, `J` ignore.
+- The drives never need to be connected at the same time: each file goes through a **Companion staging folder**, and the **Transfers** section tells you which drive to connect or where to free space.
+- **Nothing is removed without a verified copy somewhere else** (details in [Safe transfers](#safe-transfers)).
+
 ### Organization, administration and audit
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
@@ -116,6 +122,7 @@ flowchart LR
 - Monitors marked drives and manually added paths, and rescans periodically without repeating work.
 - Reconciles missing files without losing tags or history, and reactivates them if they come back.
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
+- Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -127,6 +134,10 @@ flowchart LR
 | To download | Usage map |
 | --- | --- |
 | <img src="docs/screenshots/en/downloads.webp" alt="Download queue with an active transfer" width="440" /> | <img src="docs/screenshots/en/usage.webp" alt="Folder map by size" width="440" /> |
+
+| Transfers | Group files |
+| --- | --- |
+| <img src="docs/screenshots/en/transfers.webp" alt="Transfers telling which drive to connect, with the staging folder" width="440" /> | <img src="docs/screenshots/en/group.webp" alt="Group files session with F to group and J to ignore" width="440" /> |
 
 | Administration | Windows Companion |
 | --- | --- |
@@ -260,6 +271,28 @@ If you would rather the Companion not delete on its own, set **Borrar los marcad
 
 In **Duplicates › Start assisted mode**: `1` or `←` keeps copy A and marks B for deletion, `2` or `→` does the opposite, `Enter` applies the recommendation, `S` skips the group and `Esc` exits.
 
+### Safe transfers
+
+1. In the Companion, set **Configuración… › Archivos › Carpeta temporal de traslados** (Settings › Files › Transfer staging folder), for example `D:\VideoCAT\Transfers`. Without it, transfers wait.
+2. **Consolidate**: in **Folder usage › Repeated folders**, star ⭐ the location that should receive the files (the interface warns if another one is larger) and press **Consolidate on…**. **Group**: in **Transfers › Group files** (or with the search icon in the catalog folder tree), choose the folder and decide file by file.
+3. Connect the source drive: the Companion copies each file to the staging folder and removes it from the source **only after** verifying the copy.
+4. Connect the destination drive: the Companion copies from staging, verifies, updates the catalog and **only then** removes the staging copy.
+
+Guarantees at every step:
+- The copy is written under a temporary name, hashed with SHA-256 while copying, flushed to disk, renamed and **read back in full** to compare. If it does not match, it is discarded and the original stays untouched.
+- Before removing from the source, it checks it is still the file from the last scan (size and modification time); if it changed, it is left alone.
+- Every step is recorded on the server before moving on, so a power cut or a drive unplugged halfway resumes from the last confirmed step.
+- Nothing is overwritten: an identical file at the destination leaves the original for review in Duplicates; a different one is saved as `name (2).ext`.
+- The staging drive always keeps **5 %** free. At the destination the free space from the last scan is used and measured again when the drive is connected; if it does not fit, the transfer waits and the web asks you to free space.
+- While travelling, videos stay in the catalog marked **In transit**. Cancelling only stops what has not left its drive yet: whatever is already in staging finishes its way.
+
+| Key | Action in Group files |
+| --- | --- |
+| `F` | Group into the folder |
+| `J` | Ignore (not proposed again for that folder) |
+| `S` | Skip |
+| `Z` | Undo (a grouped file leaves the transfer while it is still pending) |
+
 ### Remote playback and Chromecast
 
 The player first checks whether the browser supports the container and codecs. For H.264 videos with AAC or MP3 audio in an unsupported container, you can enable a **temporary MP4 remux**, which copies the streams without re-encoding:
@@ -343,7 +376,8 @@ Release notes for each version are in [OPERATIONS.md](OPERATIONS.md#upgrade).
 - Each installation uses an individual credential, paired with a one-time code, encrypted with the Windows user's protection and revocable from Administration. The server only stores its hash.
 - The tunnel is outbound and authenticated, and only serves reads through HTTP Range: it accepts no remote writes.
 - The local listener only answers `/health` without authentication. Opening, copying, deleting and processing queues require `COMPANION_TOKEN`.
-- Paths are resolved canonically before opening, copying or deleting, and downloads never overwrite an existing file.
+- Paths are resolved canonically before opening, copying or deleting, and neither downloads nor transfers overwrite an existing file.
+- In transfers, a file is only removed from one place after its copy in the next one is verified with SHA-256; every state change is applied atomically on the server, so a cancel or two Companions at once cannot overwrite each other.
 - Updates come from GitHub Releases with a SHA-256 checksum, a provenance attestation and an SBOM.
 
 **Web and API**
@@ -384,6 +418,8 @@ Everything is edited from **Configuración…**, organized in pages: Conexión, 
 | `COMPANION_DELETE_POLL_MS` | `60000` | Check for pending deletions. |
 | `COMPANION_DOWNLOAD_POLL_MS` | `60000` | Check of the download queue. |
 | `COMPANION_DOWNLOAD_STALL_MS` | `30000` | Time before a copy counts as stalled. |
+| `COMPANION_STAGING_DIR` | — | **Transfers** staging folder; empty disables transfers. Always keeps 5 % of its drive free. |
+| `COMPANION_TRANSFER_POLL_MS` | `60000` | How often pending transfers are checked (minimum 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Drive refresh in the tray menu. |
 </details>
 
@@ -494,6 +530,7 @@ Web (session):
 | [ROADMAP.md](ROADMAP.md) | Hardening and reliability plan. |
 | [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) | Design of secure remote playback. |
 | [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md) | Phased interface redesign. |
+| [TRANSFERS_PLAN.es.md](TRANSFERS_PLAN.es.md) | Design and progress of Transfers (consolidate and group), in Spanish. |
 | [PUBLISHING.md](PUBLISHING.md) | Checklist for publishing official artifacts. |
 
 ## License and support

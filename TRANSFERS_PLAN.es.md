@@ -1,6 +1,6 @@
 # Plan: traslados seguros, consolidar carpetas y agrupar archivos
 
-Estado: **fases 1, 2 y 3 de 4 terminadas** (motor de traslados y Consolidar carpetas en `v0.2.14` con el Companion `0.2.6`; Agrupar archivos en `v0.2.15`).
+Estado: **las 4 fases terminadas**. Motor y Consolidar carpetas en `v0.2.14` (Companion `0.2.6`), Agrupar archivos en `v0.2.15` y cierre en `v0.2.16`.
 
 ## Objetivo
 
@@ -73,5 +73,15 @@ Un archivo **nunca existe en menos de un lugar verificado**:
   - Sesión que **reutiliza Review** (`ReviewSession` ahora acepta textos, íconos y estadísticas): `F` agrupar en la carpeta, `J` ignorar (no vuelve a proponerse para esa carpeta; tabla `TransferGroupIgnore`, migración `0022`), `S` saltar, `Z` deshacer, con la misma animación. Primero los que contienen el nombre, después los parecidos, cada uno marcado.
   - Cada `F` suma el archivo a un único traslado de tipo *Agrupar* por carpeta, con el mismo control de espacio; deshacer lo saca mientras siga pendiente (si el Companion ya lo tomó, termina su camino). Se excluyen los que ya están en la carpeta, en otro traslado, ignorados o con una copia idéntica en el destino (quedan para Duplicados).
   - Pruebas: 4 unitarias de nombres, 1 de API (búsqueda, candidatos, F, J, Z y carpetas protegidas) y 1 e2e de la sesión.
-  - Pendiente para la fase 4: acceso desde el árbol de carpetas del catálogo.
-- [ ] **Fase 4 — Cierre**: flujo completo e2e con un Companion simulado, documentación y nueva versión del stack y del Companion.
+  - El acceso desde el árbol de carpetas del catálogo llegó en la fase 4.
+- [x] **Fase 4 — Cierre**
+  - e2e del flujo completo con un **Companion simulado**: el motor real de traslados trabajando sobre carpetas temporales y la API real. Registra dos discos, consolida desde la web y comprueba que el archivo sale del origen solo con la copia verificada en la carpeta temporal, que la web pide conectar el destino, y que al conectarlo llega con el mismo SHA-256, se vacía la carpeta temporal y el catálogo apunta al disco nuevo.
+  - Árbol de carpetas del catálogo: ícono **Agrupar archivos** en cada carpeta, que abre Traslados con la búsqueda cargada.
+  - Revisión de seguridad: cada cambio de estado que informa el Companion ahora se aplica de forma **atómica**, condicionado al estado y al Companion que lo tenía (y, al tomar un archivo, a que el traslado siga activo). Una cancelación desde la web o dos Companions a la vez ya no pueden pisarse. Prueba de API incluida.
+  - Documentación: README en español e inglés (sección *Traslados seguros*, teclas, variables y capturas), OPERATIONS, Docker Hub, TRAY.md y brief del sitio. El demo trae una carpeta temporal ficticia.
+  - Resuelto distinto a lo planeado: el espacio libre de la carpeta temporal se muestra en la web (Traslados), no en el Companion; la actividad de los traslados ya aparece en *Ver actividad*. No hizo falta otra versión del Companion: la `0.2.6` ya trae todo lo necesario.
+
+## Pendientes conocidos (menores)
+
+- 🟡 Dos traslados creados al mismo tiempo hacia el mismo disco podrían, entre los dos, pedir más espacio del que hay. No hay riesgo para los datos: el Companion vuelve a medir el destino al conectarlo y pausa con "Libera espacio".
+- 🟡 Si se cancela un traslado y después se quita la estrella, los registros terminados de ese traslado se borran junto con la carpeta destino; el historial de acciones (Auditoría) los conserva.

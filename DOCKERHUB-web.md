@@ -16,7 +16,7 @@ Web interface for **VideoCAT**, a private, self-hosted catalog for videos spread
 
 `reiterstahl/videocat-web` is the React app served by unprivileged Nginx on port `8080`:
 
-- The VideoCAT interface in Spanish and English, responsive for desktop and phones, with light, dark and OLED themes.
+- The VideoCAT interface in Spanish and English, responsive for desktop and phones, with light, dark and OLED themes: catalog, Review, duplicates, folder usage and transfers.
 - An installable web app (PWA) for Chrome, Edge, Firefox on Windows and Android, and Safari on iPhone, iPad and macOS. Its service worker caches only the app shell — never API responses, thumbnails or videos — and offers updates when a new image is deployed. Installing requires HTTPS.
 - A proxy for `/api/*` and `/thumbnails/*` to the `server` container, including the WebSocket used by the Companion tunnel.
 - Security headers (CSP, HSTS under HTTPS) and SPA routing.
@@ -73,6 +73,7 @@ Images are built for `linux/amd64` and `linux/arm64`. The interface shows a noti
 - Use HTTPS outside localhost and expose only this container.
 - The container runs as a non-root user; the official Compose file also makes its root file system read-only and drops all capabilities.
 - Original videos are never stored on the server. Physical deletion only happens on Windows, by the Companion, with the right drive connected and the file revalidated.
+- Transfers between drives only remove a file from one place after its copy in the next one is verified with SHA-256.
 - Report vulnerabilities privately: https://github.com/reiterstahl/videocat/security
 
 ## License
