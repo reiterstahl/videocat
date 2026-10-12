@@ -144,6 +144,15 @@ La consolidación de septiembre de 2026 implementa el libro `ActionAudit`, clave
 
 Lo pendiente queda marcado en cada fase. Los puntos más relevantes son las pruebas de escaneos concurrentes, la ingesta en lote, los presupuestos de rendimiento con 100k/500k videos, el cifrado de respaldos y un simulacro de restauración antes de cada release estable.
 
+## Pendiente: Imagen Distroless Del Servidor
+
+Acordado en octubre de 2026, después de endurecer las imágenes en `0.2.17` (Debian 13, sin gestores de paquetes, escaneo Trivy en CI).
+
+- Pasar el runtime del servidor a una base *distroless* de Node (sin shell, `apt`, `tar`, perl ni util-linux) para quitar casi todos los avisos restantes de Debian y dejar sin herramientas a quien lograra ejecutar código en el contenedor.
+- Cambios necesarios: arranque con un script de Node (migraciones de Prisma y luego el servidor) en lugar de `sh -c`; reemplazar `thumbnails-init` de Compose, que hoy usa `sh` + `find`; fijar el motor de Prisma para OpenSSL 3 sin depender de comandos del sistema; documentar la variante `:debug` para diagnóstico.
+- No resuelve el aviso de `zlib` (lo necesitan OpenSSL y Prisma); se cierra cuando Debian publique el arreglo.
+- Validación: base vacía con las 22+ migraciones, login, healthcheck, e2e contra el contenedor y escaneo Trivy/Scout antes y después.
+
 ## Orden Recomendado
 
 1. Red de seguridad automatizada.
