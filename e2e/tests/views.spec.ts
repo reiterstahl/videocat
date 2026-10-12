@@ -200,3 +200,15 @@ test("grouping files finds similar names and decides them like Review", async ({
   await page.getByRole("dialog").getByRole("button", { name: "Cancelar traslado" }).click();
   await expect(job.locator(".vc-badge")).toHaveText("Cancelado");
 });
+
+test("the catalog folder tree opens Agrupar archivos with that folder name", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const option = page.locator(".folder-option", { has: page.locator(".folder-group") }).first();
+  await expect(option).toBeVisible();
+  const label = (await option.locator(".folder-select span").textContent())!.trim();
+  await option.hover();
+  await option.locator(".folder-group").click();
+  await expect(page).toHaveURL(/\/traslados$/);
+  await expect(page.getByRole("textbox", { name: "Buscar carpeta para agrupar archivos" })).toHaveValue(label);
+  await expect(page.locator(".vc-transfers-folder-results li").first()).toBeVisible();
+});

@@ -176,6 +176,7 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Buscar archivos de esta carpeta en todos los discos (Agrupar archivos)": "Find this folder's files on every drive (Group files)",
   "Ese archivo ya está en esta carpeta.": "That file is already in this folder",
   "Ese archivo ya está en otro traslado.": "That file is already in another transfer",
   "Ya hay un archivo idéntico en esta carpeta; se queda para revisar en Duplicados.": "An identical file is already in this folder; it stays for review in Duplicates",
@@ -808,6 +809,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^Agrupar archivos en (.+)$/);
+  if (match) return `Group files into ${match[1]}`;
 
   match = text.match(/^Agrupar en (.+)$/);
   if (match) return `Group into ${match[1]}`;

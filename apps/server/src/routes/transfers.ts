@@ -258,7 +258,18 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     if (!claiming && item.claimedBy !== companionId) return reply.code(409).send({ message: "Another Companion holds this transfer", state: item.state });
     if (claiming && item.claimedBy && item.claimedBy !== companionId) return reply.code(409).send({ message: "Another Companion holds this transfer", state: item.state });
 
-    const data: Prisma.TransferItemUpdateInput = { state: to, error: body.error ?? null };
+    const data: Prisma.TransferItemUpdateManyMutationInput = { state: to, error: body.error ?? null };
+    // Every write re-checks the state and the holder it was decided on, atomically, so a cancel
+    // from the web or another Companion acting at the same moment can never be overwritten.
+    const guard: Prisma.TransferItemWhereInput = {
+      id,
+      state: from,
+      ...(claiming ? { OR: [{ claimedBy: null }, { claimedBy: companionId }], job: { status: "active" } } : { claimedBy: companionId })
+    };
+    const changedMeanwhile = async () => {
+      const current = await prisma.transferItem.findUnique({ where: { id }, select: { state: true } });
+      return reply.code(409).send({ message: "Transfer item changed", state: current?.state ?? null });
+    };
     if (claiming) {
       const job = await prisma.transferJob.findUnique({ where: { id: item.jobId }, select: { status: true } });
       if (job?.status !== "active") return reply.code(409).send({ message: "Transfer is not active", state: item.state });
@@ -293,7 +304,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       if (!body.sha256 || body.sha256 !== item.sha256) return reply.code(400).send({ message: "The destination copy does not match the staged SHA-256" });
       if (!item.targetRelativePath) return reply.code(409).send({ message: "Destination path missing", state: item.state });
       const targetRelativePath = item.targetRelativePath;
-      await prisma.$transaction(async (tx) => {
+      const applied = await prisma.$transaction(async (tx) => {
+        const updated = await tx.transferItem.updateMany({ where: guard, data: { ...data, deliveredAt: new Date() } });
+        if (updated.count === 0) return false;
         if (item.videoFileId) {
           await tx.videoFile.update({
             where: { id: item.videoFileId },
@@ -306,21 +319,22 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
             }
           });
         }
-        await tx.transferItem.update({ where: { id }, data: { ...data, deliveredAt: new Date() } });
+        return true;
       });
+      if (!applied) return changedMeanwhile();
       await recordAction({ action: "transfer.delivered", actorType: "companion", actorId: companionId, target: targetRelativePath, result: { itemId: id, bytes: Number(item.sizeBytes) } });
       return { ok: true, state: to };
     }
 
     if (to === "duplicate") {
-      await prisma.transferItem.update({ where: { id }, data });
+      if ((await prisma.transferItem.updateMany({ where: guard, data })).count === 0) return changedMeanwhile();
       if (item.videoFileId) await finalizeDeletion(item.videoFileId, "deleted", { companionId });
       await recordAction({ action: "transfer.duplicate", actorType: "companion", actorId: companionId, target: item.filename, result: { itemId: id } });
       await closeFinishedJob(item.jobId);
       return { ok: true, state: to };
     }
 
-    await prisma.transferItem.update({ where: { id }, data });
+    if ((await prisma.transferItem.updateMany({ where: guard, data })).count === 0) return changedMeanwhile();
     if (to === "done") await closeFinishedJob(item.jobId);
     return { ok: true, state: to };
   });

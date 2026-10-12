@@ -138,6 +138,8 @@ export function App() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
+  // Folder name handed from the catalog folder tree to "Agrupar archivos".
+  const [transfersGroupQuery, setTransfersGroupQuery] = useState("");
   const [disks, setDisks] = useState<Disk[]>([]);
   const [connectedDiskIds, setConnectedDiskIds] = useState<string[]>([]);
   const [facets, setFacets] = useState<FacetResponse>({
@@ -2324,6 +2326,10 @@ export function App() {
             toggleFileSelection,
             toggleFolder,
             toggleFolderExpansion,
+            groupFolderFiles: (folder: string) => {
+              setTransfersGroupQuery(folder.split(/[\\/]/).filter(Boolean).pop() ?? folder);
+              navigateToView("transfers");
+            },
             toggleTag,
             toggleVisibleSelection,
             total,
@@ -2463,6 +2469,8 @@ export function App() {
       {viewMode === "transfers" ? (
         <TransfersView
           refreshKey={catalogVersion}
+          initialGroupQuery={transfersGroupQuery}
+          onInitialGroupQueryUsed={() => setTransfersGroupQuery("")}
           onOpenFolders={() => navigateToView("folders")}
           onChanged={refreshStats}
         />

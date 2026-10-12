@@ -1068,6 +1068,42 @@ test("grouping finds similar file names, groups with F, ignores with J and undoe
   }
 });
 
+test("transfer transitions cannot overwrite a cancel or a claim made at the same moment", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Race ${suffix}`, volumeId: `race-${suffix}`, totalBytes: 10n, freeBytes: 10n } });
+  try {
+    await prisma.videoFile.createMany({
+      data: ["a", "b"].map((name) => ({ diskId: disk.id, filename: `${name}.mp4`, extension: "mp4", absolutePath: `R:/${name}.mp4`, relativePath: `V/${name}.mp4`, sizeBytes: 1n }))
+    });
+    const files = await prisma.videoFile.findMany({ where: { diskId: disk.id }, orderBy: { filename: "asc" } });
+    const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `D-${suffix}`, nameKey: "d" } });
+    const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "race" } });
+    const [first, second] = await Promise.all(files.map((file) => prisma.transferItem.create({
+      data: { jobId: job.id, videoFileId: file.id, filename: file.filename, sourceDiskId: disk.id, sourceRelativePath: file.relativePath, targetDiskId: disk.id, targetFolder: `D-${suffix}`, sizeBytes: 1n }
+    })));
+    const claim = (itemId: string, companion: string) => app.inject({
+      method: "POST",
+      url: `/api/agent/transfers/items/${itemId}/transition`,
+      headers: { ...agentHeaders, "x-videocat-companion-id": companion },
+      payload: { from: "pending", to: "staging" }
+    });
+
+    // Two Companions claim the same file at once: exactly one gets it.
+    const results = await Promise.all([claim(first.id, crypto.randomUUID()), claim(first.id, crypto.randomUUID())]);
+    assert.deepEqual(results.map((response) => response.statusCode).sort(), [200, 409]);
+
+    // A cancel lands first: the Companion's claim based on the old state is refused.
+    await prisma.transferItem.update({ where: { id: second.id }, data: { state: "cancelled" } });
+    const late = await claim(second.id, crypto.randomUUID());
+    assert.equal(late.statusCode, 409);
+    assert.equal((await prisma.transferItem.findUniqueOrThrow({ where: { id: second.id } })).state, "cancelled");
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: disk.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: disk.id } } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

@@ -525,6 +525,38 @@ select:focus {
   color: var(--matrix-primary);
 }
 
+.folder-option:has(.folder-group) {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+}
+
+.folder-group {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.folder-option:hover .folder-group,
+.folder-group:focus-visible {
+  opacity: 1;
+}
+
+.folder-group:hover {
+  background: var(--vc-hover);
+}
+
+@media (hover: none) {
+  .folder-group {
+    opacity: 0.7;
+  }
+}
+
 .folder-option span {
   overflow: hidden;
   text-overflow: ellipsis;

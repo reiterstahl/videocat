@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -27,6 +27,8 @@ type TransfersViewProps = {
   refreshKey: number;
   onOpenFolders: () => void;
   onChanged: () => void;
+  initialGroupQuery?: string;
+  onInitialGroupQueryUsed?: () => void;
 };
 
 const pollMs = 10_000;
@@ -55,7 +57,7 @@ function jobTotals(job: TransferJob) {
   return { files, bytes, finishedFiles, finishedBytes, ratio: bytes > 0 ? finishedBytes / bytes : files === 0 ? 1 : 0 };
 }
 
-export function TransfersView({ refreshKey, onOpenFolders, onChanged }: TransfersViewProps) {
+export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGroupQuery = "", onInitialGroupQueryUsed }: TransfersViewProps) {
   const [summary, setSummary] = useState<TransferSummary | null>(null);
   const [jobs, setJobs] = useState<TransferJob[] | null>(null);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
@@ -64,7 +66,15 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState<TransferJob | null>(null);
-  const [groupQuery, setGroupQuery] = useState("");
+  const [groupQuery, setGroupQuery] = useState(initialGroupQuery);
+  const groupCardRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!initialGroupQuery) return;
+    setGroupQuery(initialGroupQuery);
+    groupCardRef.current?.scrollIntoView({ block: "center" });
+    onInitialGroupQueryUsed?.();
+  }, [initialGroupQuery, onInitialGroupQueryUsed]);
   const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
   const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
 
@@ -202,7 +212,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged }: Transfer
             <Layers size={14} /> Ir a Uso por carpeta
           </button>
         </article>
-        <article className="vc-panel vc-transfers-kind vc-transfers-group">
+        <article className="vc-panel vc-transfers-kind vc-transfers-group" ref={groupCardRef}>
           <ArrowRightLeft size={20} aria-hidden="true" />
           <div>
             <h3>Agrupar archivos</h3>

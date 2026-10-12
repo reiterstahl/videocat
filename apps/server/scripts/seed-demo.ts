@@ -243,6 +243,10 @@ async function main() {
   });
 
   const count = await prisma.videoFile.count();
+  // A fictional Companion staging folder for the Traslados section.
+  const staging = JSON.stringify({ configured: true, path: "D:\\VideoCAT\\Traslados", freeBytes: 412 * gigabyte, totalBytes: 1_000 * gigabyte, error: null, companionName: "PC-Estudio", reportedAt: Date.now() });
+  await prisma.appSetting.upsert({ where: { key: "companion_staging" }, create: { key: "companion_staging", value: staging }, update: { value: staging } });
+
   console.log(`Demo catalog ready: ${createdDisks.length} disks, ${count} videos, thumbnails in ${thumbnailsDir}.`);
 }
 

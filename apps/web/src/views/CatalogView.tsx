@@ -1,18 +1,5 @@
 import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, SetStateAction } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  Filter,
-  FolderOpen,
-  Image,
-  LayoutGrid,
-  List,
-  Lock,
-  Search,
-  Trash2,
-  X
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Filter, FolderOpen, FolderSearch, Image, LayoutGrid, List, Lock, Search, Trash2, X } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { CatalogCard } from "../components/CatalogCard";
 import { CategoryBadges } from "../components/CategoryBadges";
@@ -105,6 +92,7 @@ export type CatalogViewProps = {
   toggleFileSelection: (fileId: string) => void;
   toggleFolder: (folder: string) => void;
   toggleFolderExpansion: (folder: string) => void;
+  groupFolderFiles: (folder: string) => void;
   toggleTag: (tag: string) => void;
   toggleVisibleSelection: (checked: boolean) => void;
   total: number;
@@ -112,7 +100,7 @@ export type CatalogViewProps = {
   visibleSelectedCount: number;
 };
 
-export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
+export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
   return (
     <section
       className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
@@ -200,6 +188,17 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
                       <span>{folder.label}</span>
                       <small>{folder.count}</small>
                     </button>
+                    {!folder.locked ? (
+                      <button
+                        className="folder-group"
+                        onClick={() => groupFolderFiles(folder.path)}
+                        type="button"
+                        title="Buscar archivos de esta carpeta en todos los discos (Agrupar archivos)"
+                        aria-label={`Agrupar archivos en ${folder.label}`}
+                      >
+                        <FolderSearch size={14} />
+                      </button>
+                    ) : null}
                   </div>
                 ))
               ) : (
