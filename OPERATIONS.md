@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.16
+
+- Transfers: every state change reported by a Companion is now applied atomically against the state and holder it was based on, so a cancel from the web or two Companions at the same moment can never overwrite each other.
+- The catalog folder tree has an **Agrupar archivos** shortcut on every folder.
+- No migrations or configuration changes; the Windows Companion stays on 0.2.6.
+
 ## Upgrading to 0.2.15
 
 - **Agrupar archivos** in Traslados: pick a folder (it gets a star) and decide, file by file like in Review, which files with a similar name on any drive move into it (`F` group, `J` ignore, `Z` undo). Files travel through the Companion staging folder exactly like a consolidation.
