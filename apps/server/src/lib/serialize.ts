@@ -38,10 +38,12 @@ export function serializeFile(
       destinationPath: string | null;
       downloadedTag: string | null;
     } | null;
+    transferItems?: Array<{ state: string; targetDiskId: string; targetFolder: string }>;
   },
   duplicateCount = 0
 ) {
-  const { downloadQueue, ...publicFile } = file;
+  const { downloadQueue, transferItems, ...publicFile } = file;
+  const transfer = transferItems?.[0];
   const categoryKeys = file.categoryKeys ??
     (file.curationStatus !== "none" ? [file.curationStatus] : []);
   return {
@@ -60,6 +62,7 @@ export function serializeFile(
     downloadedTag: downloadQueue?.downloadedTag ?? null,
     lastIndexedAt: file.updatedAt,
     duplicateCount,
-    isProbableDuplicate: duplicateCount > 1
+    isProbableDuplicate: duplicateCount > 1,
+    transfer: transfer ? { state: transfer.state, targetDiskId: transfer.targetDiskId, targetFolder: transfer.targetFolder } : null
   };
 }

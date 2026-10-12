@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalScroll, openView } from "./helpers";
 
-const views = ["catalogo", "review", "a-descargar", "duplicados", "esquema-de-uso", "uso-por-carpeta", "auditoria", "administracion", "perfil"];
+const views = ["catalogo", "review", "a-descargar", "duplicados", "esquema-de-uso", "uso-por-carpeta", "traslados", "auditoria", "administracion", "perfil"];
 
 test("every section fits the phone width without horizontal scrolling", async ({ page }) => {
   await openView(page, "/catalogo");

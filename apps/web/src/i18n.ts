@@ -176,6 +176,71 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Traslados": "Transfers",
+  "Mueve videos entre discos aunque no estén conectados a la vez. Cada archivo pasa por la carpeta temporal del Companion y solo se borra de un lugar después de verificar su copia en el siguiente.": "Move videos between drives even when they are never connected at the same time. Each file goes through the Companion staging folder and is only removed from one place after its copy in the next one is verified.",
+  "Consolidar carpetas": "Consolidate folders",
+  "Junta en una sola las carpetas que se llaman igual en distintos discos. El contenido de las pequeñas va a la carpeta con estrella, normalmente la más grande.": "Merges folders with the same name on different drives into one. The contents of the small ones go to the starred folder, usually the largest.",
+  "Ir a Uso por carpeta": "Go to Folder usage",
+  "Agrupar archivos": "Group files",
+  "Parte de una carpeta (ej. testing001) y busca en todos los discos archivos con nombres parecidos. Decides uno por uno, como en Review: F agrupar, J ignorar.": "Starts from a folder (e.g. testing001) and finds files with similar names on every drive. You decide one by one, like in Review: F group, J ignore.",
+  "Próximamente": "Coming soon",
+  "Se actualiza solo cada pocos segundos mientras el Companion trabaja.": "Updates by itself every few seconds while the Companion works.",
+  "No hay traslados en curso.": "No transfers in progress.",
+  "En pausa": "Paused",
+  "Cancelado": "Cancelled",
+  "Terminado": "Finished",
+  "Consolidar": "Consolidate",
+  "Agrupar": "Group",
+  "Pausar": "Pause",
+  "Carpeta temporal": "Staging folder",
+  "El Companion todavía no informó su carpeta temporal. Actualízalo y conéctalo.": "The Companion has not reported its staging folder yet. Update it and connect it.",
+  "Sin configurar. Elige una carpeta en Companion › Configuración › Archivos para que los traslados avancen.": "Not set. Choose a folder in Companion › Settings › Files so transfers can move forward.",
+  "En tránsito": "In transit",
+  "Disponible": "Available",
+  "Reserva (5 %)": "Reserve (5 %)",
+  "Carpetas con estrella": "Starred folders",
+  "Ninguna todavía. Márcalas en Uso por carpeta › Carpetas repetidas.": "None yet. Star them in Folder usage › Repeated folders.",
+  "Quitar estrella": "Remove star",
+  "Cancelar traslado": "Cancel transfer",
+  "Los archivos que aún no salieron de su disco se quedan donde están. Los que ya están en la carpeta temporal terminan su camino hasta la carpeta destino: nunca se pierden.": "Files that have not left their drive yet stay where they are. Files already in the staging folder finish their way to the destination folder: they are never lost.",
+  "No se pudieron cargar los traslados.": "Transfers could not be loaded.",
+  "No se pudo actualizar el traslado.": "The transfer could not be updated.",
+  "No se pudo quitar la estrella.": "The star could not be removed.",
+  "No se pudo cambiar la carpeta destino.": "The destination folder could not be changed.",
+  "No se pudo preparar el plan.": "The plan could not be prepared.",
+  "No se pudo crear el traslado.": "The transfer could not be created.",
+  "Esperando el disco de origen": "Waiting for the source drive",
+  "Copiando a la carpeta temporal": "Copying to the staging folder",
+  "Verificado en la carpeta temporal": "Verified in the staging folder",
+  "Esperando el disco de destino": "Waiting for the destination drive",
+  "Sin espacio en el destino": "No space at the destination",
+  "Copiando al destino": "Copying to the destination",
+  "Verificado en el destino": "Verified at the destination",
+  "Listo": "Done",
+  "Ya estaba en el destino": "Already at the destination",
+  "Por trasladar": "To transfer",
+  "Sin espacio": "No space",
+  "Quitar estrella: deja de recibir archivos": "Remove star: stops receiving files",
+  "Marcar con estrella: esta carpeta puede recibir archivos": "Star: this folder can receive files",
+  "Excluye nombres genéricos (como RAW o 2019) para verlos por separado. Marca con estrella la carpeta que debe recibir el contenido de las demás.": "Exclude generic names (such as RAW or 2019) to see them separately. Star the folder that should receive the contents of the others.",
+  "Los archivos salen de cada carpeta, esperan verificados en la carpeta temporal del Companion y llegan a la carpeta con estrella cuando conectes su disco. Nada se borra sin una copia verificada en otro lugar.": "Files leave each folder, wait verified in the Companion staging folder and reach the starred folder when you connect its drive. Nothing is removed without a verified copy somewhere else.",
+  "Calculando el plan…": "Working out the plan…",
+  "Desde": "From",
+  "Nada que mover": "Nothing to move",
+  "A mover": "To move",
+  "Libre en el destino": "Free at the destination",
+  "Sin escanear": "Not scanned",
+  "Ya están en el destino": "Already at the destination",
+  "En otro traslado": "In another transfer",
+  "No hay nada que mover.": "There is nothing to move.",
+  "Todo ya está en la carpeta destino o en otro traslado.": "Everything is already in the destination folder or in another transfer.",
+  "Escanea primero el disco de destino.": "Scan the destination drive first.",
+  "Se necesita su espacio libre para saber si cabe.": "Its free space is needed to know whether everything fits.",
+  "Falta la carpeta temporal en el Companion.": "The Companion has no staging folder.",
+  "Configúrala en Companion › Configuración › Archivos. Puedes crear el traslado ahora; empezará cuando esté configurada.": "Set it in Companion › Settings › Files. You can create the transfer now; it starts once the folder is set.",
+  "El Companion siempre deja libre el 5 % de ese disco; los archivos irán pasando por partes: cuando unos llegan al destino, entran los siguientes.": "The Companion always keeps 5 % of that drive free; files will go through in batches: when some reach the destination, the next ones come in.",
+  "Crear traslado": "Create transfer",
+  "Creando…": "Creating…",
   "Las carpetas con el mismo nombre se muestran juntas, estén en el disco y en el nivel que estén. Haz clic en cualquier bloque para ver su contenido en el catálogo.": "Folders with the same name are shown together, whatever drive or level they are on. Click any block to see its contents in the catalog.",
   "Selecciona al menos un disco para ver el uso por carpeta.": "Select at least one drive to see folder usage.",
   "No se pudo calcular el uso por carpeta.": "Folder usage could not be calculated.",
@@ -671,6 +736,19 @@ function preserveWhitespace(original: string, translated: string): string {
   return `${prefix}${translated}${suffix}`;
 }
 
+// Transfer state labels that appear as "label: count".
+const transferStateTexts = new Set([
+  "Esperando el disco de origen",
+  "Copiando a la carpeta temporal",
+  "Verificado en la carpeta temporal",
+  "Esperando el disco de destino",
+  "Sin espacio en el destino",
+  "Copiando al destino",
+  "Verificado en el destino",
+  "Ya estaba en el destino",
+  "Cancelado"
+]);
+
 function translateDynamicText(text: string, language: Language): string | null {
   if (language === "es") return null;
 
@@ -691,6 +769,66 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Fotograma (\d+)$/);
   if (match) return `Frame ${match[1]}`;
+
+  match = text.match(/^Libera espacio en (.+)$/);
+  if (match) return `Free up space on ${match[1]}`;
+
+  match = text.match(/^Conecta (.+) para continuar$/);
+  if (match) return `Connect ${match[1]} to continue`;
+
+  match = text.match(/^(.+) conectado: entregando archivos$/);
+  if (match) return `${match[1]} connected: delivering files`;
+
+  match = text.match(/^(.+) conectado: copiando archivos$/);
+  if (match) return `${match[1]} connected: copying files`;
+
+  match = text.match(/^([\d.,\s]+) (?:archivo|archivos) · (.+?) esperando en la carpeta temporal\. Borra o mueve contenido de ese disco desde Review o Duplicados\.$/);
+  if (match) return `${match[1]} ${match[1].trim() === "1" ? "file" : "files"} · ${match[2]} waiting in the staging folder. Delete or move content on that drive from Review or Duplicates.`;
+
+  match = text.match(/^([\d.,\s]+) (?:archivo|archivos) · (.+?) esperando en la carpeta temporal del Companion\.$/);
+  if (match) return `${match[1]} ${match[1].trim() === "1" ? "file" : "files"} · ${match[2]} waiting in the Companion staging folder.`;
+
+  match = text.match(/^([\d.,\s]+) (?:archivo|archivos) · (.+?) por copiar desde este disco\.$/);
+  if (match) return `${match[1]} ${match[1].trim() === "1" ? "file" : "files"} · ${match[2]} to copy from this drive.`;
+
+  match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) archivos · (.+) de (.+)$/);
+  if (match) return `${match[1]} of ${match[2]} files · ${match[3]} of ${match[4]}`;
+
+  match = text.match(/^(.+): ([\d.,\s]+)$/);
+  if (match && transferStateTexts.has(match[1])) return `${en[match[1]]}: ${match[2]}`;
+
+  match = text.match(/^(.+) · destino: (.+)$/);
+  if (match) return `${en[match[1]] ?? match[1]} · destination: ${match[2]}`;
+
+  match = text.match(/^(.+) · ([\d.,\s]+) reintentos$/);
+  if (match) return `${en[match[1]] ?? match[1]} · ${match[2]} retries`;
+
+  match = text.match(/^Consolidar en (.+)$/);
+  if (match) return `Consolidate on ${match[1]}`;
+
+  match = text.match(/^Llevar todo a (.+)$/);
+  if (match) return `Move everything to ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) videos · (.+)$/);
+  if (match && /^[\d.,]+\s?[KMGTP]?B$/.test(match[2].trim())) return `${match[1]} videos · ${match[2]}`;
+
+  match = text.match(/^([\d.,\s]+) se quedan para revisar en Duplicados$/);
+  if (match) return `${match[1]} stay for review in Duplicates`;
+
+  match = text.match(/^No cabe en (.+)\.$/);
+  if (match) return `It does not fit on ${match[1]}.`;
+
+  match = text.match(/^Faltan (.+)\. Libera espacio en ese disco y vuelve a escanearlo\.$/);
+  if (match) return `${match[1]} missing. Free up space on that drive and scan it again.`;
+
+  match = text.match(/^La carpeta temporal tiene (.+) disponibles\.$/);
+  if (match) return `The staging folder has ${match[1]} available.`;
+
+  match = text.match(/^La ubicación más grande es (.+?): (.+) \((.+)\)\. Conviene que la estrella esté ahí para mover menos datos\.$/);
+  if (match) return `The largest location is ${match[1]}: ${match[2]} (${match[3]}). Starring it means less data has to move.`;
+
+  match = text.match(/^Companion: (.+)$/);
+  if (match) return `Companion: ${match[1]}`;
 
   match = text.match(/^([\d.,\s]+) carpetas agrupadas$/);
   if (match) return `${match[1]} merged folders`;

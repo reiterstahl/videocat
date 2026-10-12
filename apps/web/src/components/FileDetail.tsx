@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
+  ArrowRightLeft,
   Cast,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +46,7 @@ import type {
 } from "../lib/app-types";
 import { castVideo } from "../lib/chromecast";
 import type { VideoFile } from "../types";
+import { transferStateLabels } from "../lib/transfers";
 
 export function FileDetail({
   file,
@@ -891,6 +893,16 @@ export function FileDetail({
     </>
   );
   const hasRemotePlayer = Boolean(remoteUrl) || remoteState === "preparing";
+  const transitNotice = file.transfer ? (
+    <div className="vc-status-banner is-warning vc-detail-transit" role="status">
+      <ArrowRightLeft size={18} aria-hidden="true" />
+      <div>
+        <strong>En tránsito</strong>
+        <span>{`${transferStateLabels[file.transfer.state]} · destino: ${file.transfer.targetFolder}`}</span>
+      </div>
+    </div>
+  ) : null;
+
   const compatibilityNotice = (
     <>
       {playbackSupport.result === "" ? (
@@ -1053,6 +1065,7 @@ export function FileDetail({
           </div>
         )}
         {playbackNotices}
+        {transitNotice}
         {compatibilityNotice}
         {thumbStrip}
         <div className="vc-detail-title">
@@ -1120,6 +1133,7 @@ export function FileDetail({
 
         {playbackNotices}
         {hasRemotePlayer ? remotePlayer : null}
+        {transitNotice}
         {compatibilityNotice}
         {thumbStrip}
         {detailGrid}

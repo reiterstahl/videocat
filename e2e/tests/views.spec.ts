@@ -107,3 +107,58 @@ test("folder usage merges same-named folders, opens them in the catalog and can 
   await group.getByRole("button", { name: "Agrupar de nuevo" }).click();
   await expect(group).not.toHaveClass(/is-excluded/);
 });
+
+test("a starred folder consolidates its namesakes and the transfer shows up in Traslados", async ({ page }) => {
+  await openView(page, "/uso-por-carpeta");
+  const groups = page.locator(".vc-folders-list > li:not(.is-excluded)");
+  await expect(groups.first()).toBeVisible();
+  const group = groups.first();
+  const name = (await group.locator(".vc-folders-item-head strong").textContent())!.trim();
+  const locations = group.locator(".vc-folders-locations li");
+
+  // Starring a smaller location warns that the largest one would move less data.
+  const sizes = await locations.locator("em").allTextContents();
+  expect(sizes.length).toBeGreaterThan(1);
+  await locations.last().getByRole("button", { name: /Marcar con estrella/ }).click();
+  await expect(locations.last()).toHaveClass(/is-starred/);
+  await expect(group.locator(".vc-folders-warning")).toContainText("La ubicación más grande es");
+  await locations.last().getByRole("button", { name: /Quitar estrella/ }).click();
+  await expect(group.locator(".vc-folders-warning")).toHaveCount(0);
+
+  await locations.first().getByRole("button", { name: /Marcar con estrella/ }).click();
+  await expect(locations.first()).toHaveClass(/is-starred/);
+  await expect(group.locator(".vc-folders-warning")).toHaveCount(0);
+  await group.getByRole("button", { name: /^Consolidar en / }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: `Llevar todo a ${name}` })).toBeVisible();
+  await expect(dialog.locator(".vc-consolidate-sources li").first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Crear traslado" }).click();
+
+  await expect(page).toHaveURL(/\/traslados$/);
+  const job = page.locator(".vc-transfers-list > li", { hasText: name }).first();
+  await expect(job).toBeVisible();
+  await expect(page.locator(".vc-transfers-needs .vc-status-banner").first()).toContainText("Conecta");
+
+  await job.getByRole("button", { name: "Pausar" }).click();
+  await expect(job.locator(".vc-badge")).toHaveText("En pausa");
+  await job.getByRole("button", { name: "Reanudar" }).click();
+  await expect(job.locator(".vc-badge")).toHaveText("En curso");
+  await job.locator(".vc-transfers-expand").click();
+  await expect(job.locator(".vc-transfers-items li").first()).toContainText("Esperando el disco de origen");
+
+  // The catalog marks the files that are on their way.
+  await openView(page, "/uso-por-carpeta");
+  await page.locator(".vc-folders-list > li", { has: page.locator("strong", { hasText: new RegExp(`^${name}$`) }) }).getByRole("button", { name: "Ver en catálogo" }).click();
+  await expect(page.locator(".vc-card-badge.is-transit").first()).toHaveText("Por trasladar");
+
+  await openView(page, "/traslados");
+  await job.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar traslado" }).click();
+  await expect(job.locator(".vc-badge")).toHaveText("Cancelado");
+  await expect(page.locator(".vc-transfers-needs")).toHaveCount(0);
+
+  // The star can be removed once nothing is on its way.
+  await page.locator(".vc-transfers-destinations").getByRole("button", { name: "Quitar estrella" }).first().click();
+  await expect(page.locator(".vc-transfers-destinations")).toContainText("Ninguna todavía");
+});

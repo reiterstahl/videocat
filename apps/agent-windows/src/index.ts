@@ -29,7 +29,7 @@ import { startCompanionControlTunnel, type CompanionControlTunnel } from "./cont
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
-import { processTransferItem, staleStagingFiles, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
+import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import {
   deletionFingerprintFrameIndexes,
   validateDeletionFingerprint,
@@ -754,6 +754,18 @@ async function startCompanionDiskWatcher(): Promise<void> {
     }
   }
 
+  async function stagingStatus(): Promise<{ configured: boolean; path: string | null; freeBytes: number | null; totalBytes: number | null; error: string | null }> {
+    const stagingDir = process.env.COMPANION_STAGING_DIR?.trim();
+    if (!stagingDir) return { configured: false, path: null, freeBytes: null, totalBytes: null, error: null };
+    try {
+      await fs.mkdir(stagingDir, { recursive: true });
+      const space = await statfsSpace(stagingDir);
+      return { configured: true, path: stagingDir, ...space, error: null };
+    } catch (error) {
+      return { configured: true, path: stagingDir, freeBytes: null, totalBytes: null, error: (error instanceof Error ? error.message : String(error)).slice(0, 500) };
+    }
+  }
+
   async function sendHeartbeat(): Promise<void> {
     if (heartbeatRunning || !companionAgentApiEnabled()) return;
     heartbeatRunning = true;
@@ -766,7 +778,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
           companionId: await ensureCompanionIdentity(),
           companionName: companionName(),
           mountedDiskCount: mounted.length,
-          mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))]
+          mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))],
+          staging: await stagingStatus()
         })
       });
       const requestedAt = response.commands?.processDeletesRequestedAt ?? 0;

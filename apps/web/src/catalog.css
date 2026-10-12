@@ -448,6 +448,10 @@
   background: rgba(146, 64, 14, 0.92);
 }
 
+.vc-card-badge.is-transit {
+  background: rgba(30, 64, 175, 0.92);
+}
+
 .vc-card-flags {
   position: absolute;
   right: 72px;

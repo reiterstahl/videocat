@@ -11,6 +11,7 @@ import { prisma } from "../lib/prisma.js";
 import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
+import { unfinishedStates } from "../lib/transfer-states.js";
 import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
@@ -501,6 +502,15 @@ function applyProtectedPathFilter(where: Prisma.VideoFileWhereInput): void {
   ];
 }
 
+// Files the web may show or act on: hidden system folders always excluded, PIN-protected
+// folders excluded until the session unlocks them. Shared with the transfer routes.
+export function visibleFilesWhere(protectedUnlocked: boolean, extra: Prisma.VideoFileWhereInput = {}): Prisma.VideoFileWhereInput {
+  const where: Prisma.VideoFileWhereInput = { ...extra };
+  applyHiddenPathFilter(where);
+  if (!protectedUnlocked) applyProtectedPathFilter(where);
+  return where;
+}
+
 function duplicateEligibleWhere(extra: Prisma.VideoFileWhereInput = {}): Prisma.VideoFileWhereInput {
   const where: Prisma.VideoFileWhereInput = { ...extra };
   applyHiddenPathFilter(where);
@@ -532,7 +542,13 @@ async function duplicateCandidates(where: Prisma.VideoFileWhereInput): Promise<D
 function fileIncludes() {
   return {
     disk: true,
-    thumbnails: { orderBy: { kind: "asc" as const } }
+    thumbnails: { orderBy: { kind: "asc" as const } },
+    // The one unfinished transfer a file can be in, shown as "In transit".
+    transferItems: {
+      where: { state: { in: unfinishedStates } },
+      select: { state: true, targetDiskId: true, targetFolder: true },
+      take: 1
+    }
   };
 }
 
@@ -2534,7 +2550,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     applyHiddenPathFilter(visibleWhere);
     if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(visibleWhere);
 
-    const [diskCount, fileCount, totalSize, duplicateCandidateFiles, markedForDeletion] = await Promise.all([
+    const [diskCount, fileCount, totalSize, duplicateCandidateFiles, markedForDeletion, activeTransferJobs] = await Promise.all([
       prisma.disk.count(),
       prisma.videoFile.count({ where: visibleWhere }),
       prisma.videoFile.aggregate({ where: visibleWhere, _sum: { sizeBytes: true } }),
@@ -2544,7 +2560,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           OR: [{ curationStatus: "delete" }, { categories: { some: { categoryKey: "delete" } } }]
         }),
         select: { id: true }
-      })
+      }),
+      prisma.transferJob.count({ where: { items: { some: { state: { in: unfinishedStates } } } } })
     ]);
     // Same detection as the Duplicates view, so the counters always match what it lists.
     const duplicateGroups = findDuplicateGroups(duplicateCandidateFiles);
@@ -2554,7 +2571,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       fileCount,
       totalBytes: Number(totalSize._sum.sizeBytes ?? 0n),
       duplicateGroupCount: duplicateGroups.length,
-      pendingDuplicateGroupCount: countPendingDuplicateGroups(duplicateGroups, new Set(markedForDeletion.map((file) => file.id)))
+      pendingDuplicateGroupCount: countPendingDuplicateGroups(duplicateGroups, new Set(markedForDeletion.map((file) => file.id))),
+      activeTransferJobs
     };
   });
 

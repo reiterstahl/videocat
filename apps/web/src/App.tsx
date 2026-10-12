@@ -14,6 +14,7 @@ import {
   ListChecks,
   Moon,
   Layers,
+  ArrowRightLeft,
   PieChart,
   Server,
   Shield,
@@ -105,6 +106,7 @@ import { ProfileView } from "./views/ProfileView";
 import { ReviewHomeView } from "./views/ReviewHomeView";
 import { UsageView } from "./views/UsageView";
 import { FolderUsageView } from "./views/FolderUsageView";
+import { TransfersView } from "./views/TransfersView";
 
 export function App() {
   const { themePreferences, resolvedAppearance, theme, toggleTheme, updateThemePreferences } = useThemePreferences();
@@ -1932,6 +1934,7 @@ export function App() {
     { mode: "duplicates", label: "Duplicados", icon: <Copy size={18} />, badge: (stats?.pendingDuplicateGroupCount ?? 0) > 0 ? formatCount(stats?.pendingDuplicateGroupCount ?? 0) : undefined },
     { mode: "usage", label: "Esquema de uso", icon: <PieChart size={18} /> },
     { mode: "folders", label: "Uso por carpeta", icon: <Layers size={18} /> },
+    { mode: "transfers", label: "Traslados", icon: <ArrowRightLeft size={18} />, badge: (stats?.activeTransferJobs ?? 0) > 0 ? formatCount(stats?.activeTransferJobs ?? 0) : undefined },
     { mode: "audit", label: "Auditoría", icon: <ListChecks size={18} /> },
     { mode: "admin", label: "Administración", icon: <Server size={18} /> },
     { mode: "profile", label: "Perfil", icon: <User size={18} /> }
@@ -2449,6 +2452,18 @@ export function App() {
           noDisksSelected={disks.length > 0 && connectedDiskIds.length === 0}
           refreshKey={catalogVersion}
           onOpenLocations={openLocationsInCatalog}
+          onTransferCreated={() => {
+            refreshStats();
+            navigateToView("transfers");
+          }}
+        />
+      ) : null}
+
+      {viewMode === "transfers" ? (
+        <TransfersView
+          refreshKey={catalogVersion}
+          onOpenFolders={() => navigateToView("folders")}
+          onChanged={refreshStats}
         />
       ) : null}
 

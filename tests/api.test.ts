@@ -931,6 +931,73 @@ test("paused and cancelled transfers stop handing out new work", { skip: process
   }
 });
 
+test("consolidation plans folders, creates the transfer and tells what to connect", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const companionId = crypto.randomUUID();
+  const agent = { ...agentHeaders, "x-videocat-companion-id": companionId };
+  const target = await prisma.disk.create({ data: { name: `Grande ${suffix}`, volumeId: `cg-${suffix}`, totalBytes: 4_000_000_000_000n, freeBytes: 1_000_000_000_000n } });
+  const source = await prisma.disk.create({ data: { name: `Chico ${suffix}`, volumeId: `cc-${suffix}`, totalBytes: 1_000_000_000_000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  try {
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: target.id, filename: "a.mp4", extension: "mp4", absolutePath: "E:/Testing/a.mp4", relativePath: "Testing/a.mp4", sizeBytes: 70n },
+        { diskId: source.id, filename: "b.mp4", extension: "mp4", absolutePath: "F:/Testing/b.mp4", relativePath: "Testing/b.mp4", sizeBytes: 30n },
+        { diskId: source.id, filename: "c.mp4", extension: "mp4", absolutePath: "F:/Testing/sub/c.mp4", relativePath: "Testing/sub/c.mp4", sizeBytes: 20n },
+        { diskId: source.id, filename: "a.mp4", extension: "mp4", absolutePath: "F:/Testing/a.mp4", relativePath: "Testing/a.mp4", sizeBytes: 70n },
+        { diskId: source.id, filename: "fuera.mp4", extension: "mp4", absolutePath: "F:/TestingX/fuera.mp4", relativePath: "TestingX/fuera.mp4", sizeBytes: 5n }
+      ]
+    });
+    const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: "Testing" } })).json().destination.id;
+    const payload = { destinationId, sources: [{ d: source.id, p: "Testing" }, { d: target.id, p: "Testing" }] };
+
+    const preview = await app.inject({ method: "POST", url: "/api/transfers/consolidate/preview", headers: webMutationHeaders(cookie), payload });
+    assert.equal(preview.statusCode, 200);
+    const plan = preview.json();
+    assert.equal(plan.files, 2, "b and c move; the identical a stays for Duplicates; TestingX is another folder");
+    assert.equal(plan.neededBytes, 50);
+    assert.equal(plan.fits, true);
+    assert.equal(plan.skipped.duplicates, 1);
+    assert.deepEqual(plan.sources.map((entry: { path: string; files: number }) => [entry.path, entry.files]), [["Testing", 2]], "the destination itself is not a source");
+    assert.equal(await prisma.transferJob.count({ where: { destinationId } }), 0, "a preview creates nothing");
+
+    const onlyDestination = await app.inject({ method: "POST", url: "/api/transfers/consolidate/preview", headers: webMutationHeaders(cookie), payload: { destinationId, sources: [{ d: target.id, p: "Testing/" }] } });
+    assert.equal(onlyDestination.statusCode, 400);
+
+    const created = await app.inject({ method: "POST", url: "/api/transfers/consolidate", headers: webMutationHeaders(cookie), payload });
+    assert.equal(created.statusCode, 200);
+    assert.equal(created.json().items, 2);
+    const repeated = await app.inject({ method: "POST", url: "/api/transfers/consolidate", headers: webMutationHeaders(cookie), payload });
+    assert.equal(repeated.statusCode, 409);
+    assert.equal(repeated.json().reason, "nothing_to_move");
+
+    // The catalog shows the file as in transit and the stats count the transfer.
+    const listed = (await app.inject({ method: "GET", url: `/api/files?diskId=${source.id}&pageSize=50`, headers: { cookie } })).json();
+    const moving = listed.files.find((file: { filename: string }) => file.filename === "b.mp4");
+    assert.deepEqual(moving.transfer, { state: "pending", targetDiskId: target.id, targetFolder: "Testing" });
+    assert.equal(listed.files.find((file: { filename: string }) => file.filename === "fuera.mp4").transfer, null);
+    assert.ok((await app.inject({ method: "GET", url: "/api/stats", headers: { cookie } })).json().activeTransferJobs >= 1);
+
+    // The Companion reports its staging folder and the source drive.
+    const heartbeat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: agent,
+      payload: { companionId, mountedDiskIds: [`cc-${suffix}`], staging: { configured: true, path: "D:\\VideoCAT\\temp", freeBytes: 500, totalBytes: 1000 } }
+    });
+    assert.equal(heartbeat.statusCode, 200);
+    const summary = (await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json();
+    assert.equal(summary.staging.freeBytes, 500);
+    const sourceNeed = summary.needs.find((need: { diskId: string }) => need.diskId === source.id);
+    assert.deepEqual([sourceNeed.kind, sourceNeed.files, sourceNeed.bytes, sourceNeed.connected, sourceNeed.diskName], ["connect_source", 2, 50, true, `Chico ${suffix}`]);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+    for (const disk of [source, target]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

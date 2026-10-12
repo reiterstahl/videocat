@@ -12,7 +12,7 @@ export type NavigationItem = {
   badge?: string;
 };
 
-export type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "folders" | "audit" | "admin" | "profile";
+export type ViewMode = "catalog" | "review" | "downloads" | "duplicates" | "usage" | "folders" | "transfers" | "audit" | "admin" | "profile";
 
 export type BrowserPlaybackSupport = {
   result: "" | "maybe" | "probably";

@@ -1,17 +1,28 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, EyeOff, FolderTree, Layers, Search, Undo2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, EyeOff, FolderInput, FolderTree, Layers, Search, Star, Undo2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
 import { squarify } from "../lib/treemap";
-import type { CatalogLocationScope, FolderGroupMap, FolderGroupNode, FolderGroupSummary } from "../types";
+import { ConsolidateDialog } from "../components/ConsolidateDialog";
+import type { CatalogLocationScope, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination } from "../types";
 
 type FolderUsageViewProps = {
   diskQuery: string;
   noDisksSelected: boolean;
   refreshKey: number;
   onOpenLocations: (scope: CatalogLocationScope) => void;
+  onTransferCreated: () => void;
 };
+
+type ConsolidateRequest = {
+  destination: TransferDestination;
+  sources: Array<{ d: string; p: string }>;
+};
+
+function samePlace(destination: TransferDestination, location: FolderGroupLocation): boolean {
+  return destination.diskId === location.diskId && destination.path.toLowerCase() === location.path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase();
+}
 
 type Tile = {
   node: FolderGroupNode;
@@ -81,7 +92,7 @@ function describe(node: FolderGroupNode): string {
   return `${formatBytes(node.sizeBytes)} · ${formatCount(node.fileCount)} videos${places > 1 ? ` · ${places} ubicaciones` : ""}`;
 }
 
-export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpenLocations }: FolderUsageViewProps) {
+export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpenLocations, onTransferCreated }: FolderUsageViewProps) {
   const [map, setMap] = useState<FolderGroupMap | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -91,6 +102,20 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [reloadKey, setReloadKey] = useState(0);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [destinations, setDestinations] = useState<TransferDestination[]>([]);
+  const [consolidating, setConsolidating] = useState<ConsolidateRequest | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api<{ destinations: TransferDestination[] }>("/api/transfers/destinations")
+      .then((response) => {
+        if (active) setDestinations(response.destinations);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [refreshKey, reloadKey]);
 
   useEffect(() => {
     if (noDisksSelected) {
@@ -168,6 +193,39 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
     void saveExclusions(group.excluded
       ? current.filter((name) => name.toLowerCase() !== normalized)
       : [...current, group.name]);
+  }
+
+  function starredIn(location: FolderGroupLocation): TransferDestination | undefined {
+    return destinations.find((destination) => samePlace(destination, location));
+  }
+
+  async function toggleStar(location: FolderGroupLocation) {
+    const current = starredIn(location);
+    setSaving(true);
+    setError("");
+    try {
+      if (current) {
+        await api(`/api/transfers/destinations/${current.id}`, { method: "DELETE" });
+        setDestinations((list) => list.filter((destination) => destination.id !== current.id));
+      } else {
+        await api("/api/transfers/destinations", { method: "POST", body: JSON.stringify({ diskId: location.diskId, path: location.path }) });
+        const response = await api<{ destinations: TransferDestination[] }>("/api/transfers/destinations");
+        setDestinations(response.destinations);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo cambiar la carpeta destino.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function consolidateInto(group: FolderGroupSummary, location: FolderGroupLocation) {
+    const destination = starredIn(location);
+    if (!destination) return;
+    setConsolidating({
+      destination,
+      sources: group.locations.filter((other) => other !== location).map((other) => ({ d: other.diskId, p: other.path }))
+    });
   }
 
   function openGroup(group: FolderGroupSummary) {
@@ -257,7 +315,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
             <div className="vc-panel-head">
               <div>
                 <h3><FolderTree size={16} aria-hidden="true" /> Carpetas repetidas</h3>
-                <p>Excluye nombres genéricos (como RAW o 2019) para verlos por separado.</p>
+                <p>Excluye nombres genéricos (como RAW o 2019) para verlos por separado. Marca con estrella la carpeta que debe recibir el contenido de las demás.</p>
               </div>
             </div>
             <label className="vc-folders-search">
@@ -275,14 +333,46 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                       <span>{group.excluded ? "Sin agrupar" : formatBytes(group.sizeBytes)}</span>
                     </div>
                     <ul className="vc-folders-locations">
-                      {group.locations.map((location) => (
-                        <li key={`${location.diskId}:${location.path}`}>
-                          <span>{location.diskName}</span>
-                          <code>{location.path}</code>
-                          {location.sizeBytes > 0 ? <em>{formatBytes(location.sizeBytes)}</em> : null}
-                        </li>
-                      ))}
+                      {group.locations.map((location) => {
+                        const starred = Boolean(starredIn(location));
+                        return (
+                          <li key={`${location.diskId}:${location.path}`} className={starred ? "is-starred" : ""}>
+                            <button
+                              className={`vc-star-button ${starred ? "is-on" : ""}`}
+                              disabled={saving}
+                              onClick={() => void toggleStar(location)}
+                              type="button"
+                              aria-pressed={starred}
+                              title={starred ? "Quitar estrella: deja de recibir archivos" : "Marcar con estrella: esta carpeta puede recibir archivos"}
+                            >
+                              <Star size={14} aria-hidden="true" />
+                            </button>
+                            <span>{location.diskName}</span>
+                            <code>{location.path}</code>
+                            {location.sizeBytes > 0 ? <em>{formatBytes(location.sizeBytes)}</em> : <em />}
+                          </li>
+                        );
+                      })}
                     </ul>
+                    {(() => {
+                      if (group.excluded) return null;
+                      const starredLocation = [...group.locations].sort((left, right) => right.sizeBytes - left.sizeBytes).find((location) => starredIn(location));
+                      if (!starredLocation) return null;
+                      const largest = group.locations.reduce((best, location) => (location.sizeBytes > best.sizeBytes ? location : best), group.locations[0]);
+                      return (
+                        <>
+                          {largest !== starredLocation && largest.sizeBytes > starredLocation.sizeBytes ? (
+                            <p className="vc-folders-warning" role="note">
+                              <AlertTriangle size={14} aria-hidden="true" />
+                              {`La ubicación más grande es ${largest.diskName}: ${largest.path} (${formatBytes(largest.sizeBytes)}). Conviene que la estrella esté ahí para mover menos datos.`}
+                            </p>
+                          ) : null}
+                          <button className="vc-button is-small is-primary" disabled={saving} onClick={() => consolidateInto(group, starredLocation)} type="button">
+                            <FolderInput size={14} /> {`Consolidar en ${starredLocation.diskName}`}
+                          </button>
+                        </>
+                      );
+                    })()}
                     <div className="vc-folders-actions">
                       {!group.excluded ? (
                         <button className="vc-button is-small" onClick={() => openGroup(group)} type="button">
@@ -299,6 +389,18 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
             )}
           </aside>
         </div>
+      ) : null}
+
+      {consolidating ? (
+        <ConsolidateDialog
+          destination={consolidating.destination}
+          sources={consolidating.sources}
+          onCancel={() => setConsolidating(null)}
+          onCreated={() => {
+            setConsolidating(null);
+            onTransferCreated();
+          }}
+        />
       ) : null}
     </section>
   );

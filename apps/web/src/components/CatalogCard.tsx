@@ -6,6 +6,7 @@ import { thumbnailSrc } from "../lib/api";
 import { folderPath, mainThumbnail, resolutionBadge } from "../lib/app-helpers";
 import type { CurationCategory } from "../lib/app-types";
 import type { VideoFile } from "../types";
+import { transferBadgeLabels, transferStateLabels } from "../lib/transfers";
 
 export function CatalogCard({
   file,
@@ -59,8 +60,13 @@ export function CatalogCard({
         <span className="vc-card-thumb">
           {cover ? <img src={cover} alt="" loading="lazy" /> : <Image size={26} aria-hidden="true" />}
           {badge ? <span className="vc-card-badge is-top-right">{badge}</span> : null}
-          {availability === "offline" || file.isProbableDuplicate ? (
+          {availability === "offline" || file.isProbableDuplicate || file.transfer ? (
             <span className="vc-card-flags">
+              {file.transfer ? (
+                <span className="vc-card-badge is-transit" title={`${transferStateLabels[file.transfer.state]} · destino: ${file.transfer.targetFolder}`}>
+                  {transferBadgeLabels[file.transfer.state] ?? "En tránsito"}
+                </span>
+              ) : null}
               {availability === "offline" ? <span className="vc-card-badge is-light">Desconectado</span> : null}
               {file.isProbableDuplicate ? <span className="vc-card-badge is-warning" title="Duplicado probable">Duplicado</span> : null}
             </span>

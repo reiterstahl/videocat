@@ -59,6 +59,8 @@ export type VideoFile = {
   duplicateConfidence?: number;
   duplicateMatchType?: "same_size" | "visual" | "mixed";
   duplicateReasons?: string[];
+  // Unfinished transfer of this file ("In transit").
+  transfer?: { state: TransferState; targetDiskId: string; targetFolder: string } | null;
 };
 
 export type Stats = {
@@ -67,6 +69,7 @@ export type Stats = {
   totalBytes: number;
   duplicateGroupCount: number;
   pendingDuplicateGroupCount: number;
+  activeTransferJobs?: number;
 };
 
 export type FolderGroupLocation = {
@@ -106,4 +109,88 @@ export type FolderGroupMap = {
 export type CatalogLocationScope = {
   label: string;
   locations: Array<{ d: string; p: string }>;
+};
+
+export type TransferState =
+  | "pending"
+  | "staging"
+  | "staged"
+  | "source_removed"
+  | "blocked_space"
+  | "delivering"
+  | "delivered"
+  | "done"
+  | "duplicate"
+  | "cancelled";
+
+export type TransferDestination = {
+  id: string;
+  diskId: string;
+  diskName: string;
+  path: string;
+  nameKey: string;
+  freeBytes: number | null;
+  totalBytes: number | null;
+};
+
+export type ConsolidatePlan = {
+  destination: { id: string; diskId: string; diskName: string; path: string };
+  sources: Array<{ diskId: string; diskName: string; path: string; files: number; bytes: number }>;
+  files: number;
+  neededBytes: number;
+  freeBytes: number | null;
+  pendingBytes: number;
+  reserveBytes: number;
+  fits: boolean;
+  skipped: { duplicates: number; inTransfer: number };
+};
+
+export type TransferNeed = {
+  kind: "free_space" | "connect_target" | "connect_source";
+  diskId: string;
+  diskName: string;
+  driveLetter: string | null;
+  files: number;
+  bytes: number;
+  connected: boolean;
+  detail: string | null;
+};
+
+export type TransferSummary = {
+  activeJobs: number;
+  stagingBytes: number;
+  staging: {
+    configured: boolean;
+    path?: string | null;
+    freeBytes?: number | null;
+    totalBytes?: number | null;
+    error?: string | null;
+    companionName?: string | null;
+    reportedAt?: number;
+  } | null;
+  needs: TransferNeed[];
+};
+
+export type TransferJob = {
+  id: string;
+  kind: "consolidate" | "group";
+  label: string | null;
+  status: "active" | "paused" | "cancelled" | "done";
+  createdAt: string;
+  destination: { id: string; diskId: string; diskName: string; path: string };
+  states: Partial<Record<TransferState, { files: number; bytes: number }>>;
+};
+
+export type TransferItem = {
+  id: string;
+  videoFileId: string | null;
+  filename: string;
+  sourceDiskId: string;
+  sourceRelativePath: string;
+  targetRelativePath: string | null;
+  sizeBytes: number;
+  state: TransferState;
+  attempts: number;
+  error: string | null;
+  updatedAt: string;
 };

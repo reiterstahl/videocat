@@ -7,6 +7,7 @@ export const viewPaths: Record<ViewMode, string> = {
   duplicates: "/duplicados",
   usage: "/esquema-de-uso",
   folders: "/uso-por-carpeta",
+  transfers: "/traslados",
   audit: "/auditoria",
   admin: "/administracion",
   profile: "/perfil"
@@ -25,6 +26,8 @@ export const pathViews: Record<string, ViewMode> = {
   "/usage": "usage",
   "/uso-por-carpeta": "folders",
   "/folders": "folders",
+  "/traslados": "transfers",
+  "/transfers": "transfers",
   "/auditoria": "audit",
   "/audit": "audit",
   "/administracion": "admin",

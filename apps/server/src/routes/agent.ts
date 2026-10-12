@@ -22,6 +22,7 @@ import { recordAction } from "../lib/action-audit.js";
 import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
 import { agentDiskIdentifierSchema, isUuid } from "../lib/disk-identifiers.js";
 import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
+import { companionStagingKey } from "../lib/transfer-summary.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -163,7 +164,15 @@ const companionHeartbeatSchema = z.object({
   mountedDiskIds: z.array(z.string().max(200)).max(100).optional()
     .transform((ids) => ids?.filter((id) => agentDiskIdentifierSchema.safeParse(id).success).map((id) => id.trim())),
   companionId: z.string().uuid().optional(),
-  companionName: z.string().trim().min(1).max(120).optional()
+  companionName: z.string().trim().min(1).max(120).optional(),
+  // Transfer staging folder of this Companion; absent on versions without transfers.
+  staging: z.object({
+    configured: z.boolean(),
+    path: z.string().max(1000).nullable().optional(),
+    freeBytes: z.number().nonnegative().nullable().optional(),
+    totalBytes: z.number().nonnegative().nullable().optional(),
+    error: z.string().max(500).nullable().optional()
+  }).optional()
 });
 const deletionResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["deleted", "missing"]) }),
@@ -233,6 +242,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? mountedDiskIds.length)),
       setAppSettingValue(companionMountedDiskIdsKey, JSON.stringify(mountedDiskIds))
     ];
+    if (body.staging) {
+      metrics.push(setAppSettingValue(companionStagingKey, JSON.stringify({ ...body.staging, companionName: body.companionName ?? null, reportedAt: Date.now() })));
+    }
     if (body.companionId) {
       metrics.push(prisma.companionAgent.upsert({
         where: { installationId: body.companionId },
