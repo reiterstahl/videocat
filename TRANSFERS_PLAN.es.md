@@ -1,6 +1,6 @@
 # Plan: traslados seguros, consolidar carpetas y agrupar archivos
 
-Estado: **fase 1 de 4 terminada** (motor de traslados). "Uso por carpeta" (solo lectura) está entregado en `v0.2.13`.
+Estado: **fases 1 y 2 de 4 terminadas** (motor de traslados y Consolidar carpetas, entregadas en `v0.2.14` con el Companion `0.2.6`).
 
 ## Objetivo
 
@@ -61,6 +61,11 @@ Un archivo **nunca existe en menos de un lugar verificado**:
   - Los escaneos no ocultan un archivo que está en la carpeta temporal y la cola de borrados no toca archivos en traslado.
   - Companion: `transfer-engine.ts` (copia con SHA-256, verificación releyendo, borrado solo tras verificar y registrar, reanudación desde cualquier estado, nombres `(2)`, duplicados idénticos, espacio del 5 % en la carpeta temporal y del destino, limpieza de copias de traslados terminados). Carpeta temporal en Configuración › Archivos (`COMPANION_STAGING_DIR`).
   - Pruebas: 16 del motor (incluidos 7 cortes simulados en cada paso), 4 de la máquina de estados y 3 de API.
-- [ ] **Fase 2 — Consolidar carpetas**: estrella en Uso por carpeta, plan previo con espacio, sección Traslados con progreso y avisos de "conecta el disco" y de espacio.
+- [x] **Fase 2 — Consolidar carpetas**
+  - Uso por carpeta › Carpetas repetidas: estrella por ubicación (solo carpetas visibles; las protegidas con PIN bloqueado no pueden ser destino), aviso si hay una ubicación más grande que la marcada y botón **Consolidar en …**.
+  - Diálogo con el plan antes de crear nada (`POST /api/transfers/consolidate/preview`): qué sale de cada carpeta, cuánto ocupa, espacio libre en el destino (último escaneo, menos lo que ya va en camino y la reserva), archivos idénticos que se quedan para Duplicados y aviso si falta la carpeta temporal o si pasará por partes por el 5 % reservado.
+  - Sección **Traslados** (`/traslados`, con contador en el menú): explicación de Consolidar y Agrupar, avisos "Conecta *disco* para continuar" y "Libera espacio en *disco*" (`GET /api/transfers/summary`), estado de la carpeta temporal que el Companion informa en su heartbeat, carpetas con estrella, y traslados con progreso, detalle por archivo, pausar, reanudar y cancelar.
+  - Catálogo: marca **Por trasladar / En tránsito / Sin espacio** en tarjetas y detalle.
+  - Pruebas: 3 unitarias del resumen, 1 de API (plan, creación, catálogo, heartbeat y avisos) y 1 e2e (estrella → plan → Traslados → pausa → cancelación).
 - [ ] **Fase 3 — Agrupar archivos**: búsqueda por nombre con parecidos de una letra, sesión estilo Review con F/J.
 - [ ] **Fase 4 — Cierre**: flujo completo e2e con un Companion simulado, documentación y nueva versión del stack y del Companion.
