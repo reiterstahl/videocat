@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.14 (Companion 0.2.6)
+
+- New section **Traslados** (`/traslados`) and **Consolidar** in Uso por carpeta: star the folder that should receive the contents of its namesakes; files move through a local staging folder of the Companion and are only removed from a place after their copy in the next one is verified with SHA-256.
+- Migration `0021_transfers` runs automatically when the server starts.
+- Windows Companion 0.2.6 (updates itself): set **Configuración › Archivos › Carpeta temporal de traslados** (`COMPANION_STAGING_DIR`). Without it transfers wait; the Companion always leaves 5 % of that drive free. `COMPANION_TRANSFER_POLL_MS` (default 60000) sets how often it checks for transfer work.
+
 ## Upgrading to 0.2.13
 
 - New section **Uso por carpeta** (`/uso-por-carpeta`): folders with the same name are merged across drives and levels; exclusions are stored on the server. No configuration changes; the Windows Companion stays on 0.2.5.
