@@ -240,3 +240,34 @@ test("a destination without room still accepts the transfer and asks to free spa
   }
   await expect(page.locator(".vc-transfers-destinations")).toContainText("Ninguna todavía");
 });
+
+test("optional keywords make Agrupar archivos find more files", async ({ page }) => {
+  await openView(page, "/traslados");
+  await page.getByRole("textbox", { name: "Buscar carpeta para agrupar archivos" }).fill("boda");
+  await page.locator(".vc-transfers-folder-results li").first().getByRole("button", { name: "Agrupar aquí" }).click();
+  const session = page.getByRole("dialog", { name: "Sesión para agrupar archivos" });
+  await expect(session.locator(".vc-review-pill")).toBeVisible();
+  const before = Number((await session.locator(".vc-review-pill").textContent())!.replace(/\D/g, ""));
+  await page.keyboard.press("Escape");
+
+  const card = page.locator(".vc-starred-card", { hasText: "Boda" }).first();
+  await card.locator(".vc-keywords").getByRole("button", { name: "Agregar" }).click();
+  await card.getByRole("textbox", { name: "Nueva palabra clave" }).fill("Graduacion");
+  await card.getByRole("textbox", { name: "Nueva palabra clave" }).press("Enter");
+  await card.getByRole("button", { name: "Guardar" }).click();
+  await expect(card.locator(".vc-keywords-list")).toContainText("Graduacion");
+
+  await card.getByRole("button", { name: "Agrupar archivos" }).click();
+  await expect(session.locator(".vc-review-pill")).toBeVisible();
+  const after = Number((await session.locator(".vc-review-pill").textContent())!.replace(/\D/g, ""));
+  expect(after).toBeGreaterThan(before);
+  await page.keyboard.press("Escape");
+
+  // Leave the demo as it was.
+  const stars = page.locator(".vc-transfers-destinations").getByRole("button", { name: "Quitar estrella" });
+  while (await stars.count() > 0) {
+    const count = await stars.count();
+    await stars.first().click();
+    await expect(stars).toHaveCount(count - 1);
+  }
+});

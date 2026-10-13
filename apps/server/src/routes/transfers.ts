@@ -8,7 +8,7 @@ import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
 import { prisma } from "../lib/prisma.js";
 import { companionStagingKey, stagingBytes, transferNeeds } from "../lib/transfer-summary.js";
-import { matchKey, minSearchKeyLength, nameMatch, type NameMatch } from "../lib/name-match.js";
+import { bestNameMatch, matchKey, minSearchKeyLength, searchKeys, type NameMatch } from "../lib/name-match.js";
 import { canCompanionTransition, isTransferState, unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { folderGroupExclusions, visibleFilesWhere } from "./catalog.js";
 
@@ -55,6 +55,7 @@ export function destinationReserveBytes(totalBytes: number): number {
 
 const companionOnlineMs = 45_000;
 const groupCandidateLimit = 2000;
+const groupKeywordLimit = 20;
 
 const groupDecisionSchema = z.object({
   destinationId: z.string().uuid(),
@@ -387,6 +388,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
           diskName: destination.disk.name,
           path: destination.path,
           nameKey: destination.nameKey,
+          groupKeywords: destination.groupKeywords,
           freeBytes: destination.disk.freeBytes == null ? null : Number(destination.disk.freeBytes),
           totalBytes: destination.disk.totalBytes == null ? null : Number(destination.disk.totalBytes),
           sizeBytes,
@@ -427,6 +429,27 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     await prisma.transferDestination.deleteMany({ where: { id } });
     await recordAction({ action: "transfer.destination.remove", actorType: "web", actorId: "admin", target: id });
     return { ok: true };
+  });
+
+  // Optional extra words for "Agrupar archivos"; the folder name is always searched.
+  app.put("/api/transfers/destinations/:id/keywords", { preHandler: requireWebAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({ keywords: z.array(z.string().trim().min(1).max(100)).max(groupKeywordLimit) }).parse(request.body);
+    const destination = await prisma.transferDestination.findUnique({ where: { id }, select: { path: true } });
+    if (!destination) return reply.code(404).send({ message: "Destination not found" });
+    const folderKey = matchKey(destination.path.split("/").pop() ?? destination.path);
+    const seen = new Set<string>([folderKey]);
+    const keywords: string[] = [];
+    for (const keyword of body.keywords) {
+      const key = matchKey(keyword);
+      if (key.length < minSearchKeyLength) return reply.code(400).send({ message: `Keywords need at least ${minSearchKeyLength} letters or numbers`, keyword });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keywords.push(keyword.replace(/\s+/g, " "));
+    }
+    await prisma.transferDestination.update({ where: { id }, data: { groupKeywords: keywords } });
+    await recordAction({ action: "transfer.destination.keywords", actorType: "web", actorId: "admin", target: destination.path, result: { count: keywords.length } });
+    return { keywords };
   });
 
   app.post("/api/transfers", { preHandler: requireWebAuth }, async (request, reply) => {
@@ -536,8 +559,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     const destination = await prisma.transferDestination.findUnique({ where: { id: body.destinationId }, include: { disk: true } });
     if (!destination) return reply.code(404).send({ message: "Destination not found" });
     const name = destination.path.split("/").pop() ?? destination.path;
-    const key = matchKey(name);
-    if (key.length < minSearchKeyLength) return reply.code(400).send({ message: "The folder name is too short to search for similar files" });
+    const keys = searchKeys(name, destination.groupKeywords);
+    if (keys.length === 0) return reply.code(400).send({ message: "The folder name is too short to search for similar files" });
+    const key = keys[0].key;
 
     const [files, busy, ignored, destinationFiles] = await Promise.all([
       prisma.videoFile.findMany({
@@ -555,15 +579,16 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     const ignoredIds = new Set(ignored.map((entry) => entry.videoFileId));
     const destinationKeys = new Set(destinationFiles.map((file) => `${file.filename.toLowerCase()}|${file.sizeBytes}`));
     const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0 };
-    const candidates: Array<{ id: string; match: NameMatch; diskId: string; relativePath: string; sizeBytes: number }> = [];
+    const candidates: Array<{ id: string; match: NameMatch; keyword: string; diskId: string; relativePath: string; sizeBytes: number }> = [];
     for (const file of files) {
-      const match = nameMatch(file.filename, key);
-      if (!match) continue;
+      const found = bestNameMatch(file.filename, keys);
+      if (!found) continue;
+      const { match, keyword } = found;
       if (file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path)) skipped.inside += 1;
       else if (busyIds.has(file.id)) skipped.inTransfer += 1;
       else if (ignoredIds.has(file.id)) skipped.ignored += 1;
       else if (destinationKeys.has(`${file.filename.toLowerCase()}|${file.sizeBytes}`)) skipped.duplicates += 1;
-      else candidates.push({ id: file.id, match, diskId: file.diskId, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) });
+      else candidates.push({ id: file.id, match, keyword, diskId: file.diskId, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) });
     }
     candidates.sort((left, right) => Number(left.match === "similar") - Number(right.match === "similar")
       || left.diskId.localeCompare(right.diskId)
@@ -576,7 +601,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       exact: candidates.filter((file) => file.match === "exact").length,
       similar: candidates.filter((file) => file.match === "similar").length,
       skipped,
-      items: candidates.slice(0, groupCandidateLimit).map((file) => ({ id: file.id, match: file.match }))
+      keywords: keys.map((entry) => entry.label),
+      items: candidates.slice(0, groupCandidateLimit).map((file) => ({ id: file.id, match: file.match, keyword: file.keyword }))
     };
   });
 

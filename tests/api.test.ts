@@ -1076,6 +1076,21 @@ test("grouping finds similar file names, groups with F, ignores with J and undoe
     assert.equal(late.statusCode, 409);
     assert.equal(late.json().reason, "already_started");
     assert.equal((await candidates()).total, 2);
+
+    // Optional keywords widen the search; the folder name is always searched.
+    const aliasFile = await prisma.videoFile.create({ data: file(source.id, `Otros/sesion-alias${suffix}-final.mp4`) });
+    const keywordsUrl = `/api/transfers/destinations/${destinationId}/keywords`;
+    const tooShort = await app.inject({ method: "PUT", url: keywordsUrl, headers: webMutationHeaders(cookie), payload: { keywords: ["ab"] } });
+    assert.equal(tooShort.statusCode, 400);
+    const saved = await app.inject({ method: "PUT", url: keywordsUrl, headers: webMutationHeaders(cookie), payload: { keywords: [`Alias ${suffix}`, folder, `alias-${suffix}`] } });
+    assert.deepEqual(saved.json().keywords, [`Alias ${suffix}`], "the folder name and repeated spellings are dropped");
+    const starredNow = (await app.inject({ method: "GET", url: "/api/transfers/destinations", headers: { cookie } })).json().destinations.find((entry: { id: string }) => entry.id === destinationId);
+    assert.deepEqual(starredNow.groupKeywords, [`Alias ${suffix}`]);
+    const widened = await candidates();
+    assert.deepEqual(widened.keywords, [folder, `Alias ${suffix}`]);
+    const byAlias = widened.items.find((item: { id: string }) => item.id === aliasFile.id);
+    assert.deepEqual([byAlias.match, byAlias.keyword], ["exact", `Alias ${suffix}`]);
+    assert.ok(widened.items.filter((item: { keyword: string }) => item.keyword === folder).length >= 1);
   } finally {
     await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
     await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });

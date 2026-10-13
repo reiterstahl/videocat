@@ -176,6 +176,19 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Parecido a una palabra clave": "Similar to a keyword",
+  "Contiene una palabra clave": "Contains a keyword",
+  "Cada palabra clave necesita al menos 3 letras o números.": "Each keyword needs at least 3 letters or numbers.",
+  "Palabras clave": "Keywords",
+  "Solo el nombre de la carpeta": "Only the folder name",
+  "Editar": "Edit",
+  "Agregar": "Add",
+  "Guardar": "Save",
+  "Nueva palabra clave": "New keyword",
+  "Ej. prueba final, sesión 2": "E.g. final test, session 2",
+  "No se pudieron guardar las palabras clave.": "The keywords could not be saved.",
+  "Agrupar archivos también busca estas palabras, con las mismas reglas que el nombre de la carpeta (sin importar mayúsculas, acentos, puntos ni separadores, y con una letra de diferencia). Son opcionales.": "Group files also looks for these words, with the same rules as the folder name (ignoring case, accents, dots and separators, and allowing one letter of difference). They are optional.",
+  "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado. Puedes sumar palabras clave en Traslados › Carpetas con estrella.": "No file on the drives has a similar name that is not already in the folder, in another transfer or ignored. You can add keywords in Transfers › Starred folders.",
   "Actividad": "Activity",
   "Sin actividad en este momento": "No activity right now",
   "Sin actividad en este momento.": "No activity right now.",
@@ -918,6 +931,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^(.+) · (hace un momento|hace \d+ (?:min|h|d))$/);
   if (match) return `${translateText(match[1], "en")} · ${translateText(match[2], "en")}`;
+
+  match = text.match(/^Palabra clave: (.+)$/);
+  if (match) return `Keyword: ${match[1]}`;
+
+  match = text.match(/^Quitar (.+)$/);
+  if (match) return `Remove ${match[1]}`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

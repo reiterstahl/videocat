@@ -129,6 +129,7 @@ export type TransferDestination = {
   diskName: string;
   path: string;
   nameKey: string;
+  groupKeywords: string[];
   freeBytes: number | null;
   totalBytes: number | null;
   // Size of the starred folder and its namesakes on other drives (what Consolidar brings in).
@@ -211,7 +212,9 @@ export type GroupCandidates = {
   exact: number;
   similar: number;
   skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number };
-  items: Array<{ id: string; match: "exact" | "similar" }>;
+  // Folder name first, then the optional keywords.
+  keywords: string[];
+  items: Array<{ id: string; match: "exact" | "similar"; keyword: string }>;
 };
 
 export type GroupFolder = {

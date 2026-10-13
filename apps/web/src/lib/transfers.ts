@@ -55,7 +55,8 @@ const transferMessages: Record<string, string> = {
   "That file is not in a grouping transfer": "Ese archivo no está en un traslado para agrupar.",
   "This destination still has files on their way": "Esta carpeta todavía tiene archivos en camino.",
   "That folder has no catalogued videos on this disk": "Esa carpeta no tiene videos catalogados en este disco.",
-  "Some files were added to another transfer at the same time": "Algunos archivos se agregaron a otro traslado al mismo tiempo."
+  "Some files were added to another transfer at the same time": "Algunos archivos se agregaron a otro traslado al mismo tiempo.",
+  "Keywords need at least 3 letters or numbers": "Cada palabra clave necesita al menos 3 letras o números."
 };
 
 export function transferError(reason: unknown, fallback: string): string {

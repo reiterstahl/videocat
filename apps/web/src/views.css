@@ -2552,3 +2552,81 @@ a.vc-button {
   bottom: auto;
   height: 38px;
 }
+
+/* Optional keywords of a starred folder (Agrupar archivos). */
+.vc-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 0.78rem;
+}
+
+.vc-keywords.is-editing {
+  display: grid;
+  gap: 8px;
+  border-radius: 10px;
+  background: var(--vc-sunken);
+  padding: 10px;
+}
+
+.vc-keywords-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vc-muted);
+  font-weight: 600;
+}
+
+.vc-keywords-empty,
+.vc-keywords-hint {
+  margin: 0;
+  color: var(--vc-muted);
+}
+
+.vc-keywords-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-keywords-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vc-group) 14%, var(--vc-surface));
+  padding: 2px 9px;
+  color: var(--vc-group);
+  font-weight: 600;
+}
+
+.vc-keywords-list button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vc-keywords-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.vc-keywords-input input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--vc-border);
+  border-radius: 8px;
+  background: var(--vc-surface);
+  padding: 0 10px;
+  color: var(--vc-text);
+  font: inherit;
+}

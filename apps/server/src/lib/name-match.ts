@@ -55,3 +55,26 @@ export function nameMatch(filename: string, key: string): NameMatch | null {
   }
   return null;
 }
+
+export type SearchKey = { key: string; label: string };
+
+// Search keys for a folder: its own name plus optional extra keywords, deduplicated and long enough.
+export function searchKeys(folderName: string, keywords: readonly string[] = []): SearchKey[] {
+  const keys: SearchKey[] = [];
+  for (const label of [folderName, ...keywords]) {
+    const key = matchKey(label);
+    if (key.length >= minSearchKeyLength && !keys.some((entry) => entry.key === key)) keys.push({ key, label: label.trim() });
+  }
+  return keys;
+}
+
+// Best match among several keys: containing a key beats a one-letter difference; the first key wins ties.
+export function bestNameMatch(filename: string, keys: readonly SearchKey[]): { match: NameMatch; keyword: string } | null {
+  let similar: { match: NameMatch; keyword: string } | null = null;
+  for (const entry of keys) {
+    const match = nameMatch(filename, entry.key);
+    if (match === "exact") return { match, keyword: entry.label };
+    if (match === "similar" && !similar) similar = { match, keyword: entry.label };
+  }
+  return similar;
+}

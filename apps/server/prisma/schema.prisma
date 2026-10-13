@@ -319,6 +319,8 @@ model TransferDestination {
   diskId    String        @db.Uuid
   path      String
   nameKey   String
+  // Optional extra words that "Agrupar archivos" also looks for, besides the folder name.
+  groupKeywords String[]  @default([])
   createdAt DateTime      @default(now())
   disk      Disk          @relation(fields: [diskId], references: [id], onDelete: Cascade)
   jobs      TransferJob[]

@@ -94,7 +94,7 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
       .catch(() => ids.forEach((id) => requested.current.delete(id)));
   }, [files, queue]);
 
-  const matchById = useMemo(() => new Map(info?.items.map((item) => [item.id, item.match]) ?? []), [info]);
+  const matchById = useMemo(() => new Map(info?.items.map((item) => [item.id, item]) ?? []), [info]);
   const current = queue[0] ? files.get(queue[0]) : undefined;
   const upcoming = queue.length > 1 ? files.get(queue[1]) : null;
 
@@ -146,7 +146,9 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
   const finished = info !== null && queue.length === 0;
 
   if (current && info) {
-    const match = matchById.get(current.id);
+    const found = matchById.get(current.id);
+    const match = found?.match;
+    const byKeyword = found && found.keyword.toLowerCase() !== info.destination.name.toLowerCase();
     return (
       <ReviewSession
         file={current}
@@ -177,8 +179,11 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
         note={(
           <div className="vc-group-note">
             <span className={`vc-badge ${match === "similar" ? "is-warning" : "is-success"}`}>
-              {match === "similar" ? "Nombre parecido" : "Contiene el nombre"}
+              {match === "similar"
+                ? (byKeyword ? "Parecido a una palabra clave" : "Nombre parecido")
+                : (byKeyword ? "Contiene una palabra clave" : "Contiene el nombre")}
             </span>
+            {byKeyword ? <span className="vc-badge">{`Palabra clave: ${found.keyword}`}</span> : null}
             <span>{`Destino: ${info.destination.diskName} › ${info.destination.path}`}</span>
           </div>
         )}
@@ -203,7 +208,7 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
             <h2>{info.total === 0 ? `No hay archivos para agrupar en ${folder}` : `Terminaste con ${folder}`}</h2>
             <p>
               {info.total === 0
-                ? "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado."
+                ? "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado. Puedes sumar palabras clave en Traslados › Carpetas con estrella."
                 : `En esta sesión · agrupados: ${formatCount(grouped.files)} (${formatBytes(grouped.bytes)}) · ignorados: ${formatCount(ignored)}`}
             </p>
             {info.skipped.duplicates > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.duplicates)} ya tienen una copia idéntica en la carpeta y se quedan para revisar en Duplicados.`}</p> : null}

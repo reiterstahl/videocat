@@ -22,6 +22,7 @@ import { formatCount } from "../lib/app-helpers";
 import { needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
+import { GroupKeywordsEditor } from "../components/GroupKeywordsEditor";
 import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
 
 type TransfersViewProps = {
@@ -397,6 +398,11 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
                       {`La ubicación más grande es ${larger.diskName}: ${larger.path} (${formatBytes(larger.sizeBytes)}). Conviene que la estrella esté ahí para mover menos datos.`}
                     </p>
                   ) : null}
+                  <GroupKeywordsEditor
+                    destinationId={destination.id}
+                    keywords={destination.groupKeywords}
+                    onSaved={(keywords) => setDestinations((current) => current?.map((entry) => (entry.id === destination.id ? { ...entry, groupKeywords: keywords } : entry)) ?? current)}
+                  />
                   <div className="vc-starred-actions">
                     <button className="vc-button is-small vc-kind-button is-consolidate" disabled={busy || destination.namesakes.length === 0} onClick={() => setConsolidating(destination)} type="button" title={destination.namesakes.length === 0 ? "No hay carpetas con este nombre en otros discos" : "Traer aquí el contenido de las carpetas iguales"}>
                       <FolderInput size={14} /> Consolidar
