@@ -98,7 +98,7 @@ flowchart LR
 
 ### Transfers
 - **Consolidate folders**: star the largest folder of a repeated group (for example the 1.7 TB "Testing") and move the contents of every other "Testing" into it, whatever drive they are on. Before anything starts you see the plan: what leaves each folder, how much it takes and whether it fits at the destination.
-- **Group files**: start from a folder (for example `testing001`) and find files with a similar name on every drive, ignoring case, accents, dots and separators, plus one letter of difference. You decide one by one in the same Review session: `F` group, `J` ignore.
+- **Group files**: start from a folder (for example `testing001`) and find files with a similar name on every drive, ignoring case, accents, dots and separators, plus one letter of difference. Optionally, each folder adds **keywords** that are searched too. You decide one by one in the same Review session: `F` group, `J` ignore.
 - The drives never need to be connected at the same time: each file goes through a **Companion staging folder**, and the **Transfers** section tells you which drive to connect or where to free space.
 - **Nothing is removed without a verified copy somewhere else** (details in [Safe transfers](#safe-transfers)).
 
