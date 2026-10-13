@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.20 (Companion 0.2.7)
+
+- New **activity indicator** in the header, next to the theme button: it shows what the Companion is doing right now (copying to or from the staging folder, verifying, downloading, scanning or deleting) and opens a live panel with progress, speed, ETA, a speed chart, what is waiting and the latest movements.
+- Windows Companion 0.2.7 (updates itself) reports that activity about once a second while busy, and the live free space of every connected drive in each heartbeat, so "Faltará espacio" and "Libera espacio" follow what you delete without waiting for a rescan.
+- Live activity is kept in server memory only and expires 30 s after a Companion stops reporting. No migrations or configuration changes.
+
 ## Upgrading to 0.2.19
 
 - Transfers no longer refuse a destination without room (by its last scan): consolidations and grouped files are created anyway, leave their drives and wait in the Companion staging folder. Traslados shows *Faltará espacio en…* with how much to free; the Companion measures again when the destination is connected and delivers once there is room.
