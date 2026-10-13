@@ -150,7 +150,7 @@ export type ConsolidatePlan = {
   fits: boolean;
   // Present when the files do not fit yet: they still leave their drives and wait in staging.
   spaceWarning: { reason: "unknown_space" | "no_space"; shortBytes: number } | null;
-  skipped: { duplicates: number; inTransfer: number };
+  skipped: { duplicates: number; inTransfer: number; favorites: number };
 };
 
 export type TransferNeed = {
@@ -211,7 +211,7 @@ export type GroupCandidates = {
   totalBytes: number;
   exact: number;
   similar: number;
-  skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number };
+  skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number; favorites: number };
   // Folder name first, then the optional keywords.
   keywords: string[];
   items: Array<{ id: string; match: "exact" | "similar"; keyword: string }>;
@@ -224,4 +224,12 @@ export type GroupFolder = {
   files: number;
   bytes: number;
   destinationId: string | null;
+};
+
+// A favourite folder: its videos (subfolders included) are never offered to move elsewhere.
+export type FolderFavorite = {
+  id: string;
+  diskId: string;
+  diskName: string;
+  path: string;
 };

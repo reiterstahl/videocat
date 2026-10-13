@@ -26,6 +26,7 @@ model Disk {
   agentErrors          AgentError[]
   deletionRecords      DeletionRecord[]
   transferDestinations TransferDestination[]
+  folderFavorites      FolderFavorite[]
 
   @@index([name])
   @@index([volumeId])
@@ -53,8 +54,8 @@ model Scan {
 }
 
 model VideoFile {
-  id                 String              @id @default(uuid()) @db.Uuid
-  diskId             String              @db.Uuid
+  id                 String                @id @default(uuid()) @db.Uuid
+  diskId             String                @db.Uuid
   filename           String
   extension          String
   absolutePath       String
@@ -63,7 +64,7 @@ model VideoFile {
   folderSizeBytes    BigInt?
   fileCreatedAt      DateTime?
   modifiedAt         DateTime?
-  scanStatus         String              @default("pending")
+  scanStatus         String                @default("pending")
   errorMessage       String?
   durationSeconds    Float?
   width              Int?
@@ -79,14 +80,14 @@ model VideoFile {
   visualFingerprint  String?
   fingerprintVersion Int?
   fingerprintedAt    DateTime?
-  curationStatus     String              @default("none")
+  curationStatus     String                @default("none")
   reviewedAt         DateTime?
-  isPresent          Boolean             @default(true)
+  isPresent          Boolean               @default(true)
   missingSince       DateTime?
-  lastSeenScanId     String?             @db.Uuid
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  disk               Disk                @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  lastSeenScanId     String?               @db.Uuid
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  disk               Disk                  @relation(fields: [diskId], references: [id], onDelete: Cascade)
   thumbnails         Thumbnail[]
   categories         VideoFileCategory[]
   downloadQueue      DownloadQueue?
@@ -315,19 +316,30 @@ model Thumbnail {
 
 // Folders marked with a star: the only places that may receive transferred files.
 model TransferDestination {
-  id        String        @id @default(uuid()) @db.Uuid
-  diskId    String        @db.Uuid
-  path      String
-  nameKey   String
+  id            String                @id @default(uuid()) @db.Uuid
+  diskId        String                @db.Uuid
+  path          String
+  nameKey       String
   // Optional extra words that "Agrupar archivos" also looks for, besides the folder name.
-  groupKeywords String[]  @default([])
-  createdAt DateTime      @default(now())
-  disk      Disk          @relation(fields: [diskId], references: [id], onDelete: Cascade)
-  jobs      TransferJob[]
-  ignored   TransferGroupIgnore[]
+  groupKeywords String[]              @default([])
+  createdAt     DateTime              @default(now())
+  disk          Disk                  @relation(fields: [diskId], references: [id], onDelete: Cascade)
+  jobs          TransferJob[]
+  ignored       TransferGroupIgnore[]
 
   @@unique([diskId, path])
   @@index([nameKey])
+}
+
+// Favourite folders: their videos (and their subfolders') are never offered to move elsewhere.
+model FolderFavorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  diskId    String   @db.Uuid
+  path      String
+  createdAt DateTime @default(now())
+  disk      Disk     @relation(fields: [diskId], references: [id], onDelete: Cascade)
+
+  @@unique([diskId, path])
 }
 
 // Files the person chose to leave alone (J) when grouping into a folder; not proposed again.

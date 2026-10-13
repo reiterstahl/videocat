@@ -1170,6 +1170,52 @@ test("the Companion reports live activity and the free space of connected drives
   }
 });
 
+test("favourite folders never offer their videos to move", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const target = await prisma.disk.create({ data: { name: `Fav destino ${suffix}`, volumeId: `fd-${suffix}`, totalBytes: 4_000_000_000_000n, freeBytes: 1_000_000_000_000n } });
+  const source = await prisma.disk.create({ data: { name: `Fav origen ${suffix}`, volumeId: `fo-${suffix}`, totalBytes: 1_000_000_000_000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  const name = `Favorita${suffix}`;
+  try {
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: target.id, filename: "base.mp4", extension: "mp4", absolutePath: "E:/x", relativePath: `${name}/base.mp4`, sizeBytes: 10n },
+        { diskId: source.id, filename: `${name}-a.mp4`, extension: "mp4", absolutePath: "F:/a", relativePath: `${name}/${name}-a.mp4`, sizeBytes: 5n },
+        { diskId: source.id, filename: `${name}-b.mp4`, extension: "mp4", absolutePath: "F:/b", relativePath: `${name}/Sub/${name}-b.mp4`, sizeBytes: 5n }
+      ]
+    });
+    const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: name } })).json().destination.id;
+    const sources = [{ d: source.id, p: name }];
+    // A transfer created before the folder becomes a favourite.
+    const created = await app.inject({ method: "POST", url: "/api/transfers/consolidate", headers: webMutationHeaders(cookie), payload: { destinationId, sources } });
+    assert.equal(created.json().items, 2);
+
+    const marked = await app.inject({ method: "POST", url: "/api/folder-favorites", headers: webMutationHeaders(cookie), payload: { locations: [{ d: source.id, p: `${name}/` }] } });
+    assert.equal(marked.statusCode, 200);
+    assert.equal(marked.json().cancelledPending, 2, "files that had not left their drive leave the transfer");
+    const listed = (await app.inject({ method: "GET", url: "/api/folder-favorites", headers: { cookie } })).json().favorites;
+    assert.ok(listed.some((entry: { diskId: string; path: string }) => entry.diskId === source.id && entry.path === name));
+
+    const preview = (await app.inject({ method: "POST", url: "/api/transfers/consolidate/preview", headers: webMutationHeaders(cookie), payload: { destinationId, sources } })).json();
+    assert.deepEqual([preview.files, preview.skipped.favorites], [0, 2], "subfolders are protected too");
+    const group = (await app.inject({ method: "POST", url: "/api/transfers/group/candidates", headers: webMutationHeaders(cookie), payload: { destinationId } })).json();
+    assert.equal(group.total, 0);
+    assert.equal(group.skipped.favorites, 2);
+    const fileId = (await prisma.videoFile.findFirstOrThrow({ where: { diskId: source.id, filename: `${name}-a.mp4` } })).id;
+    const decided = await app.inject({ method: "POST", url: "/api/transfers/group/decide", headers: webMutationHeaders(cookie), payload: { destinationId, fileId, decision: "group" } });
+    assert.deepEqual([decided.statusCode, decided.json().reason], [409, "favorite"]);
+
+    const removed = await app.inject({ method: "POST", url: "/api/folder-favorites/remove", headers: webMutationHeaders(cookie), payload: { locations: [{ d: source.id, p: name }] } });
+    assert.equal(removed.json().removed, 1);
+    const again = (await app.inject({ method: "POST", url: "/api/transfers/consolidate/preview", headers: webMutationHeaders(cookie), payload: { destinationId, sources } })).json();
+    assert.equal(again.files, 2);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
+    for (const disk of [source, target]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

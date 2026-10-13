@@ -1725,7 +1725,7 @@ a.vc-button {
 
 .vc-folders-locations li {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   color: var(--vc-muted);
@@ -2629,4 +2629,77 @@ a.vc-button {
   padding: 0 10px;
   color: var(--vc-text);
   font: inherit;
+}
+
+/* Favourite folders (Uso por carpeta): never offered to move. */
+.vc-favorite-mark {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: #e11d48;
+  fill: currentColor;
+  vertical-align: -1px;
+}
+
+.vc-favorite-button.is-on {
+  color: #e11d48;
+}
+
+.vc-favorite-button.is-on svg {
+  fill: currentColor;
+}
+
+.vc-context-menu {
+  position: fixed;
+  z-index: 90;
+  width: 260px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--vc-border);
+  border-radius: 12px;
+  background: var(--vc-raised);
+  box-shadow: var(--vc-shadow-pop);
+  padding: 6px;
+}
+
+.vc-context-menu-title {
+  overflow: hidden;
+  padding: 4px 8px 6px;
+  color: var(--vc-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px;
+  color: var(--vc-text);
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vc-context-menu button:hover:not(:disabled),
+.vc-context-menu button:focus-visible {
+  background: var(--vc-hover);
+}
+
+.vc-context-menu button:disabled {
+  color: var(--vc-muted);
+  cursor: default;
+}
+
+.vc-context-menu small {
+  border-top: 1px solid var(--vc-border);
+  margin-top: 4px;
+  padding: 6px 8px 2px;
+  color: var(--vc-muted);
+  font-size: 0.72rem;
 }

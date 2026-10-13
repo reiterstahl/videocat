@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, EyeOff, FolderInput, FolderSearch, FolderTree, Layers, Search, Star, Undo2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, EyeOff, FolderInput, FolderSearch, FolderTree, Heart, Layers, Search, Star, Undo2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { transferError } from "../lib/transfers";
@@ -7,7 +7,26 @@ import { formatCount } from "../lib/app-helpers";
 import { squarify } from "../lib/treemap";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
-import type { CatalogLocationScope, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination } from "../types";
+import type { CatalogLocationScope, FolderFavorite, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination } from "../types";
+
+type FolderMenu = { x: number; y: number; title: string; locations: FolderGroupLocation[]; scope: CatalogLocationScope | null };
+
+function cleanPath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+// "exact": this folder is a favourite; "inherited": it is inside one (protected, but not removable here).
+function favoriteState(location: { diskId: string; path: string }, favorites: readonly FolderFavorite[]): "exact" | "inherited" | null {
+  const path = cleanPath(location.path).toLowerCase();
+  let state: "exact" | "inherited" | null = null;
+  for (const favorite of favorites) {
+    if (favorite.diskId !== location.diskId) continue;
+    const favoritePath = cleanPath(favorite.path).toLowerCase();
+    if (favoritePath === path) return "exact";
+    if (path.startsWith(`${favoritePath}/`)) state = "inherited";
+  }
+  return state;
+}
 
 type FolderUsageViewProps = {
   diskQuery: string;
@@ -107,6 +126,9 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
   const [consolidating, setConsolidating] = useState<ConsolidateRequest | null>(null);
+  const [favorites, setFavorites] = useState<FolderFavorite[]>([]);
+  const [menu, setMenu] = useState<FolderMenu | null>(null);
+  const [notice, setNotice] = useState("");
   const [groupingId, setGroupingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,6 +136,11 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
     api<{ destinations: TransferDestination[] }>("/api/transfers/destinations")
       .then((response) => {
         if (active) setDestinations(response.destinations);
+      })
+      .catch(() => undefined);
+    api<{ favorites: FolderFavorite[] }>("/api/folder-favorites")
+      .then((response) => {
+        if (active) setFavorites(response.favorites);
       })
       .catch(() => undefined);
     return () => {
@@ -199,6 +226,51 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
       : [...current, group.name]);
   }
 
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") close();
+    }
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [menu]);
+
+  // Adds every location as a favourite, or removes the ones that already are.
+  async function toggleFavorite(locations: FolderGroupLocation[]) {
+    const exact = locations.filter((location) => favoriteState(location, favorites) === "exact");
+    const payload = { locations: (exact.length > 0 ? exact : locations).map((location) => ({ d: location.diskId, p: location.path })) };
+    setMenu(null);
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (exact.length > 0) {
+        await api("/api/folder-favorites/remove", { method: "POST", body: JSON.stringify(payload) });
+        setNotice("Carpeta quitada de favoritas: sus videos vuelven a poder moverse.");
+      } else {
+        const result = await api<{ cancelledPending: number }>("/api/folder-favorites", { method: "POST", body: JSON.stringify(payload) });
+        setNotice(result.cancelledPending > 0
+          ? `Carpeta favorita: sus videos ya no se mueven. ${result.cancelledPending} ${result.cancelledPending === 1 ? "archivo salió" : "archivos salieron"} de traslados que aún no habían empezado.`
+          : "Carpeta favorita: sus videos ya no se ofrecen para moverse a otra carpeta.");
+      }
+      const response = await api<{ favorites: FolderFavorite[] }>("/api/folder-favorites");
+      setFavorites(response.favorites);
+    } catch (reason) {
+      setError(transferError(reason, "No se pudo cambiar la carpeta favorita."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function starredIn(location: FolderGroupLocation): TransferDestination | undefined {
     return destinations.find((destination) => samePlace(destination, location));
   }
@@ -256,6 +328,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
 
       {noDisksSelected ? <div className="empty">Selecciona al menos un disco para ver el uso por carpeta.</div> : null}
       {error ? <div className="form-error" role="alert">{error}</div> : null}
+      {notice ? <div className="vc-notice" role="status">{notice}</div> : null}
       {loading && !map ? <div className="loading">Cargando...</div> : null}
 
       {map && !noDisksSelected ? (
@@ -282,6 +355,17 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                       event.stopPropagation();
                       if (scope) onOpenLocations(scope);
                     }}
+                    onContextMenu={(event) => {
+                      if (!scope || tile.node.locations.length === 0) return;
+                      event.preventDefault();
+                      setMenu({
+                        x: Math.min(event.clientX, window.innerWidth - 270),
+                        y: Math.min(event.clientY, window.innerHeight - 210),
+                        title: tile.trail.map((node) => node.name).join(" › "),
+                        locations: tile.node.locations,
+                        scope
+                      });
+                    }}
                     onMouseEnter={() => setHovered(tile)}
                     onFocus={() => setHovered(tile)}
                     type="button"
@@ -289,7 +373,10 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                   >
                     {tile.labelled ? (
                       <span className="vc-folder-tile-label">
-                        <strong>{tile.node.name}</strong>
+                        <strong>
+                          {tile.node.locations.length > 0 && tile.node.locations.every((location) => favoriteState(location, favorites)) ? <Heart size={11} aria-label="Favorita" className="vc-favorite-mark" /> : null}
+                          {tile.node.name}
+                        </strong>
                         <small>{formatBytes(tile.node.sizeBytes)}{tile.node.locations.length > 1 ? ` · ×${tile.node.locations.length}` : ""}</small>
                       </span>
                     ) : null}
@@ -351,6 +438,18 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                             >
                               <Star size={14} aria-hidden="true" />
                             </button>
+                            <button
+                              className={`vc-star-button vc-favorite-button ${favoriteState(location, favorites) ? "is-on" : ""}`}
+                              disabled={saving || favoriteState(location, favorites) === "inherited"}
+                              onClick={() => void toggleFavorite([location])}
+                              type="button"
+                              aria-pressed={Boolean(favoriteState(location, favorites))}
+                              title={favoriteState(location, favorites) === "inherited"
+                                ? "Está dentro de una carpeta favorita"
+                                : favoriteState(location, favorites) ? "Quitar de favoritas" : "Marcar como favorita: sus videos nunca se ofrecen para moverse"}
+                            >
+                              <Heart size={14} aria-hidden="true" />
+                            </button>
                             <span>{location.diskName}</span>
                             <code>{location.path}</code>
                             {location.sizeBytes > 0 ? <em>{formatBytes(location.sizeBytes)}</em> : <em />}
@@ -399,6 +498,33 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
           </aside>
         </div>
       ) : null}
+
+      {menu ? (() => {
+        const states = menu.locations.map((location) => favoriteState(location, favorites));
+        const exact = states.some((state) => state === "exact");
+        const inherited = !exact && states.every((state) => state === "inherited");
+        return (
+          <div
+            className="vc-context-menu"
+            role="menu"
+            aria-label={menu.title}
+            style={{ left: menu.x, top: menu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <span className="vc-context-menu-title" title={menu.title}>{menu.title}</span>
+            <button role="menuitem" type="button" disabled={saving || inherited} onClick={() => void toggleFavorite(menu.locations)}>
+              <Heart size={15} aria-hidden="true" className={exact ? "vc-favorite-mark" : undefined} />
+              {inherited ? "Dentro de una carpeta favorita" : exact ? "Quitar de favoritas" : menu.locations.length > 1 ? `Marcar como favorita (${menu.locations.length} ubicaciones)` : "Marcar como favorita"}
+            </button>
+            {menu.scope ? (
+              <button role="menuitem" type="button" onClick={() => { const scope = menu.scope!; setMenu(null); onOpenLocations(scope); }}>
+                <ExternalLink size={15} aria-hidden="true" /> Ver en catálogo
+              </button>
+            ) : null}
+            <small>Los videos de una carpeta favorita nunca se ofrecen para moverse a otra carpeta.</small>
+          </div>
+        );
+      })() : null}
 
       {groupingId ? (
         <GroupSession

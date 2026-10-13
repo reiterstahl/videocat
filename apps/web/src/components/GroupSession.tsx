@@ -211,6 +211,7 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
                 ? "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado. Puedes sumar palabras clave en Traslados › Carpetas con estrella."
                 : `En esta sesión · agrupados: ${formatCount(grouped.files)} (${formatBytes(grouped.bytes)}) · ignorados: ${formatCount(ignored)}`}
             </p>
+            {info.skipped.favorites > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.favorites)} están en carpetas favoritas y no se ofrecen.`}</p> : null}
             {info.skipped.duplicates > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.duplicates)} ya tienen una copia idéntica en la carpeta y se quedan para revisar en Duplicados.`}</p> : null}
             <div className="vc-folders-actions">
               <button className="vc-button is-primary" onClick={onOpenTransfers} type="button"><ArrowRightLeft size={16} /> Ver en Traslados</button>

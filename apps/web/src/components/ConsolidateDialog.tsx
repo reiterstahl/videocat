@@ -130,6 +130,12 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
                     <dd>{`${formatCount(plan.skipped.duplicates)} se quedan para revisar en Duplicados`}</dd>
                   </div>
                 ) : null}
+                {plan.skipped.favorites > 0 ? (
+                  <div>
+                    <dt>En carpetas favoritas</dt>
+                    <dd>{`${formatCount(plan.skipped.favorites)} no se mueven`}</dd>
+                  </div>
+                ) : null}
                 {plan.skipped.inTransfer > 0 ? (
                   <div>
                     <dt>En otro traslado</dt>

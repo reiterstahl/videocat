@@ -176,6 +176,18 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Favorita": "Favorite",
+  "Marcar como favorita": "Mark as favorite",
+  "Quitar de favoritas": "Remove from favorites",
+  "Dentro de una carpeta favorita": "Inside a favorite folder",
+  "Está dentro de una carpeta favorita": "It is inside a favorite folder",
+  "Marcar como favorita: sus videos nunca se ofrecen para moverse": "Mark as favorite: its videos are never offered to move",
+  "Los videos de una carpeta favorita nunca se ofrecen para moverse a otra carpeta.": "Videos in a favorite folder are never offered to move to another folder.",
+  "Carpeta quitada de favoritas: sus videos vuelven a poder moverse.": "Folder removed from favorites: its videos can move again.",
+  "Carpeta favorita: sus videos ya no se ofrecen para moverse a otra carpeta.": "Favorite folder: its videos are no longer offered to move to another folder.",
+  "No se pudo cambiar la carpeta favorita.": "The favorite folder could not be changed.",
+  "En carpetas favoritas": "In favorite folders",
+  "Ese archivo está en una carpeta favorita y nunca se mueve.": "That file is in a favorite folder and never moves.",
   "Parecido a una palabra clave": "Similar to a keyword",
   "Contiene una palabra clave": "Contains a keyword",
   "Cada palabra clave necesita al menos 3 letras o números.": "Each keyword needs at least 3 letters or numbers.",
@@ -937,6 +949,18 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Quitar (.+)$/);
   if (match) return `Remove ${match[1]}`;
+
+  match = text.match(/^Marcar como favorita \(([\d.,]+) ubicaciones\)$/);
+  if (match) return `Mark as favorite (${match[1]} locations)`;
+
+  match = text.match(/^Carpeta favorita: sus videos ya no se mueven\. ([\d.,]+) (?:archivo salió|archivos salieron) de traslados que aún no habían empezado\.$/);
+  if (match) return `Favorite folder: its videos no longer move. ${match[1]} ${match[1] === "1" ? "file left" : "files left"} transfers that had not started yet.`;
+
+  match = text.match(/^([\d.,\s]+) no se mueven$/);
+  if (match) return `${match[1]} do not move`;
+
+  match = text.match(/^([\d.,\s]+) están en carpetas favoritas y no se ofrecen\.$/);
+  if (match) return `${match[1]} are in favorite folders and are not offered.`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

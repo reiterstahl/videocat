@@ -57,6 +57,10 @@ const companionOnlineMs = 45_000;
 const groupCandidateLimit = 2000;
 const groupKeywordLimit = 20;
 
+const favoriteLocationsSchema = z.object({
+  locations: z.array(z.object({ d: z.string().uuid(), p: z.string().trim().min(1).max(2000) })).min(1).max(50)
+});
+
 const groupDecisionSchema = z.object({
   destinationId: z.string().uuid(),
   fileId: z.string().uuid(),
@@ -67,6 +71,7 @@ const groupSkipMessages: Record<string, string> = {
   already_there: "That file is already in this folder",
   in_transfer: "That file is already in another transfer",
   duplicate_at_destination: "An identical file is already in this folder; it stays for review in Duplicates",
+  favorite: "That file is in a favorite folder and never moves",
   nothing_to_move: "Nothing to move"
 };
 
@@ -78,7 +83,18 @@ const consolidateSchema = z.object({
 const plannedFileSelect = { id: true, diskId: true, relativePath: true, filename: true, sizeBytes: true, modifiedAt: true } satisfies Prisma.VideoFileSelect;
 type PlannedFile = Prisma.VideoFileGetPayload<{ select: typeof plannedFileSelect }>;
 type DestinationWithDisk = Prisma.TransferDestinationGetPayload<{ include: { disk: true } }>;
-type SkipReason = "already_there" | "in_transfer" | "duplicate_at_destination";
+type SkipReason = "already_there" | "in_transfer" | "duplicate_at_destination" | "favorite";
+
+type FavoriteFolder = { diskId: string; path: string };
+
+async function favoriteFolders(): Promise<FavoriteFolder[]> {
+  return prisma.folderFavorite.findMany({ select: { diskId: true, path: true } });
+}
+
+// A favourite folder protects everything under it, subfolders included.
+function inFavorite(file: { diskId: string; relativePath: string }, favorites: readonly FavoriteFolder[]): boolean {
+  return favorites.some((favorite) => favorite.diskId === file.diskId && insideFolder(file.relativePath, favorite.path));
+}
 
 type TransferPlan = {
   movable: PlannedFile[];
@@ -120,11 +136,16 @@ async function planTransfer(destination: DestinationWithDisk, files: PlannedFile
     select: { filename: true, sizeBytes: true }
   });
   const destinationKeys = new Set(destinationFiles.map((file) => `${file.filename.toLowerCase()}|${file.sizeBytes}`));
+  const favorites = await favoriteFolders();
 
   const skipped: TransferPlan["skipped"] = [];
   const movable = files.filter((file) => {
     if (file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path)) {
       skipped.push({ fileId: file.id, reason: "already_there" });
+      return false;
+    }
+    if (inFavorite(file, favorites)) {
+      skipped.push({ fileId: file.id, reason: "favorite" });
       return false;
     }
     if (busyIds.has(file.id)) {
@@ -431,6 +452,50 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
+  // ------------------------------------------------------------ Favourite folders
+  app.get("/api/folder-favorites", { preHandler: requireWebAuth }, async () => {
+    const favorites = await prisma.folderFavorite.findMany({ include: { disk: { select: { name: true } } }, orderBy: { createdAt: "asc" } });
+    return { favorites: favorites.map((favorite) => ({ id: favorite.id, diskId: favorite.diskId, diskName: favorite.disk.name, path: favorite.path })) };
+  });
+
+  // Marking a favourite also takes its files out of transfers that have not started for them yet;
+  // files already in staging finish their way (nothing is undone half way).
+  app.post("/api/folder-favorites", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = favoriteLocationsSchema.parse(request.body);
+    const locations = body.locations.map((location) => ({ diskId: location.d, path: cleanFolder(location.p) })).filter((location) => location.path);
+    const disks = await prisma.disk.findMany({ where: { id: { in: [...new Set(locations.map((location) => location.diskId))] } }, select: { id: true } });
+    if (disks.length !== new Set(locations.map((location) => location.diskId)).size) return reply.code(404).send({ message: "Disk not found" });
+    let cancelledPending = 0;
+    const touchedJobs = new Set<string>();
+    for (const location of locations) {
+      await prisma.folderFavorite.upsert({
+        where: { diskId_path: { diskId: location.diskId, path: location.path } },
+        create: { diskId: location.diskId, path: location.path },
+        update: {}
+      });
+      const pendingInside = {
+        state: "pending",
+        sourceDiskId: location.diskId,
+        OR: [{ sourceRelativePath: { startsWith: `${location.path}/`, mode: "insensitive" as const } }, { sourceRelativePath: { startsWith: `${location.path}\\`, mode: "insensitive" as const } }]
+      };
+      const jobs = await prisma.transferItem.findMany({ where: pendingInside, select: { jobId: true }, distinct: ["jobId"] });
+      jobs.forEach((job) => touchedJobs.add(job.jobId));
+      cancelledPending += (await prisma.transferItem.updateMany({ where: pendingInside, data: { state: "cancelled", error: "Carpeta favorita: no se mueve." } })).count;
+    }
+    for (const jobId of touchedJobs) await closeFinishedJob(jobId);
+    await recordAction({ action: "folder.favorite.add", actorType: "web", actorId: "admin", target: locations.map((location) => location.path).join(", ").slice(0, 500), result: { locations: locations.length, cancelledPending } });
+    return { ok: true, cancelledPending };
+  });
+
+  app.post("/api/folder-favorites/remove", { preHandler: requireWebAuth }, async (request) => {
+    const body = favoriteLocationsSchema.parse(request.body);
+    const removed = await prisma.folderFavorite.deleteMany({
+      where: { OR: body.locations.map((location) => ({ diskId: location.d, path: cleanFolder(location.p) })) }
+    });
+    await recordAction({ action: "folder.favorite.remove", actorType: "web", actorId: "admin", result: { removed: removed.count } });
+    return { ok: true, removed: removed.count };
+  });
+
   // Optional extra words for "Agrupar archivos"; the folder name is always searched.
   app.put("/api/transfers/destinations/:id/keywords", { preHandler: requireWebAuth }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
@@ -506,7 +571,11 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         reserveBytes: plan.reserveBytes,
         fits: plan.fits,
         spaceWarning: plan.fits ? null : plan.spaceWarning,
-        skipped: { duplicates: plan.skipped.filter((entry) => entry.reason === "duplicate_at_destination").length, inTransfer: plan.skipped.filter((entry) => entry.reason === "in_transfer").length }
+        skipped: {
+          duplicates: plan.skipped.filter((entry) => entry.reason === "duplicate_at_destination").length,
+          inTransfer: plan.skipped.filter((entry) => entry.reason === "in_transfer").length,
+          favorites: plan.skipped.filter((entry) => entry.reason === "favorite").length
+        }
       };
       if (mode === "preview") return summary;
       if (plan.movable.length === 0) return reply.code(409).send({ message: "Nothing to move", reason: "nothing_to_move", ...summary });
@@ -563,7 +632,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     if (keys.length === 0) return reply.code(400).send({ message: "The folder name is too short to search for similar files" });
     const key = keys[0].key;
 
-    const [files, busy, ignored, destinationFiles] = await Promise.all([
+    const [files, busy, ignored, destinationFiles, favorites] = await Promise.all([
       prisma.videoFile.findMany({
         where: visibleFilesWhere(isProtectedFolderUnlocked(request), { isPresent: true }),
         select: { id: true, diskId: true, relativePath: true, filename: true, sizeBytes: true }
@@ -573,18 +642,20 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       prisma.videoFile.findMany({
         where: { diskId: destination.diskId, OR: [{ relativePath: { startsWith: `${destination.path}/` } }, { relativePath: { startsWith: `${destination.path}\\` } }] },
         select: { filename: true, sizeBytes: true }
-      })
+      }),
+      favoriteFolders()
     ]);
     const busyIds = new Set(busy.map((item) => item.videoFileId));
     const ignoredIds = new Set(ignored.map((entry) => entry.videoFileId));
     const destinationKeys = new Set(destinationFiles.map((file) => `${file.filename.toLowerCase()}|${file.sizeBytes}`));
-    const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0 };
+    const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0, favorites: 0 };
     const candidates: Array<{ id: string; match: NameMatch; keyword: string; diskId: string; relativePath: string; sizeBytes: number }> = [];
     for (const file of files) {
       const found = bestNameMatch(file.filename, keys);
       if (!found) continue;
       const { match, keyword } = found;
       if (file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path)) skipped.inside += 1;
+      else if (inFavorite(file, favorites)) skipped.favorites += 1;
       else if (busyIds.has(file.id)) skipped.inTransfer += 1;
       else if (ignoredIds.has(file.id)) skipped.ignored += 1;
       else if (destinationKeys.has(`${file.filename.toLowerCase()}|${file.sizeBytes}`)) skipped.duplicates += 1;

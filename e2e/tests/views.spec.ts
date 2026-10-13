@@ -271,3 +271,30 @@ test("optional keywords make Agrupar archivos find more files", async ({ page })
     await expect(stars).toHaveCount(count - 1);
   }
 });
+
+test("a right click marks a folder as favorite and its videos are no longer offered to move", async ({ page }) => {
+  await openView(page, "/uso-por-carpeta");
+  const group = page.locator(".vc-folders-list > li:not(.is-excluded)").first();
+  const name = (await group.locator(".vc-folders-item-head strong").textContent())!.trim();
+  const tile = page.locator(".vc-folder-tile.is-group", { hasText: name }).first();
+  await tile.click({ button: "right", position: { x: 10, y: 6 } });
+  const menu = page.getByRole("menu");
+  await menu.getByRole("menuitem", { name: /Marcar como favorita/ }).click();
+  await expect(page.locator(".vc-notice")).toContainText("Carpeta favorita");
+  await expect(tile.locator(".vc-favorite-mark")).toBeVisible();
+  await expect(group.locator(".vc-favorite-button.is-on").first()).toBeVisible();
+
+  // Consolidating that group finds nothing to move: every location is a favorite.
+  await group.locator(".vc-folders-locations li").first().getByRole("button", { name: /Marcar con estrella/ }).click();
+  await group.getByRole("button", { name: /^Consolidar en / }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("En carpetas favoritas");
+  await expect(dialog.getByRole("button", { name: "Crear traslado" })).toBeDisabled();
+  await dialog.locator(".delete-confirm-actions").getByRole("button", { name: "Cancelar" }).click();
+
+  await tile.click({ button: "right", position: { x: 10, y: 6 } });
+  await menu.getByRole("menuitem", { name: "Quitar de favoritas" }).click();
+  await expect(page.locator(".vc-notice")).toContainText("quitada de favoritas");
+  await expect(tile.locator(".vc-favorite-mark")).toHaveCount(0);
+  await group.locator(".vc-folders-locations li").first().getByRole("button", { name: /Quitar estrella/ }).click();
+});
