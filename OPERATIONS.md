@@ -17,6 +17,10 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Windows Companion 0.2.8
+
+- **Configuración › Avanzado › Clic en el ícono** (`TRAY_CLICK_ACTION`): a click or double click on the tray icon opens VideoCAT (default), shows the activity window or opens the settings. One action per gesture. Applies as soon as it is saved. The server stays on 0.2.20.
+
 ## Upgrading to 0.2.20 (Companion 0.2.7)
 
 - New **activity indicator** in the header, next to the theme button: it shows what the Companion is doing right now (copying to or from the staging folder, verifying, downloading, scanning or deleting) and opens a live panel with progress, speed, ETA, a speed chart, what is waiting and the latest movements.

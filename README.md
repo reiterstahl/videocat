@@ -420,6 +420,7 @@ Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Na
 | `COMPANION_STAGING_DIR` | — | Carpeta temporal de **Traslados**; vacía desactiva los traslados. Siempre deja libre el 5 % de su unidad. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | Revisión de traslados pendientes (mínimo 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Refresco de discos en el menú de la bandeja. |
+| `TRAY_CLICK_ACTION` | `open` | Qué hace el clic o doble clic en el ícono: `open` (abrir VideoCAT), `activity` (mostrar actividad) o `settings` (abrir configuración). |
 </details>
 
 ### Agente CLI

@@ -422,6 +422,7 @@ Everything is edited from **Configuración…**, organized in pages: Conexión, 
 | `COMPANION_STAGING_DIR` | — | **Transfers** staging folder; empty disables transfers. Always keeps 5 % of its drive free. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | How often pending transfers are checked (minimum 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Drive refresh in the tray menu. |
+| `TRAY_CLICK_ACTION` | `open` | What a click or double click on the icon does: `open` (open VideoCAT), `activity` (show activity) or `settings` (open settings). |
 </details>
 
 ### CLI agent
