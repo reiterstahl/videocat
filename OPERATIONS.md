@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.22
+
+- **Palabras clave** for each starred folder (Traslados › Carpetas con estrella): optional extra words that *Agrupar archivos* also looks for, with the same rules as the folder name. The session shows which keyword matched each file.
+- Migration `0023_transfer_group_keywords` runs automatically. No configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.21
 
 - Visual only: Traslados drops the coloured top and left borders that curved with rounded corners; kinds are marked with the house straight vertical line (`vc-accent-bar`). The rule is written in AGENTS.md › UI Conventions.
