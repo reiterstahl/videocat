@@ -226,7 +226,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     const open = expanded === job.id;
     const running = job.status === "active" || job.status === "paused";
     return (
-      <li key={job.id} className={`vc-transfers-job is-${job.kind} is-${job.status}`}>
+      <li key={job.id} className={`vc-transfers-job vc-accent-bar is-${job.kind} is-${job.status}`}>
         <div className="vc-transfers-job-head">
           <button className="vc-transfers-expand" onClick={() => setExpanded(open ? null : job.id)} type="button" aria-expanded={open}>
             {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -413,7 +413,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
       </section>
 
       <div className="vc-transfers-columns">
-        <section className="vc-panel vc-transfers-kind is-consolidate" aria-label="Consolidar carpetas">
+        <section className="vc-panel vc-transfers-kind vc-accent-bar is-consolidate" aria-label="Consolidar carpetas">
           <header className="vc-transfers-kind-head">
             <span className="vc-kind-icon" aria-hidden="true"><FolderInput size={20} /></span>
             <div>
@@ -431,7 +431,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
           {renderJobs("consolidate")}
         </section>
 
-        <section className="vc-panel vc-transfers-kind is-group vc-transfers-group" aria-label="Agrupar archivos" ref={groupCardRef}>
+        <section className="vc-panel vc-transfers-kind vc-accent-bar is-group vc-transfers-group" aria-label="Agrupar archivos" ref={groupCardRef}>
           <header className="vc-transfers-kind-head">
             <span className="vc-kind-icon" aria-hidden="true"><FolderSearch size={20} /></span>
             <div>

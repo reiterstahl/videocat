@@ -1887,7 +1887,7 @@ a.vc-button {
 }
 
 .vc-consolidate-target {
-  border-color: color-mix(in srgb, #d97706 45%, var(--vc-border));
+  --vc-accent-bar-color: #d97706;
   background: color-mix(in srgb, #d97706 8%, var(--vc-surface));
 }
 
@@ -2273,7 +2273,6 @@ a.vc-button {
   display: grid;
   gap: 12px;
   padding: 16px 18px;
-  border-color: color-mix(in srgb, #d97706 35%, var(--vc-border));
 }
 
 .vc-starred-grid {
@@ -2369,12 +2368,10 @@ a.vc-button {
 }
 
 .vc-kind-button.is-consolidate {
-  border-color: color-mix(in srgb, var(--vc-consolidate) 55%, var(--vc-border));
   color: var(--vc-consolidate);
 }
 
 .vc-kind-button.is-group {
-  border-color: color-mix(in srgb, var(--vc-group) 55%, var(--vc-border));
   color: var(--vc-group);
 }
 
@@ -2397,7 +2394,6 @@ a.vc-button {
   --kind: var(--vc-consolidate);
   display: grid;
   gap: 12px;
-  border-top: 4px solid var(--kind);
   padding: 16px 18px;
 }
 
@@ -2424,7 +2420,6 @@ a.vc-button {
 
 .vc-transfers-kind-head h3 {
   margin: 0;
-  color: var(--kind);
   font-size: 1.05rem;
 }
 
@@ -2453,11 +2448,11 @@ a.vc-button {
 }
 
 .vc-transfers-list > li.vc-transfers-job {
-  border-left: 3px solid var(--vc-consolidate);
+  --vc-accent-bar-color: var(--vc-consolidate);
 }
 
 .vc-transfers-list > li.vc-transfers-job.is-group {
-  border-left-color: var(--vc-group);
+  --vc-accent-bar-color: var(--vc-group);
 }
 
 .vc-kind-tag {
@@ -2529,4 +2524,31 @@ a.vc-button {
   border-color: var(--vc-border);
   color: var(--vc-muted);
   opacity: 0.6;
+}
+
+/* House style for marking a kind or a state: a straight vertical line on the left.
+   Never a coloured border that follows rounded corners (see AGENTS.md, UI conventions). */
+.vc-accent-bar {
+  position: relative;
+}
+
+.vc-accent-bar::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 4px;
+  background: var(--vc-accent-bar-color, var(--vc-accent));
+  content: "";
+  pointer-events: none;
+}
+
+.vc-transfers-kind.vc-accent-bar {
+  --vc-accent-bar-color: var(--kind);
+}
+
+.vc-transfers-kind.vc-accent-bar::before {
+  top: 18px;
+  bottom: auto;
+  height: 38px;
 }

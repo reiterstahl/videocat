@@ -856,7 +856,6 @@
 }
 
 .vc-activity-button.is-busy {
-  border-color: color-mix(in srgb, var(--vc-accent) 45%, var(--vc-border));
   color: var(--vc-accent-ink);
 }
 

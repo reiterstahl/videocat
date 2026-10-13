@@ -108,7 +108,7 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
                   ))}
                 </ul>
                 <ArrowRight size={20} aria-hidden="true" className="vc-consolidate-arrow" />
-                <div className="vc-consolidate-target">
+                <div className="vc-consolidate-target vc-accent-bar">
                   <Star size={14} aria-hidden="true" />
                   <span>{plan.destination.diskName}</span>
                   <code>{plan.destination.path}</code>
