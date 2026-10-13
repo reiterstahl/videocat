@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.23
+
+- **Carpetas favoritas** in Uso por carpeta: right click a block (or use the heart in Carpetas repetidas) to mark it as a favorite. Its videos, subfolders included, are never offered to move: they are left out of consolidations, Agrupar archivos and new transfers. Marking a favorite takes its files out of transfers that had not started for them; files already in staging finish their way. A favorite can still receive files if it is also starred.
+- Migration `0024_folder_favorites` runs automatically. No configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.22
 
 - **Palabras clave** for each starred folder (Traslados › Carpetas con estrella): optional extra words that *Agrupar archivos* also looks for, with the same rules as the folder name. The session shows which keyword matched each file.
