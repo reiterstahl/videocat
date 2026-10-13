@@ -55,6 +55,8 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
   const [grouped, setGrouped] = useState({ files: 0, bytes: 0 });
   const [ignored, setIgnored] = useState(0);
   const requested = useRef(new Set<string>());
+  const spaceNoticeShown = useRef(false);
+  const [spaceNotice, setSpaceNotice] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -100,7 +102,14 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
     setLoading(true);
     setMessage("");
     try {
-      await api("/api/transfers/group/decide", { method: "POST", body: JSON.stringify({ destinationId, fileId: file.id, decision: decisionFor[status] }) });
+      const result = await api<{ spaceWarning?: { reason: string } | null }>("/api/transfers/group/decide", { method: "POST", body: JSON.stringify({ destinationId, fileId: file.id, decision: decisionFor[status] }) });
+      // Said once per session: the file is grouped anyway and waits in staging until there is room.
+      if (result.spaceWarning && !spaceNoticeShown.current) {
+        spaceNoticeShown.current = true;
+        setSpaceNotice(result.spaceWarning.reason === "unknown_space"
+          ? "Todavía no se conoce el espacio libre del destino: se medirá al conectarlo. Si no alcanza, los archivos esperarán en la carpeta temporal."
+          : "Por ahora no hay espacio en el disco de destino. Los archivos agrupados igual salen de su disco y esperan en la carpeta temporal hasta que liberes espacio.");
+      }
       if (status === "keep") setGrouped((value) => ({ files: value.files + 1, bytes: value.bytes + file.sizeBytes }));
       else setIgnored((value) => value + 1);
       setQueue((value) => value.filter((id) => id !== file.id));
@@ -148,7 +157,7 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
         pendingTotal={queue.length}
         markedToday={0}
         markedLast7Days={0}
-        message={message}
+        message={message || spaceNotice}
         onClose={onClose}
         onDecision={(status) => decide(current, status)}
         onSkip={async () => {

@@ -212,3 +212,31 @@ test("the catalog folder tree opens Agrupar archivos with that folder name", asy
   await expect(page.getByRole("textbox", { name: "Buscar carpeta para agrupar archivos" })).toHaveValue(label);
   await expect(page.locator(".vc-transfers-folder-results li").first()).toBeVisible();
 });
+
+test("a destination without room still accepts the transfer and asks to free space", async ({ page }) => {
+  await openView(page, "/uso-por-carpeta");
+  const group = page.locator(".vc-folders-list > li:not(.is-excluded)").first();
+  const smallest = group.locator(".vc-folders-locations li").last();
+  const diskName = (await smallest.locator("span").first().textContent())!.trim();
+  await smallest.getByRole("button", { name: /Marcar con estrella/ }).click();
+  await group.getByRole("button", { name: /^Consolidar en / }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".vc-status-banner.is-warning", { hasText: "Hoy no cabe" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Crear traslado" }).click();
+  await expect(page).toHaveURL(/\/traslados$/);
+  await expect(page.locator(".vc-transfers-needs")).toContainText(`Faltará espacio en ${diskName}`);
+
+  // Leave the demo as it was for the next tests.
+  const job = page.locator(".vc-transfers-list > li").first();
+  await job.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancelar traslado" }).click();
+  await expect(job.locator(".vc-badge")).toHaveText("Cancelado");
+  const stars = page.locator(".vc-transfers-destinations").getByRole("button", { name: "Quitar estrella" });
+  while (await stars.count() > 0) {
+    const before = await stars.count();
+    await stars.first().click();
+    await expect(stars).toHaveCount(before - 1);
+  }
+  await expect(page.locator(".vc-transfers-destinations")).toContainText("Ninguna todavía");
+});

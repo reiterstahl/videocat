@@ -176,6 +176,11 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Todavía no se conoce el espacio libre del destino.": "The destination's free space is not known yet.",
+  "Se medirá al conectarlo. Puedes crear el traslado: si no alcanza, los archivos esperan en la carpeta temporal.": "It will be measured when the drive is connected. You can create the transfer: if it does not fit, the files wait in the staging folder.",
+  "Puedes crear el traslado igual: los archivos salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio y conectes el disco.": "You can still create the transfer: the files leave their drive and wait in the staging folder; they arrive once you free space and connect the drive.",
+  "Todavía no se conoce el espacio libre del destino: se medirá al conectarlo. Si no alcanza, los archivos esperarán en la carpeta temporal.": "The destination's free space is not known yet: it will be measured when the drive is connected. If it does not fit, the files will wait in the staging folder.",
+  "Por ahora no hay espacio en el disco de destino. Los archivos agrupados igual salen de su disco y esperan en la carpeta temporal hasta que liberes espacio.": "There is no room on the destination drive for now. Grouped files still leave their drive and wait in the staging folder until you free space.",
   "Para continuar": "To continue",
   "No se pudieron cargar las carpetas con estrella.": "Starred folders could not be loaded.",
   "Sin informar": "Not reported",
@@ -864,6 +869,15 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) ya tienen una copia idéntica en la carpeta y se quedan para revisar en Duplicados\.$/);
   if (match) return `${match[1]} already have an identical copy in the folder and stay for review in Duplicates.`;
+
+  match = text.match(/^Faltará espacio en (.+)$/);
+  if (match) return `Space will run short on ${match[1]}`;
+
+  match = text.match(/^Hoy no cabe en (.+): faltan (.+)\.$/);
+  if (match) return `It does not fit on ${match[1]} today: ${match[2]} missing.`;
+
+  match = text.match(/^([\d.,\s]+) (?:archivo|archivos) · (.+?) van hacia este disco y, según su último escaneo, faltan (.+?)\. Igual salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio\.$/);
+  if (match) return `${match[1]} ${match[1].trim() === "1" ? "file" : "files"} · ${match[2]} are headed to this drive and, by its last scan, ${match[3]} is missing. They still leave their drive and wait in the staging folder; they arrive once you free space.`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

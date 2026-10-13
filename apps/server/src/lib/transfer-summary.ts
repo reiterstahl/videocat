@@ -14,16 +14,25 @@ export type SummaryItem = {
 };
 
 export type TransferNeed = {
-  kind: "free_space" | "connect_target" | "connect_source";
+  // free_space: the destination is connected and full (live). space_short: by its last scan, the files
+  // on their way will not fit; they still wait in staging, nothing is refused.
+  kind: "free_space" | "space_short" | "connect_target" | "connect_source";
   diskId: string;
   files: number;
   bytes: number;
   // The Companion reports this drive as connected: the work is already under way.
   connected: boolean;
   detail: string | null;
+  // space_short only: how much has to be freed on that drive.
+  shortBytes?: number;
 };
 
-const kindOrder: Record<TransferNeed["kind"], number> = { free_space: 0, connect_target: 1, connect_source: 2 };
+export type DiskRoom = { diskId: string; roomBytes: number | null };
+
+const kindOrder: Record<TransferNeed["kind"], number> = { free_space: 0, space_short: 1, connect_target: 2, connect_source: 3 };
+
+// Files that still have to reach their destination folder (delivered ones already did).
+const headedToTarget: TransferState[] = ["pending", "staging", "staged", "source_removed", "blocked_space", "delivering"];
 
 function needFor(item: SummaryItem): { kind: TransferNeed["kind"]; diskId: string } | null {
   switch (item.state) {
@@ -45,7 +54,7 @@ function needFor(item: SummaryItem): { kind: TransferNeed["kind"]; diskId: strin
 
 // What the person has to do next, one entry per drive: free space, connect the destination
 // (files already waiting in staging) or connect a source.
-export function transferNeeds(items: SummaryItem[], connectedDiskIds: ReadonlySet<string>): TransferNeed[] {
+export function transferNeeds(items: SummaryItem[], connectedDiskIds: ReadonlySet<string>, disks: DiskRoom[] = []): TransferNeed[] {
   const needs = new Map<string, TransferNeed & { latest: number }>();
   for (const item of items) {
     const need = needFor(item);
@@ -59,6 +68,23 @@ export function transferNeeds(items: SummaryItem[], connectedDiskIds: ReadonlySe
       current.latest = item.updatedAt.getTime();
     }
     needs.set(key, current);
+  }
+  for (const disk of disks) {
+    // A live "free space" request for that drive already says it.
+    if (disk.roomBytes === null || needs.has(`free_space|${disk.diskId}`)) continue;
+    const waiting = items.filter((item) => item.targetDiskId === disk.diskId && headedToTarget.includes(item.state) && (item.jobStatus === "active" || item.state !== "pending"));
+    const bytes = waiting.reduce((sum, item) => sum + item.sizeBytes, 0);
+    if (waiting.length === 0 || bytes <= disk.roomBytes) continue;
+    needs.set(`space_short|${disk.diskId}`, {
+      kind: "space_short",
+      diskId: disk.diskId,
+      files: waiting.length,
+      bytes,
+      connected: connectedDiskIds.has(disk.diskId),
+      detail: null,
+      shortBytes: bytes - Math.max(0, disk.roomBytes),
+      latest: 0
+    });
   }
   return [...needs.values()]
     .map(({ latest: _latest, ...need }) => need)

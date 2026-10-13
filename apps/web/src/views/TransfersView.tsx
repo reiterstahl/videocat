@@ -345,8 +345,8 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             </div>
           ) : null}
           {summary?.needs.map((need) => (
-            <div key={`${need.kind}:${need.diskId}`} className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.connected ? "" : "is-warning"}`}>
-              {need.kind === "free_space" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
+            <div key={`${need.kind}:${need.diskId}`} className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.kind === "space_short" || !need.connected ? "is-warning" : ""}`}>
+              {need.kind === "free_space" || need.kind === "space_short" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
               <div>
                 <strong>{needTitle(need)}</strong>
                 <span>{needDetail(need)}</span>

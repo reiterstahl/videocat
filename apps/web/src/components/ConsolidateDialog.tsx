@@ -142,11 +142,13 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
                 <div className="vc-status-banner is-warning"><AlertTriangle size={18} /><div><strong>No hay nada que mover.</strong><span>Todo ya está en la carpeta destino o en otro traslado.</span></div></div>
               ) : null}
               {plan.files > 0 && !plan.fits ? (
-                <div className="vc-status-banner is-danger" role="alert">
+                <div className="vc-status-banner is-warning" role="note">
                   <AlertTriangle size={18} />
                   <div>
-                    <strong>{plan.freeBytes === null ? "Escanea primero el disco de destino." : `No cabe en ${plan.destination.diskName}.`}</strong>
-                    <span>{plan.freeBytes === null ? "Se necesita su espacio libre para saber si cabe." : `Faltan ${formatBytes(plan.neededBytes - Math.max(0, room ?? 0))}. Libera espacio en ese disco y vuelve a escanearlo.`}</span>
+                    <strong>{plan.freeBytes === null ? "Todavía no se conoce el espacio libre del destino." : `Hoy no cabe en ${plan.destination.diskName}: faltan ${formatBytes(plan.spaceWarning?.shortBytes ?? 0)}.`}</strong>
+                    <span>{plan.freeBytes === null
+                      ? "Se medirá al conectarlo. Puedes crear el traslado: si no alcanza, los archivos esperan en la carpeta temporal."
+                      : "Puedes crear el traslado igual: los archivos salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio y conectes el disco."}</span>
                   </div>
                 </div>
               ) : null}
@@ -178,7 +180,7 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
           <button className="secondary-button" onClick={onCancel} disabled={submitting} type="button">
             Cancelar
           </button>
-          <button className="vc-button is-primary" onClick={() => void confirm()} disabled={submitting || !plan || plan.files === 0 || !plan.fits} type="button">
+          <button className="vc-button is-primary" onClick={() => void confirm()} disabled={submitting || !plan || plan.files === 0} type="button">
             <FolderInput size={16} />
             {submitting ? "Creando…" : "Crear traslado"}
           </button>

@@ -87,7 +87,8 @@ type TransferPlan = {
   pendingBytes: number;
   reserveBytes: number;
   fits: boolean;
-  spaceProblem: Record<string, unknown>;
+  // Not a refusal: the files still leave their drives and wait in staging until the destination has room.
+  spaceWarning: { message: string; reason: "unknown_space" | "no_space"; freeBytes: number | null; pendingBytes: number; neededBytes: number; reserveBytes: number; shortBytes: number };
 };
 
 async function appSetting(key: string): Promise<string | null> {
@@ -147,10 +148,16 @@ async function planTransfer(destination: DestinationWithDisk, files: PlannedFile
   const freeBytes = known ? Number(destination.disk.freeBytes) : null;
   const reserveBytes = known ? destinationReserveBytes(Number(destination.disk.totalBytes)) : 0;
   const fits = freeBytes !== null && freeBytes - pendingBytes - neededBytes >= reserveBytes;
-  const spaceProblem = freeBytes === null
-    ? { message: "Scan the destination drive first so its free space is known", reason: "unknown_space" }
-    : { message: "Not enough free space on the destination drive", reason: "no_space", freeBytes, pendingBytes, neededBytes, reserveBytes };
-  return { movable, skipped, neededBytes, freeBytes, pendingBytes, reserveBytes, fits, spaceProblem };
+  const spaceWarning = {
+    message: freeBytes === null ? "The destination drive has not been scanned yet" : "Not enough free space on the destination drive yet",
+    reason: freeBytes === null ? "unknown_space" as const : "no_space" as const,
+    freeBytes,
+    pendingBytes,
+    neededBytes,
+    reserveBytes,
+    shortBytes: freeBytes === null ? 0 : Math.max(0, reserveBytes + pendingBytes + neededBytes - freeBytes)
+  };
+  return { movable, skipped, neededBytes, freeBytes, pendingBytes, reserveBytes, fits, spaceWarning };
 }
 
 // Creates a transfer, or adds the files to an open one (a grouping session adds one file at a time).
@@ -178,7 +185,7 @@ async function createJob(reply: FastifyReply, kind: "consolidate" | "group", des
       return created;
     });
     await recordAction({ action: "transfer.create", actorType: "web", actorId: "admin", target: destination.path, result: { jobId: job.id, kind, files: plan.movable.length, bytes: plan.neededBytes } });
-    return { job, items: plan.movable.length, neededBytes: plan.neededBytes, skipped: plan.skipped };
+    return { job, items: plan.movable.length, neededBytes: plan.neededBytes, skipped: plan.skipped, spaceWarning: plan.fits ? null : plan.spaceWarning };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return reply.code(409).send({ message: "Some files were added to another transfer at the same time" });
@@ -432,7 +439,6 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     });
     const plan = await planTransfer(destination, files);
     if (plan.movable.length === 0) return reply.code(409).send({ message: "Nothing to move", reason: "nothing_to_move", skipped: plan.skipped });
-    if (!plan.fits) return reply.code(409).send(plan.spaceProblem);
     return createJob(reply, body.kind, destination, plan, body.label);
   });
 
@@ -476,11 +482,11 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         pendingBytes: plan.pendingBytes,
         reserveBytes: plan.reserveBytes,
         fits: plan.fits,
+        spaceWarning: plan.fits ? null : plan.spaceWarning,
         skipped: { duplicates: plan.skipped.filter((entry) => entry.reason === "duplicate_at_destination").length, inTransfer: plan.skipped.filter((entry) => entry.reason === "in_transfer").length }
       };
       if (mode === "preview") return summary;
       if (plan.movable.length === 0) return reply.code(409).send({ message: "Nothing to move", reason: "nothing_to_move", ...summary });
-      if (!plan.fits) return reply.code(409).send({ ...plan.spaceProblem, ...summary });
       return createJob(reply, "consolidate", destination, plan, destination.path.split("/").pop());
     });
   }
@@ -600,7 +606,6 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       const reason = plan.skipped[0]?.reason ?? "nothing_to_move";
       return reply.code(409).send({ message: groupSkipMessages[reason], reason });
     }
-    if (!plan.fits) return reply.code(409).send(plan.spaceProblem);
     const open = await prisma.transferJob.findFirst({
       where: { destinationId: destination.id, kind: "group", status: { in: ["active", "paused"] } },
       orderBy: { createdAt: "desc" },
@@ -648,7 +653,15 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       updatedAt: item.updatedAt
     }));
     const connected = await connectedDiskIds();
-    const needs = transferNeeds(summaryItems, connected);
+    const targetDisks = await prisma.disk.findMany({
+      where: { id: { in: [...new Set(summaryItems.map((item) => item.targetDiskId))] } },
+      select: { id: true, freeBytes: true, totalBytes: true }
+    });
+    const needs = transferNeeds(summaryItems, connected, targetDisks.map((disk) => ({
+      diskId: disk.id,
+      // Room left on the destination according to its last scan, keeping its reserve.
+      roomBytes: disk.freeBytes == null || disk.totalBytes == null ? null : Number(disk.freeBytes) - destinationReserveBytes(Number(disk.totalBytes))
+    })));
     const names = await diskIdentifiers([...new Set(needs.map((need) => need.diskId))]);
     const staging = await appSetting(companionStagingKey);
     const activeJobs = await prisma.transferJob.count({ where: { items: { some: { state: { in: unfinishedStates } } } } });

@@ -27,6 +27,7 @@ export function driveName(need: Pick<TransferNeed, "diskName" | "driveLetter">):
 export function needTitle(need: TransferNeed): string {
   const name = driveName(need);
   if (need.kind === "free_space") return `Libera espacio en ${name}`;
+  if (need.kind === "space_short") return `Faltará espacio en ${name}`;
   if (need.connected) return need.kind === "connect_target" ? `${name} conectado: entregando archivos` : `${name} conectado: copiando archivos`;
   return `Conecta ${name} para continuar`;
 }
@@ -34,6 +35,7 @@ export function needTitle(need: TransferNeed): string {
 export function needDetail(need: TransferNeed): string {
   const amount = `${need.files} ${need.files === 1 ? "archivo" : "archivos"} · ${formatBytes(need.bytes)}`;
   if (need.kind === "free_space") return `${amount} esperando en la carpeta temporal. Borra o mueve contenido de ese disco desde Review o Duplicados.`;
+  if (need.kind === "space_short") return `${amount} van hacia este disco y, según su último escaneo, faltan ${formatBytes(need.shortBytes ?? 0)}. Igual salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio.`;
   if (need.kind === "connect_target") return `${amount} esperando en la carpeta temporal del Companion.`;
   return `${amount} por copiar desde este disco.`;
 }

@@ -147,11 +147,13 @@ export type ConsolidatePlan = {
   pendingBytes: number;
   reserveBytes: number;
   fits: boolean;
+  // Present when the files do not fit yet: they still leave their drives and wait in staging.
+  spaceWarning: { reason: "unknown_space" | "no_space"; shortBytes: number } | null;
   skipped: { duplicates: number; inTransfer: number };
 };
 
 export type TransferNeed = {
-  kind: "free_space" | "connect_target" | "connect_source";
+  kind: "free_space" | "space_short" | "connect_target" | "connect_source";
   diskId: string;
   diskName: string;
   driveLetter: string | null;
@@ -159,6 +161,7 @@ export type TransferNeed = {
   bytes: number;
   connected: boolean;
   detail: string | null;
+  shortBytes?: number;
 };
 
 export type TransferSummary = {

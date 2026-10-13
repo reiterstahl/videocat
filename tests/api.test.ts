@@ -852,8 +852,17 @@ test("transfers move a file through staging to a starred folder without losing i
 
     // Space is checked against the last scan of the destination, minus files already on their way.
     await prisma.disk.update({ where: { id: target.id }, data: { freeBytes: 1_000_000_000n } });
-    const full = await app.inject({ method: "POST", url: "/api/transfers", headers: webMutationHeaders(cookie), payload: { kind: "group", destinationId, fileIds: [copyOfExisting.id] } });
-    assert.equal(full.statusCode, 409);
+    // Not enough room is a warning, not a refusal: the file waits in staging until space is freed.
+    const identical = await app.inject({ method: "POST", url: "/api/transfers", headers: webMutationHeaders(cookie), payload: { kind: "group", destinationId, fileIds: [copyOfExisting.id] } });
+    assert.equal(identical.statusCode, 409, "an identical file at the destination stays for Duplicates");
+    const big = await prisma.videoFile.create({ data: { diskId: source.id, filename: "grande.mp4", extension: "mp4", absolutePath: "F:/Proyectos/Testing/grande.mp4", relativePath: "Proyectos/Testing/grande.mp4", sizeBytes: 5_000_000_000n, modifiedAt } });
+    const full = await app.inject({ method: "POST", url: "/api/transfers", headers: webMutationHeaders(cookie), payload: { kind: "group", destinationId, fileIds: [big.id] } });
+    assert.equal(full.statusCode, 200);
+    assert.equal(full.json().spaceWarning.reason, "no_space");
+    assert.ok(full.json().spaceWarning.shortBytes > 0);
+    const shortNeed = (await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().needs
+      .find((need: { kind: string; diskId: string }) => need.kind === "space_short" && need.diskId === target.id);
+    assert.equal(shortNeed.files, 1);
   } finally {
     await prisma.transferItem.deleteMany({ where: { OR: [{ sourceDiskId: source.id }, { targetDiskId: target.id }] } });
     await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
