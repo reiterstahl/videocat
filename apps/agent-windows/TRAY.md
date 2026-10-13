@@ -13,6 +13,7 @@ Esta app ejecuta VideoCAT desde la bandeja de Windows. Mantiene el companion loc
 - Permite emparejar cada instalación mediante un código de un solo uso y guardar su credencial cifrada por Windows.
 - Mantiene un túnel de control saliente autenticado con el servidor después de emparejarse, sin abrir puertos entrantes de Windows.
 - Permite configurar `SERVER_URL`, `WEB_URL`, el `AGENT_TOKEN` heredado opcional y las opciones del companion desde el menú de bandeja.
+- Informa a la web lo que está haciendo en cada momento (indicador de actividad del encabezado) y el espacio libre real de los discos conectados.
 - Permite abrir `Ver actividad...` para revisar logs en vivo del companion, escaneos, borrados y traslados.
 - Mueve los archivos de **Traslados** (consolidar carpetas y agrupar archivos) a través de la carpeta temporal `COMPANION_STAGING_DIR`: copia con SHA-256, verifica releyendo, borra del origen solo después de verificar y registrar, y deja libre siempre el 5 % de esa unidad.
 - Mantiene las tareas periódicas existentes del companion:

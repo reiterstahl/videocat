@@ -112,6 +112,7 @@ flowchart LR
 
 ### Interface
 - **Installable app (PWA)** on Windows, macOS, Android, iPhone and iPad: it opens from its own icon in a window without tabs, updates itself with every server version and tells you when you are offline. It stores no catalog data on the device.
+- **Activity indicator** in the header: what the Companion is doing right now (copying, verifying, downloading, scanning or deleting) and a panel with progress, speed, ETA and the latest movements.
 - Spanish and English, light, dark, OLED or system themes, six accent colors and comfortable or compact density.
 - Responsive: collapsible sidebar on desktop, tab bar and bottom sheets on phones.
 - Every section has its own URL (`/catalogo`, `/review`, `/duplicados`…), also reachable through its English equivalent.
