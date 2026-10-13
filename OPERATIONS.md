@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.21
+
+- Visual only: Traslados drops the coloured top and left borders that curved with rounded corners; kinds are marked with the house straight vertical line (`vc-accent-bar`). The rule is written in AGENTS.md › UI Conventions.
+- No migrations or configuration changes; the Windows Companion is 0.2.8.
+
 ## Windows Companion 0.2.8
 
 - **Configuración › Avanzado › Clic en el ícono** (`TRAY_CLICK_ACTION`): a click or double click on the tray icon opens VideoCAT (default), shows the activity window or opens the settings. One action per gesture. Applies as soon as it is saved. The server stays on 0.2.20.
