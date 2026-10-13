@@ -20,9 +20,10 @@ import { serializeDisk } from "../lib/serialize.js";
 import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 import { recordAction } from "../lib/action-audit.js";
 import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
-import { agentDiskIdentifierSchema, isUuid } from "../lib/disk-identifiers.js";
+import { agentDiskIdentifierSchema, disksByAgentIdentifiers, isUuid } from "../lib/disk-identifiers.js";
 import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
+import { activitiesSchema, storeActivity } from "../lib/companion-activity.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -172,7 +173,14 @@ const companionHeartbeatSchema = z.object({
     freeBytes: z.number().nonnegative().nullable().optional(),
     totalBytes: z.number().nonnegative().nullable().optional(),
     error: z.string().max(500).nullable().optional()
-  }).optional()
+  }).optional(),
+  // Live free space of the drives connected to this Companion.
+  disks: z.array(z.object({
+    diskId: z.string().max(200),
+    freeBytes: z.number().int().nonnegative(),
+    totalBytes: z.number().int().nonnegative()
+  })).max(100).optional(),
+  activities: activitiesSchema.optional()
 });
 const deletionResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["deleted", "missing"]) }),
@@ -227,7 +235,27 @@ async function ensureDownloadMonthCategory(key: string, label: string): Promise<
   });
 }
 
+// Keeps the free space of connected drives current between scans (warnings follow what you delete).
+async function updateMeasuredDisks(measured: Array<{ diskId: string; freeBytes: number; totalBytes: number }>): Promise<void> {
+  const disks = await prisma.disk.findMany({ where: disksByAgentIdentifiers(measured.map((disk) => disk.diskId)), select: { id: true, volumeId: true } });
+  for (const disk of disks) {
+    const reading = measured.find((entry) => entry.diskId === disk.volumeId || entry.diskId === disk.id);
+    if (!reading) continue;
+    await prisma.disk.update({ where: { id: disk.id }, data: { freeBytes: BigInt(reading.freeBytes), totalBytes: BigInt(reading.totalBytes) } });
+  }
+}
+
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
+  // Live activity (copying, verifying, downloading, scanning, deleting), sent about once a second while busy.
+  app.post("/api/agent/companion/activity", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const body = z.object({ companionId: z.string().uuid(), activities: activitiesSchema }).parse(request.body ?? {});
+    const headerValue = request.headers["x-videocat-companion-id"];
+    if (headerValue !== body.companionId) return reply.code(400).send({ message: "Companion identity header and body must match" });
+    const companion = await prisma.companionAgent.findUnique({ where: { installationId: body.companionId }, select: { name: true } });
+    storeActivity(body.companionId, companion?.name ?? null, body.activities);
+    return { ok: true };
+  });
+
   app.post("/api/agent/companion/heartbeat", { preHandler: requireAgentAuth }, async (request, reply) => {
     const body = companionHeartbeatSchema.parse(request.body ?? {});
     const headerValue = request.headers["x-videocat-companion-id"];
@@ -242,6 +270,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? mountedDiskIds.length)),
       setAppSettingValue(companionMountedDiskIdsKey, JSON.stringify(mountedDiskIds))
     ];
+    if (body.companionId && body.activities) storeActivity(body.companionId, body.companionName ?? null, body.activities);
+    const measured = (body.disks ?? []).filter((disk) => agentDiskIdentifierSchema.safeParse(disk.diskId).success && disk.totalBytes > 0 && disk.freeBytes <= disk.totalBytes);
+    if (measured.length > 0) metrics.push(updateMeasuredDisks(measured));
     if (body.staging) {
       metrics.push(setAppSettingValue(companionStagingKey, JSON.stringify({ ...body.staging, companionName: body.companionName ?? null, reportedAt: Date.now() })));
     }

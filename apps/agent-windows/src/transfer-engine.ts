@@ -38,34 +38,60 @@ export type TransferContext = {
   resolveRoot: (identifiers: string[]) => string | null;
   freeSpace?: (directory: string) => Promise<{ freeBytes: number; totalBytes: number }>;
   log?: (level: "info" | "warn", message: string) => void;
+  // What is being done right now, for the activity indicator (called often; the receiver throttles).
+  progress?: (update: TransferProgressUpdate) => void;
   // Test hook: throwing here simulates the Companion stopping right at that point.
   checkpoint?: (name: string, item: TransferWorkItem) => Promise<void> | void;
+};
+
+export type TransferProgressPhase = "staging" | "verifying_staging" | "delivering" | "verifying_target";
+
+export type TransferProgressUpdate = {
+  item: TransferWorkItem;
+  phase: TransferProgressPhase;
+  bytesDone: number;
+  bytesTotal: number;
 };
 
 export const stagingReserveRatio = 0.05;
 export const destinationMarginBytes = 256 * 1024 * 1024;
 const partSuffix = ".vcpart";
 
-export async function hashFile(filePath: string): Promise<string> {
+// Bytes processed so far out of the file size, for the activity indicator.
+export type ByteProgress = (bytesDone: number) => void;
+
+export async function hashFile(filePath: string, onProgress?: ByteProgress): Promise<string> {
   const hash = createHash("sha256");
+  let done = 0;
   await pipeline(createReadStream(filePath), async function* (source) {
-    for await (const chunk of source) hash.update(chunk as Buffer);
+    for await (const chunk of source) {
+      hash.update(chunk as Buffer);
+      done += (chunk as Buffer).length;
+      onProgress?.(done);
+    }
   });
   return hash.digest("hex");
 }
 
 // Copies to "<destination>.vcpart" while hashing, flushes it to disk, renames it into place and
 // reads the result back. Returns the SHA-256 of the source bytes.
-export async function copyVerified(source: string, destination: string): Promise<string> {
+export async function copyVerified(
+  source: string,
+  destination: string,
+  onProgress?: (phase: "copy" | "verify", bytesDone: number) => void
+): Promise<string> {
   const part = `${destination}${partSuffix}`;
   await fs.rm(part, { force: true });
   const hash = createHash("sha256");
+  let copied = 0;
   try {
     await pipeline(
       createReadStream(source),
       new Transform({
         transform(chunk: Buffer, _encoding, callback) {
           hash.update(chunk);
+          copied += chunk.length;
+          onProgress?.("copy", copied);
           callback(null, chunk);
         }
       }),
@@ -79,7 +105,7 @@ export async function copyVerified(source: string, destination: string): Promise
     }
     const digest = hash.digest("hex");
     await fs.rename(part, destination);
-    const reread = await hashFile(destination);
+    const reread = await hashFile(destination, onProgress ? (done) => onProgress("verify", done) : undefined);
     if (reread !== digest) {
       await fs.rm(destination, { force: true });
       throw new Error("la copia no coincide con el original al releerla");
@@ -189,7 +215,8 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         let digest: string;
         try {
           log("info", `Copiando ${item.filename} a la carpeta temporal.`);
-          digest = await copyVerified(source, staging);
+          digest = await copyVerified(source, staging, (phase, done) =>
+            context.progress?.({ item, phase: phase === "copy" ? "staging" : "verifying_staging", bytesDone: done, bytesTotal: item.sizeBytes }));
         } catch (error) {
           await fs.rm(staging, { force: true });
           await move("pending", { error: `No se pudo copiar a la carpeta temporal: ${error instanceof Error ? error.message : String(error)}` });
@@ -210,7 +237,8 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
 
       case "staged": {
         // The staging copy must be verified before the source may go.
-        const stagingOk = item.sha256 !== null && (stagingVerified || ((await exists(staging)) && (await hashFile(staging)) === item.sha256));
+        const stagingOk = item.sha256 !== null && (stagingVerified || ((await exists(staging)) && (await hashFile(staging, (done) =>
+          context.progress?.({ item, phase: "verifying_staging", bytesDone: done, bytesTotal: item.sizeBytes }))) === item.sha256));
         const root = context.resolveRoot(item.source.identifiers);
         if (!root) return item.state;
         const source = await sourcePath();
@@ -303,7 +331,8 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         } else {
           try {
             log("info", `Llevando ${item.filename} a ${item.target.name}.`);
-            const digest = await copyVerified(staging, destination);
+            const digest = await copyVerified(staging, destination, (phase, done) =>
+              context.progress?.({ item, phase: phase === "copy" ? "delivering" : "verifying_target", bytesDone: done, bytesTotal: item.sizeBytes }));
             if (digest !== item.sha256) {
               await fs.rm(destination, { force: true });
               throw new Error("la copia temporal ya no coincide con el original");

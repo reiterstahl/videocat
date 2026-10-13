@@ -844,3 +844,210 @@
     font-size: 1.15rem;
   }
 }
+
+/* Header activity indicator: quiet when idle, a pulsing icon and a short label while working. */
+.vc-activity-anchor {
+  position: relative;
+}
+
+.vc-activity-button {
+  gap: 6px;
+  color: var(--vc-muted);
+}
+
+.vc-activity-button.is-busy {
+  border-color: color-mix(in srgb, var(--vc-accent) 45%, var(--vc-border));
+  color: var(--vc-accent-ink);
+}
+
+.vc-activity-pulse {
+  display: inline-grid;
+  place-items: center;
+}
+
+.vc-activity-button.is-busy .vc-activity-pulse {
+  animation: agent-pulse 1.45s ease-in-out infinite;
+}
+
+.vc-activity-label {
+  max-width: 180px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-activity-panel {
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(78vh, 720px);
+  overflow: auto;
+  gap: 14px;
+}
+
+.vc-activity-idle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--vc-muted);
+  font-size: 0.86rem;
+}
+
+.vc-activity-live {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-activity-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--vc-border);
+  border-radius: 12px;
+  background: var(--vc-surface);
+  padding: 10px 12px;
+}
+
+.vc-activity-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vc-activity-card .vc-transfer-state {
+  font-size: 0.68rem;
+}
+
+.vc-activity-percent {
+  flex: 0 0 auto;
+  font-size: 1.1rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.vc-activity-file {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-activity-route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--vc-muted);
+  font-size: 0.78rem;
+}
+
+.vc-activity-route span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-activity-chart .transfer-speed-chart {
+  height: 56px;
+}
+
+.vc-activity-companion {
+  color: var(--vc-muted);
+  font-size: 0.72rem;
+}
+
+.vc-activity-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  border-top: 1px solid var(--vc-border);
+  padding-top: 10px;
+  font-size: 0.82rem;
+}
+
+.vc-activity-waiting .vc-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vc-activity-recent {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--vc-border);
+  padding-top: 10px;
+}
+
+.vc-activity-recent ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-activity-recent li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.vc-activity-recent-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+}
+
+.vc-activity-recent-icon.is-transfer {
+  color: var(--vc-consolidate, var(--vc-accent));
+}
+
+.vc-activity-recent-icon.is-download {
+  color: var(--vc-accent-ink);
+}
+
+.vc-activity-recent-icon.is-delete {
+  color: var(--vc-danger);
+}
+
+.vc-activity-recent-text {
+  display: grid;
+  min-width: 0;
+}
+
+.vc-activity-recent-text strong,
+.vc-activity-recent-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-activity-recent-text strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.vc-activity-recent-text small {
+  color: var(--vc-muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 640px) {
+  .vc-activity-panel {
+    position: fixed;
+    top: calc(var(--vc-header-height, 60px) + 6px);
+    right: 12px;
+    left: 12px;
+    width: auto;
+    /* Clear of the bottom tab bar. */
+    max-height: calc(100svh - var(--vc-header-height, 60px) - 110px);
+  }
+}

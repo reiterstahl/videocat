@@ -130,3 +130,30 @@ test("a consolidation travels through a simulated Companion: source drive, stagi
     await fs.rm(base, { recursive: true, force: true });
   }
 });
+
+test("the header shows what the Companion is doing and opens the live movement panel", async ({ page, request }) => {
+  test.skip(!agentToken, "Needs AGENT_TOKEN to act as the Companion");
+  const companionId = randomUUID();
+  const headers = { authorization: `Bearer ${agentToken}`, "x-videocat-companion-id": companionId };
+  const report = (bytesDone: number) => request.post("/api/agent/companion/activity", {
+    headers,
+    data: { companionId, activities: [{ kind: "transfer", phase: "staging", filename: "Boda_ceremonia.mp4", from: "LaCie Rugged", to: "Carpeta temporal", bytesDone, bytesTotal: 1000, bytesPerSecond: 250, startedAt: Date.now() }] }
+  });
+  expect((await report(400)).ok()).toBe(true);
+
+  await openView(page, "/catalogo");
+  const indicator = page.locator(".vc-activity-button");
+  await expect(indicator).toHaveClass(/is-busy/);
+  await expect(indicator).toContainText("Copiando 40 %");
+  await indicator.click();
+  const panel = page.getByRole("dialog", { name: "Actividad" });
+  await expect(panel).toContainText("Copiando a la carpeta temporal");
+  await expect(panel).toContainText("Boda_ceremonia.mp4");
+  await expect(panel).toContainText("LaCie Rugged");
+
+  // When the Companion reports it is done, the indicator goes quiet again.
+  expect((await request.post("/api/agent/companion/activity", { headers, data: { companionId, activities: [] } })).ok()).toBe(true);
+  await expect(panel).toContainText("Sin actividad en este momento", { timeout: 8000 });
+  await page.keyboard.press("Escape");
+  await expect(indicator).not.toHaveClass(/is-busy/);
+});

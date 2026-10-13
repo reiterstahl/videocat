@@ -2220,7 +2220,8 @@ export function App() {
             themePreferences,
             toggleTheme,
             updateThemePreferences,
-            viewMode
+            viewMode,
+            navigateToView: (view: ViewMode) => navigateToView(view)
           }}
         />
 

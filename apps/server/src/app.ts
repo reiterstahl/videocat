@@ -9,6 +9,7 @@ import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { transferRoutes } from "./routes/transfers.js";
+import { activityRoutes } from "./routes/activity.js";
 import { companionRoutes } from "./routes/companions.js";
 import { streamRoutes } from "./routes/streams.js";
 import { versionRoutes } from "./routes/version.js";
@@ -63,6 +64,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   await app.register(agentRoutes);
   await app.register(catalogRoutes);
   await app.register(transferRoutes);
+  await app.register(activityRoutes);
   await app.register(versionRoutes);
 
   return app;

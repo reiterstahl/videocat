@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { Moon, Palette, Search, SlidersHorizontal, Sun } from "lucide-react";
 import { ThemePanel } from "./ThemePanel";
+import { ActivityIndicator } from "./ActivityIndicator";
 import type { Language } from "../i18n";
 import type { NavigationItem, ViewMode } from "../lib/app-types";
 import type { ResolvedAppearance, ThemePreferences } from "../lib/theme";
@@ -32,9 +33,10 @@ export type AppHeaderProps = {
   toggleTheme: () => void;
   updateThemePreferences: (changes: Partial<ThemePreferences>) => void;
   viewMode: ViewMode;
+  navigateToView: (view: ViewMode) => void;
 };
 
-export function AppHeader({ activeCatalogFilters, activeNavigationItem, closeThemePanel, companionIndicatorLabel, companionIndicatorState, filtersOpen, language, q, resolvedAppearance, searchInputRef, setFiltersOpen, setLanguage, setPage, setQ, setSelected, setThemePanelOpen, shortcutLabel, showCatalogFilters, showFullCatalog, theme, themePanelOpen, themePreferences, toggleTheme, updateThemePreferences, viewMode }: AppHeaderProps) {
+export function AppHeader({ activeCatalogFilters, activeNavigationItem, closeThemePanel, companionIndicatorLabel, companionIndicatorState, filtersOpen, language, q, resolvedAppearance, searchInputRef, setFiltersOpen, setLanguage, setPage, setQ, setSelected, setThemePanelOpen, shortcutLabel, showCatalogFilters, showFullCatalog, theme, themePanelOpen, themePreferences, toggleTheme, updateThemePreferences, viewMode, navigateToView }: AppHeaderProps) {
   return (
     <header className="vc-header">
       <button className="vc-brand is-compact" onClick={showFullCatalog} type="button" title="Mostrar catalogo completo">
@@ -74,6 +76,7 @@ export function AppHeader({ activeCatalogFilters, activeNavigationItem, closeThe
         </>
       ) : null}
       <div className="vc-header-spacer" />
+      <ActivityIndicator onNavigate={navigateToView} />
       <button
         className="vc-icon-button vc-mode-toggle"
         onClick={toggleTheme}

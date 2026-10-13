@@ -30,6 +30,7 @@ import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
+import { ActivityReporter } from "./activity.js";
 import {
   deletionFingerprintFrameIndexes,
   validateDeletionFingerprint,
@@ -599,6 +600,13 @@ function companionScanPollMs(): number {
 }
 
 async function startCompanionDiskWatcher(): Promise<void> {
+  activityReporter = new ActivityReporter(async (activities) => {
+    if (!companionAgentApiEnabled()) return;
+    await companionAgentApi("/api/agent/companion/activity", {
+      method: "POST",
+      body: JSON.stringify({ companionId: await ensureCompanionIdentity(), activities })
+    });
+  });
   const pollMs = companionDiskPollMs();
   const scanPollMs = companionScanPollMs();
   const deletePollMs = companionDeletePollMs();
@@ -722,6 +730,15 @@ async function startCompanionDiskWatcher(): Promise<void> {
           await processTransferItem({
             stagingDir,
             resolveRoot: (identifiers) => identifiers.map((identifier) => roots.get(identifier)).find(Boolean) ?? null,
+            progress: ({ item: current, phase, bytesDone, bytesTotal }) => activityReporter?.set("transfer", {
+              kind: "transfer",
+              phase,
+              filename: current.filename,
+              from: phase === "staging" || phase === "verifying_staging" ? current.source.name : "Carpeta temporal",
+              to: phase === "staging" || phase === "verifying_staging" ? "Carpeta temporal" : current.target.name,
+              bytesDone,
+              bytesTotal
+            }),
             log: (level, message) => (level === "warn" ? console.warn(message) : console.log(message)),
             transition: async (current, to, extra) => {
               try {
@@ -739,6 +756,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
           }, item);
         } catch (error) {
           console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
+        } finally {
+          activityReporter?.clear("transfer");
         }
       }
       const stale = await staleStagingFiles(stagingDir, async (ids) => {
@@ -766,6 +785,19 @@ async function startCompanionDiskWatcher(): Promise<void> {
     }
   }
 
+  async function mountedDiskSpace(mounted: Awaited<ReturnType<typeof discoverCompanionTargets>>) {
+    const disks = new Map<string, { diskId: string; freeBytes: number; totalBytes: number }>();
+    for (const { root, marker } of mounted) {
+      if (disks.has(marker.diskId)) continue;
+      try {
+        disks.set(marker.diskId, { diskId: marker.diskId, ...(await statfsSpace(root)) });
+      } catch {
+        // A drive that cannot be measured keeps the free space of its last scan.
+      }
+    }
+    return [...disks.values()].slice(0, 100);
+  }
+
   async function sendHeartbeat(): Promise<void> {
     if (heartbeatRunning || !companionAgentApiEnabled()) return;
     heartbeatRunning = true;
@@ -779,7 +811,10 @@ async function startCompanionDiskWatcher(): Promise<void> {
           companionName: companionName(),
           mountedDiskCount: mounted.length,
           mountedDiskIds: [...new Set(mounted.map(({ marker }) => marker.diskId))],
-          staging: await stagingStatus()
+          staging: await stagingStatus(),
+          // Live free space of every connected drive, so "free space" warnings follow what you delete.
+          disks: await mountedDiskSpace(mounted),
+          activities: activityReporter?.snapshot() ?? []
         })
       });
       const requestedAt = response.commands?.processDeletesRequestedAt ?? 0;
@@ -1163,6 +1198,7 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
           console.warn(`${message}. Ruta: ${file.relativePath}`);
           continue;
         }
+        activityReporter?.set(`delete:${marker.diskId}`, { kind: "delete", phase: "deleting", filename: path.basename(file.relativePath), from: marker.diskName });
         await deleteLocalFile(canonicalTarget);
         await reportDeletionResult(file.id, "deleted");
         deleted += 1;
@@ -1184,6 +1220,7 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
     }
   }
 
+  activityReporter?.clear(`delete:${marker.diskId}`);
   console.log(`Borrado automatico terminado en ${marker.diskName}: borrados ${deleted}, ya ausentes ${missing}, fallos ${failed}.`);
 }
 
@@ -1212,7 +1249,26 @@ async function updateDownloadStatus(
   });
 }
 
-async function copyFileWithProgress(source: string, destination: string, file: DownloadQueueFile): Promise<void> {
+async function copyFileWithProgress(source: string, destination: string, file: DownloadQueueFile, fromLabel?: string): Promise<void> {
+  const activityKey = `download:${file.id}`;
+  const showActivity = (bytesDone: number) => activityReporter?.set(activityKey, {
+    kind: "download",
+    phase: "downloading",
+    filename: file.filename,
+    from: fromLabel ?? null,
+    to: path.dirname(destination),
+    bytesDone,
+    bytesTotal: file.sizeBytes
+  });
+  showActivity(0);
+  try {
+    await copyFileWithProgressUnreported(source, destination, file, showActivity);
+  } finally {
+    activityReporter?.clear(activityKey);
+  }
+}
+
+async function copyFileWithProgressUnreported(source: string, destination: string, file: DownloadQueueFile, showActivity: (bytesDone: number) => void): Promise<void> {
   let copiedBytes = 0;
   let lastReportAt = 0;
   let lastReportedBytes = 0;
@@ -1243,6 +1299,7 @@ async function copyFileWithProgress(source: string, destination: string, file: D
     transform(chunk: Buffer, _encoding, callback) {
       copiedBytes += chunk.length;
       lastProgressAt = Date.now();
+      showActivity(copiedBytes);
       void reportProgress();
       callback(null, chunk);
     }
@@ -1342,7 +1399,7 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
 
         await updateDownloadStatus(file.id, "downloading", { progressBytes: 0 });
         destination = await uniqueDestinationPath(downloadDir, marker.diskName, file.filename);
-        await copyFileWithProgress(canonicalSource, destination, file);
+        await copyFileWithProgress(canonicalSource, destination, file, marker.diskName);
         await updateDownloadStatus(file.id, "done", { destinationPath: destination });
         copied += 1;
         console.log(`Descarga completada: ${file.relativePath} -> ${destination}`);
@@ -2527,7 +2584,20 @@ async function runWizard(args: Args): Promise<void> {
   }
 }
 
+// Live activity for the web indicator; only the tray Companion (paired, with the agent API) reports it.
+let activityReporter: ActivityReporter | null = null;
+
 async function runScan(args: Args): Promise<void> {
+  const key = `scan:${args.diskId ?? args.path ?? "disk"}`;
+  activityReporter?.set(key, { kind: "scan", phase: "scanning", from: args.diskName ?? args.path ?? null, filesDone: 0 });
+  try {
+    await runScanUnreported(args, key);
+  } finally {
+    activityReporter?.clear(key);
+  }
+}
+
+async function runScanUnreported(args: Args, activityKey: string): Promise<void> {
   const concurrency = Number(process.env.AGENT_CONCURRENCY ?? 2);
   const resolved = await resolveDisk(args);
   const scanTargets = scanTargetsFor(args, resolved.diskRoot, resolved.marker);
@@ -2605,6 +2675,14 @@ async function runScan(args: Args): Promise<void> {
       processedPending += 1;
       const remaining = Math.max(counts.pending - processedPending, 0);
       console.log(`Procesando ${processedPending}/${counts.pending} (faltan ${remaining}): ${compactFileLabel(item.filePath)}`);
+      activityReporter?.set(activityKey, {
+        kind: "scan",
+        phase: "scanning",
+        from: args.diskName ?? args.path ?? null,
+        filename: path.basename(item.filePath),
+        filesDone: processedPending,
+        filesTotal: counts.pending
+      });
       return processFile(
         resolved.diskRoot,
         item.filePath,

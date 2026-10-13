@@ -1119,6 +1119,42 @@ test("transfer transitions cannot overwrite a cancel or a claim made at the same
   }
 });
 
+test("the Companion reports live activity and the free space of connected drives", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const companionId = crypto.randomUUID();
+  const agent = { ...agentHeaders, "x-videocat-companion-id": companionId };
+  const disk = await prisma.disk.create({ data: { name: `Vivo ${suffix}`, volumeId: `live-${suffix}`, totalBytes: 1000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  try {
+    const copying = { kind: "transfer", phase: "staging", filename: "clip.mp4", from: "LaCie", to: "Carpeta temporal", bytesDone: 40, bytesTotal: 100, bytesPerSecond: 20, startedAt: Date.now() };
+    const mismatch = await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId: crypto.randomUUID(), activities: [copying] } });
+    assert.equal(mismatch.statusCode, 400, "a Companion only reports for itself");
+    const reported = await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [copying] } });
+    assert.equal(reported.statusCode, 200);
+    const activity = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json();
+    const mine = activity.companions.find((entry: { companionId: string }) => entry.companionId === companionId);
+    assert.deepEqual([mine.activities[0].filename, mine.activities[0].bytesDone], ["clip.mp4", 40]);
+    assert.equal(typeof activity.waiting.transfers, "number");
+    assert.ok(Array.isArray(activity.recent));
+
+    // The heartbeat keeps free space current and an empty activity list means idle.
+    const beat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: agent,
+      payload: { companionId, mountedDiskIds: [`live-${suffix}`], disks: [{ diskId: `live-${suffix}`, freeBytes: 600, totalBytes: 1000 }, { diskId: "bad id!", freeBytes: 1, totalBytes: 2 }], activities: [] }
+    });
+    assert.equal(beat.statusCode, 200);
+    const updated = await prisma.disk.findUniqueOrThrow({ where: { id: disk.id } });
+    assert.deepEqual([Number(updated.freeBytes), Number(updated.totalBytes)], [600, 1000]);
+    const idle = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json();
+    assert.equal(idle.companions.some((entry: { companionId: string }) => entry.companionId === companionId), false);
+  } finally {
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

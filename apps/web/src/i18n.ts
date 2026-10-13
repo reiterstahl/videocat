@@ -176,6 +176,22 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Actividad": "Activity",
+  "Sin actividad en este momento": "No activity right now",
+  "Sin actividad en este momento.": "No activity right now.",
+  "Verificando la copia temporal": "Verifying the staging copy",
+  "Verificando en el destino": "Verifying at the destination",
+  "Escaneando": "Scanning",
+  "Borrando": "Deleting",
+  "Copiando": "Copying",
+  "Verificando": "Verifying",
+  "Traslado": "Transfer",
+  "Descarga": "Download",
+  "Escaneo": "Scan",
+  "Trasladado": "Transferred",
+  "Escaneo terminado": "Scan finished",
+  "Últimos movimientos": "Latest movements",
+  "hace un momento": "just now",
   "Todavía no se conoce el espacio libre del destino.": "The destination's free space is not known yet.",
   "Se medirá al conectarlo. Puedes crear el traslado: si no alcanza, los archivos esperan en la carpeta temporal.": "It will be measured when the drive is connected. You can create the transfer: if it does not fit, the files wait in the staging folder.",
   "Puedes crear el traslado igual: los archivos salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio y conectes el disco.": "You can still create the transfer: the files leave their drive and wait in the staging folder; they arrive once you free space and connect the drive.",
@@ -878,6 +894,30 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) (?:archivo|archivos) · (.+?) van hacia este disco y, según su último escaneo, faltan (.+?)\. Igual salen de su disco y esperan en la carpeta temporal; llegan cuando liberes espacio\.$/);
   if (match) return `${match[1]} ${match[1].trim() === "1" ? "file" : "files"} · ${match[2]} are headed to this drive and, by its last scan, ${match[3]} is missing. They still leave their drive and wait in the staging folder; they arrive once you free space.`;
+
+  match = text.match(/^(Copiando|Verificando|Descargando|Escaneando|Borrando)( [\d]+ %)?( · \+\d+)?$/);
+  if (match) return `${({ Copiando: "Copying", Verificando: "Verifying", Descargando: "Downloading", Escaneando: "Scanning", Borrando: "Deleting" } as Record<string, string>)[match[1]]}${match[2] ?? ""}${match[3] ?? ""}`;
+
+  match = text.match(/^(Traslado|Descarga|Escaneo|Borrado) · (.+)$/);
+  if (match && en[match[2]]) return `${en[match[1]]} · ${en[match[2]]}`;
+
+  match = text.match(/^Actividad: (.+)$/);
+  if (match) return `Activity: ${match[1]}`;
+
+  match = text.match(/^([\d.,\s]+) en traslado$/);
+  if (match) return `${match[1]} in transfer`;
+
+  match = text.match(/^([\d.,\s]+) en cola de descarga$/);
+  if (match) return `${match[1]} in the download queue`;
+
+  match = text.match(/^hace (\d+) (min|h|d)$/);
+  if (match) return `${match[1]} ${match[2]} ago`;
+
+  match = text.match(/^(Trasladado|Ya estaba en el destino|Descargado|Borrado|Escaneo terminado) · ([\d.,]+\s?[KMGTP]?B)$/);
+  if (match) return `${en[match[1]]} · ${match[2]}`;
+
+  match = text.match(/^(.+) · (hace un momento|hace \d+ (?:min|h|d))$/);
+  if (match) return `${translateText(match[1], "en")} · ${translateText(match[2], "en")}`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;
