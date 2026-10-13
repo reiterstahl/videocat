@@ -283,7 +283,7 @@ Guarantees at every step:
 - Before removing from the source, it checks it is still the file from the last scan (size and modification time); if it changed, it is left alone.
 - Every step is recorded on the server before moving on, so a power cut or a drive unplugged halfway resumes from the last confirmed step.
 - Nothing is overwritten: an identical file at the destination leaves the original for review in Duplicates; a different one is saved as `name (2).ext`.
-- The staging drive always keeps **5 %** free. At the destination the free space from the last scan is used and measured again when the drive is connected; if it does not fit, the transfer waits and the web asks you to free space.
+- The staging drive always keeps **5 %** free. A full destination **does not prevent creating a transfer**: the files leave their drive and wait in the staging folder. The web warns *Space will run short on…* from the last scan, the Companion measures again when the destination is connected and delivers once there is room.
 - While travelling, videos stay in the catalog marked **In transit**. Cancelling only stops what has not left its drive yet: whatever is already in staging finishes its way.
 
 | Key | Action in Group files |

@@ -281,7 +281,7 @@ Garantías en cada paso:
 - Antes de borrar del origen se revalida que sea el mismo archivo del último escaneo (tamaño y fecha); si cambió, no se toca.
 - Cada paso queda registrado en el servidor antes de avanzar, así que un corte de luz o un disco desconectado a mitad de camino se retoma desde el último paso confirmado.
 - Nunca se sobrescribe: si en el destino hay un archivo idéntico, el original queda para revisarlo en Duplicados; si es distinto, el nuevo se guarda como `nombre (2).ext`.
-- La unidad de la carpeta temporal siempre conserva libre el **5 %**. En el destino se usa el espacio del último escaneo y se vuelve a medir al conectarlo; si no alcanza, el traslado espera y la web pide liberar espacio.
+- La unidad de la carpeta temporal siempre conserva libre el **5 %**. La falta de espacio en el destino **no impide crear el traslado**: los archivos salen de su disco y esperan en la carpeta temporal. La web avisa *Faltará espacio en…* según el último escaneo, el Companion vuelve a medir al conectar el destino y entrega cuando hay lugar.
 - Mientras viajan, los videos siguen en el catálogo con la marca **En tránsito**. Cancelar solo detiene lo que aún no salió de su disco: lo que ya está en la carpeta temporal termina su camino.
 
 | Tecla | Acción en Agrupar archivos |

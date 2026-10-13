@@ -24,7 +24,7 @@ Un archivo **nunca existe en menos de un lugar verificado**:
 ## Espacio
 
 - **Carpeta temporal**: se configura en el Companion (Configuración › Archivos). Siempre debe quedar libre al menos el **5 % del disco local**; el Companion no empieza un archivo si al terminar quedaría por debajo.
-- **Disco de destino**: al crear el traslado se usa el espacio libre de su **último escaneo**, descontando lo que ya está en camino hacia él. Al conectarlo se vuelve a medir en vivo; si no alcanza, el traslado se pausa y la web pide **liberar espacio en ese disco** (con acceso directo a Review y Duplicados filtrados por ese disco).
+- **Disco de destino**: la falta de espacio **no impide crear el traslado** (cambio de `0.2.19`, a pedido): los archivos salen de su disco y esperan en la carpeta temporal. Con el espacio del **último escaneo**, descontando lo que ya va en camino, la web avisa *Faltará espacio en…* y cuánto liberar. Al conectar el destino, el Companion vuelve a medir en vivo; si no alcanza, el archivo queda en *Sin espacio* y la web pide **liberar espacio en ese disco**; se entrega cuando hay lugar.
 
 ## Modelo
 
