@@ -74,7 +74,8 @@ const configKeys = [
   "COMPANION_AUTO_DELETE_MARKED",
   "COMPANION_MONITORED_TARGETS",
   "COMPANION_DISABLED_DISK_IDS",
-  "TRAY_DISK_POLL_MS"
+  "TRAY_DISK_POLL_MS",
+  "TRAY_CLICK_ACTION"
 ] as const;
 type ConfigKey = typeof configKeys[number];
 type ConfigSaveResult = { ok: true; path: string } | { ok: false; message: string };
@@ -105,7 +106,8 @@ const configDefaults: Partial<Record<ConfigKey, string>> = {
   COMPANION_DOWNLOAD_STALL_MS: "30000",
   COMPANION_REMOTE_REMUX_ENABLED: "false",
   COMPANION_AUTO_DELETE_MARKED: "true",
-  TRAY_DISK_POLL_MS: "10000"
+  TRAY_DISK_POLL_MS: "10000",
+  TRAY_CLICK_ACTION: "open"
 };
 let tray: Tray | null = null;
 let companion: ChildProcessWithoutNullStreams | null = null;
@@ -366,6 +368,9 @@ function validateConfig(values: Record<ConfigKey, string>, allowMissingCredentia
       : null)
     ?? (!/^(true|false)$/i.test(values.COMPANION_AUTO_DELETE_MARKED)
       ? "COMPANION_AUTO_DELETE_MARKED debe ser true o false."
+      : null)
+    ?? (!trayClickActions.includes(values.TRAY_CLICK_ACTION as TrayClickAction)
+      ? "TRAY_CLICK_ACTION debe ser open, activity o settings."
       : null);
 }
 
@@ -708,6 +713,25 @@ function restartCompanion(): void {
   startCompanion();
 }
 
+const trayClickActions = ["open", "activity", "settings"] as const;
+type TrayClickAction = typeof trayClickActions[number];
+const trayGestureMs = 600;
+let lastTrayActivation = 0;
+
+function trayClickAction(value: string | undefined): TrayClickAction {
+  return trayClickActions.includes(value as TrayClickAction) ? value as TrayClickAction : "open";
+}
+
+function onTrayActivated(): void {
+  const now = Date.now();
+  if (now - lastTrayActivation < trayGestureMs) return;
+  lastTrayActivation = now;
+  const action = trayClickAction(process.env.TRAY_CLICK_ACTION);
+  if (action === "activity") openLogWindow();
+  else if (action === "settings") openConfigWindow();
+  else void openVideoCat();
+}
+
 async function openVideoCat(): Promise<void> {
   const target = process.env.WEB_URL ?? process.env.SERVER_URL ?? "http://localhost:8081";
   const parsed = new URL(target);
@@ -986,6 +1010,7 @@ function configHtml(logoDataUrl: string): string {
             <div><h2>Opciones avanzadas</h2><p>Déjalas vacías para usar los valores por defecto.</p></div>
           </div>
           <div class="fields three">
+            <label><span class="label-row"><span>Clic en el ícono</span><code>TRAY_CLICK_ACTION</code></span><select name="TRAY_CLICK_ACTION"><option value="open">Abrir VideoCAT</option><option value="activity">Mostrar actividad</option><option value="settings">Abrir configuración</option></select></label>
             <label><span class="label-row"><span>Puerto local</span><code>COMPANION_PORT</code></span><input name="COMPANION_PORT" placeholder="29429" /></label>
             <label><span class="label-row"><span>Remux MP4 temporal</span><code>COMPANION_REMOTE_REMUX_ENABLED</code></span><select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
             <label><span class="label-row"><span>Borrar los marcados</span><code>COMPANION_AUTO_DELETE_MARKED</code></span><select name="COMPANION_AUTO_DELETE_MARKED"><option value="true">Automáticamente</option><option value="false">Solo a pedido</option></select></label>
@@ -1766,7 +1791,9 @@ async function main(): Promise<void> {
   const icon = iconPath();
   tray = new Tray(icon ? nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }) : nativeImage.createEmpty());
   tray.setToolTip(`VideoCAT Companion v${app.getVersion()}`);
-  tray.on("click", () => void openVideoCat());
+  // Windows sends a click with every double click: one action per gesture.
+  tray.on("click", () => onTrayActivated());
+  tray.on("double-click", () => onTrayActivated());
 
   startCompanion();
   await refreshMountedDisks();
