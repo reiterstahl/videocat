@@ -105,7 +105,7 @@ flowchart LR
 ### Organización, administración y auditoría
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
 - **Esquema de uso** como mapa de carpetas por tamaño, navegable por niveles.
-- **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic abre en el catálogo el contenido de todas sus ubicaciones, y los nombres genéricos se pueden excluir de la agrupación.
+- **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic abre en el catálogo el contenido de todas sus ubicaciones, y los nombres genéricos se pueden excluir de la agrupación. Con clic derecho, una carpeta se marca como **favorita**: sus videos nunca se ofrecen para moverse a otra carpeta.
 - Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza.
 - Auditoría de errores agrupados y acciones, con búsqueda, filtros y exportación CSV.
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
