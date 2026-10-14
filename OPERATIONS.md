@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.24
+
+- **Uso por carpeta** is now an explorer: a click enters a block and shows that folder's whole distribution (any depth); at the last level the videos themselves appear as blocks sized by file size, with their thumbnail, and a click opens the video. A trail and **Subir** (or Backspace) go back. *Ir al catálogo* moved to the right click menu.
+- No migrations or configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.23
 
 - **Carpetas favoritas** in Uso por carpeta: right click a block (or use the heart in Carpetas repetidas) to mark it as a favorite. Its videos, subfolders included, are never offered to move: they are left out of consolidations, Agrupar archivos and new transfers. Marking a favorite takes its files out of transfers that had not started for them; files already in staging finish their way. A favorite can still receive files if it is also starred.
