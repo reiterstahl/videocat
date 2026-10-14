@@ -105,7 +105,7 @@ flowchart LR
 ### Organization, administration and audit
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
-- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click opens the content of all their locations in the catalog, and generic names can be excluded from merging. A right click marks a folder as a **favorite**: its videos are never offered to move to another folder.
+- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder).
 - Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup.
 - Audit of grouped errors and actions, with search, filters and CSV export.
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
