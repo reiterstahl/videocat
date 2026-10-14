@@ -150,6 +150,67 @@ function finish(node: Builder, depth: number, options: Required<Omit<FolderGroup
   };
 }
 
+// Adds a file under a root: the root folder is at anchorPath and inner are the subfolders below it.
+function insertFile(root: Builder, file: FolderGroupFile, anchorPath: string, inner: string[]): void {
+  let node = root;
+  let path = anchorPath;
+  node.sizeBytes += file.sizeBytes;
+  node.fileCount += 1;
+  addLocation(node.locations, file, path);
+  for (const segment of inner) {
+    const childKey = `${node.key}/${normalizeFolderName(segment)}`;
+    const child = node.children.get(childKey) ?? builder(childKey, "folder");
+    node.children.set(childKey, child);
+    child.names.set(segment, (child.names.get(segment) ?? 0) + 1);
+    path = path ? `${path}/${segment}` : segment;
+    child.sizeBytes += file.sizeBytes;
+    child.fileCount += 1;
+    addLocation(child.locations, file, path);
+    node = child;
+  }
+  node.directBytes += file.sizeBytes;
+  node.directCount += 1;
+  addLocation(node.directLocations, file, path);
+}
+
+export type FolderLocationRef = { diskId: string; path: string };
+
+function cleanFolderPath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+// The deepest of the given folders that holds the file, as the number of its path segments.
+function anchorDepth(file: FolderGroupFile, locations: readonly FolderLocationRef[]): number {
+  const normalized = file.relativePath.replace(/\\/g, "/").toLowerCase();
+  let best = -1;
+  for (const location of locations) {
+    if (location.diskId !== file.diskId) continue;
+    const path = cleanFolderPath(location.path).toLowerCase();
+    if (normalized.startsWith(`${path}/`)) best = Math.max(best, path.split("/").length);
+  }
+  return best;
+}
+
+// One folder (or the same-named folders of a group) explored on its own: the same tree as the
+// folder map, rooted there and as deep as maxDepth below it.
+export function buildFolderSubtree(
+  files: FolderGroupFile[],
+  locations: readonly FolderLocationRef[],
+  options: { key?: string; kind?: FolderGroupNode["kind"]; maxDepth?: number; maxChildren?: number } = {}
+): FolderGroupNode | null {
+  const root = builder(options.key ?? "s:root", options.kind ?? (locations.length > 1 ? "group" : "folder"));
+  for (const file of files) {
+    const depth = anchorDepth(file, locations);
+    if (depth < 0) continue;
+    const segments = file.relativePath.split(/[\\/]+/).filter((part) => part && part !== ".");
+    const folders = segments.slice(0, -1);
+    root.names.set(folders[depth - 1], (root.names.get(folders[depth - 1]) ?? 0) + 1);
+    insertFile(root, file, folders.slice(0, depth).join("/"), folders.slice(depth));
+  }
+  if (root.fileCount === 0) return null;
+  return finish(root, 1, { maxDepth: options.maxDepth ?? 4, maxChildren: options.maxChildren ?? 60 });
+}
+
 export function buildFolderGroups(files: FolderGroupFile[], options: FolderGroupOptions = {}): FolderGroupMap {
   const excluded = new Set([...(options.excludedNames ?? [])].map(normalizeFolderName));
   const limits = { maxDepth: options.maxDepth ?? 4, maxChildren: options.maxChildren ?? 60 };
@@ -207,26 +268,7 @@ export function buildFolderGroups(files: FolderGroupFile[], options: FolderGroup
       root.names.set(`Raíz de ${file.diskName}`, 1);
     }
     roots.set(root.key, root);
-
-    let node = root;
-    let path = anchorPath;
-    node.sizeBytes += file.sizeBytes;
-    node.fileCount += 1;
-    addLocation(node.locations, file, path);
-    for (const segment of inner) {
-      const childKey = `${node.key}/${normalizeFolderName(segment)}`;
-      const child = node.children.get(childKey) ?? builder(childKey, "folder");
-      node.children.set(childKey, child);
-      child.names.set(segment, (child.names.get(segment) ?? 0) + 1);
-      path = path ? `${path}/${segment}` : segment;
-      child.sizeBytes += file.sizeBytes;
-      child.fileCount += 1;
-      addLocation(child.locations, file, path);
-      node = child;
-    }
-    node.directBytes += file.sizeBytes;
-    node.directCount += 1;
-    addLocation(node.directLocations, file, path);
+    insertFile(root, file, anchorPath, inner);
   }
 
   const finishedRoots = [...roots.values()]

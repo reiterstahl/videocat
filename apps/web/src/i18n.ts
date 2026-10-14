@@ -176,6 +176,18 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Ruta de exploración": "Exploration path",
+  "Subir": "Up",
+  "Subir un nivel (Retroceso)": "Up one level (Backspace)",
+  "Todas las carpetas": "All folders",
+  "Ir al catálogo": "Go to catalog",
+  "Abriendo carpeta…": "Opening folder…",
+  "Cargando videos…": "Loading videos…",
+  "No se pudo abrir la carpeta.": "The folder could not be opened.",
+  "No se pudieron cargar los videos de la carpeta.": "The folder's videos could not be loaded.",
+  "Carpetas pequeñas agrupadas en un solo bloque": "Small folders grouped into one block",
+  "Clic: entrar en la carpeta · Clic derecho: ir al catálogo o marcar como favorita.": "Click: enter the folder · Right click: go to the catalog or mark as favorite.",
+  "Las carpetas con el mismo nombre se muestran juntas, estén en el disco y en el nivel que estén. Haz clic en un bloque para entrar y explorarlo hasta sus videos; con clic derecho, ir al catálogo o marcar como favorita.": "Folders with the same name are shown together, whatever drive or level they are on. Click a block to enter it and explore down to its videos; right click to go to the catalog or mark it as favorite.",
   "Favorita": "Favorite",
   "Marcar como favorita": "Mark as favorite",
   "Quitar de favoritas": "Remove from favorites",
@@ -961,6 +973,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) están en carpetas favoritas y no se ofrecen\.$/);
   if (match) return `${match[1]} are in favorite folders and are not offered.`;
+
+  match = text.match(/^([\d.,\s]+) videos · (.+?) · se muestran los ([\d.,\s]+) más grandes\. Clic: abrir el video\.$/);
+  if (match) return `${match[1]} videos · ${match[2]} · showing the ${match[3]} largest. Click: open the video.`;
+
+  match = text.match(/^([\d.,\s]+) videos · (.+?)\. Clic: abrir el video; clic derecho: ir al catálogo\.$/);
+  if (match) return `${match[1]} videos · ${match[2]}. Click: open the video; right click: go to the catalog.`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

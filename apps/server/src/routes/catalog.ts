@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { filesQuerySchema, tagsFromFilename } from "@videocat/shared";
 import { isProtectedFolderUnlocked, requireWebAuth } from "../lib/auth.js";
@@ -12,7 +12,7 @@ import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { unfinishedStates } from "../lib/transfer-states.js";
-import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
+import { buildFolderGroups, buildFolderSubtree, normalizeFolderName } from "../lib/folder-groups.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk, serializeFile } from "../lib/serialize.js";
@@ -667,6 +667,33 @@ function applyLocationFilter(where: Prisma.VideoFileWhereInput, locations: Array
       })
     }
   ];
+}
+
+const folderFilesLimit = 400;
+
+const folderExploreSchema = z.object({
+  key: z.string().max(500).optional(),
+  locations: z.array(z.object({ d: z.string().uuid(), p: z.string().trim().min(1).max(2000) })).min(1).max(100)
+});
+
+// Visible files under any of the folders, with the same visibility rules as the folder map.
+async function filesUnderLocations(request: FastifyRequest, locations: Array<{ diskId: string; path: string }>) {
+  const where: Prisma.VideoFileWhereInput = {
+    OR: locations.map((location) => ({
+      diskId: location.diskId,
+      OR: [
+        { relativePath: { startsWith: `${location.path}/`, mode: "insensitive" as const } },
+        { relativePath: { startsWith: `${location.path}\\`, mode: "insensitive" as const } }
+      ]
+    }))
+  };
+  applyHiddenPathFilter(where);
+  if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(where);
+  const files = await prisma.videoFile.findMany({
+    where,
+    select: { id: true, diskId: true, relativePath: true, sizeBytes: true, disk: { select: { name: true } } }
+  });
+  return files.map((file) => ({ id: file.id, diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) }));
 }
 
 export async function folderGroupExclusions(): Promise<string[]> {
@@ -1497,6 +1524,37 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
         { excludedNames }
       )
+    };
+  });
+
+  // Exploring Uso por carpeta: the tree of one folder (or of same-named folders), any depth.
+  app.post("/api/folder-groups/subtree", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = folderExploreSchema.parse(request.body);
+    const locations = body.locations.map((location) => ({ diskId: location.d, path: location.p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") }));
+    const files = await filesUnderLocations(request, locations);
+    const node = buildFolderSubtree(files, locations, { key: body.key ?? "s:root" });
+    if (!node) return reply.code(404).send({ message: "Folder not found" });
+    return { node };
+  });
+
+  // The videos of a folder, largest first, for the last level of the exploration.
+  app.post("/api/folder-groups/files", { preHandler: requireWebAuth }, async (request) => {
+    const body = folderExploreSchema.extend({ direct: z.boolean().default(true) }).parse(request.body);
+    const locations = body.locations.map((location) => ({ diskId: location.d, path: location.p.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") }));
+    // "direct": only the files sitting in the folder itself, not in its subfolders.
+    const directlyIn = (file: { diskId: string; relativePath: string }) => locations.some((location) => {
+      const prefix = `${location.path.toLowerCase()}/`;
+      const path = file.relativePath.replace(/\\/g, "/").toLowerCase();
+      return location.diskId === file.diskId && path.startsWith(prefix) && !path.slice(prefix.length).includes("/");
+    });
+    const inside = (await filesUnderLocations(request, locations)).filter((file) => !body.direct || directlyIn(file));
+    const largest = [...inside].sort((left, right) => right.sizeBytes - left.sizeBytes).slice(0, folderFilesLimit);
+    const records = await prisma.videoFile.findMany({ where: { id: { in: largest.map((file) => file.id) } }, include: fileIncludes() });
+    const byId = new Map((await attachCategoryKeys(records)).map((file) => [file.id, file]));
+    return {
+      total: inside.length,
+      totalBytes: inside.reduce((sum, file) => sum + file.sizeBytes, 0),
+      files: largest.flatMap((file) => (byId.has(file.id) ? [serializeFile(byId.get(file.id)!, 0)] : []))
     };
   });
 

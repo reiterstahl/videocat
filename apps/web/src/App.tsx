@@ -2464,6 +2464,7 @@ export function App() {
             navigateToView("transfers");
           }}
           onTransfersChanged={refreshStats}
+          onOpenFile={(file) => void openDetail(file)}
         />
       ) : null}
 

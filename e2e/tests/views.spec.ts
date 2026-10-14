@@ -89,12 +89,36 @@ test("folder usage merges same-named folders, opens them in the catalog and can 
   const name = (await firstGroup.locator(".vc-folders-item-head strong").textContent())!.trim();
   expect(await firstGroup.locator(".vc-folders-locations li").count()).toBeGreaterThan(1);
 
-  // Hovering shows the path; clicking opens the catalog scoped to every location of the group.
+  // Hovering shows the path; a click enters the folder, deeper clicks reach its videos.
   const tile = page.locator(".vc-folder-tile.is-group", { hasText: name }).first();
-  // Subfolders cover the body of a parent block; its title strip is what opens the whole folder.
+  // Subfolders cover the body of a parent block; its title strip is the folder itself.
   await tile.hover({ position: { x: 10, y: 6 } });
   await expect(page.locator(".vc-folders-status strong")).toContainText(name);
   await tile.click({ position: { x: 10, y: 6 } });
+  const trail = page.getByRole("navigation", { name: "Ruta de exploración" });
+  await expect(trail.locator('[aria-current="page"]')).toHaveText(name);
+  await expect(page).toHaveURL(/\/uso-por-carpeta$/);
+  for (let level = 0; level < 6 && (await page.locator(".vc-file-tile").count()) === 0; level += 1) {
+    const next = page.locator(".vc-folder-tile:not(.is-rest)").first();
+    await expect(next).toBeVisible();
+    await next.click({ position: { x: 10, y: 6 } });
+    await page.waitForTimeout(150);
+  }
+  const video = page.locator(".vc-file-tile").first();
+  await expect(video).toBeVisible();
+  expect(await trail.locator("li").count()).toBeGreaterThan(2);
+
+  // A click on a video opens it; Backspace goes up one level.
+  await video.click();
+  await expect(page.locator(".vc-detail, .detail-panel").first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Backspace");
+  await expect(page.locator(".vc-file-tile")).toHaveCount(0);
+
+  // "Ir al catálogo" moved to the right click menu.
+  await trail.getByRole("button", { name: "Todas las carpetas" }).click();
+  await tile.click({ button: "right", position: { x: 10, y: 6 } });
+  await page.getByRole("menu").getByRole("menuitem", { name: "Ir al catálogo" }).click();
   await expect(page).toHaveURL(/\/catalogo$/);
   await expect(page.locator(".vc-filter-chip", { hasText: `Carpeta: ${name}` })).toBeVisible();
   await expect(page.locator(".vc-card").first()).toBeVisible();
@@ -149,7 +173,7 @@ test("a starred folder consolidates its namesakes and the transfer shows up in T
 
   // The catalog marks the files that are on their way.
   await openView(page, "/uso-por-carpeta");
-  await page.locator(".vc-folders-list > li", { has: page.locator("strong", { hasText: new RegExp(`^${name}$`) }) }).getByRole("button", { name: "Ver en catálogo" }).click();
+  await page.locator(".vc-folders-list > li", { has: page.locator("strong", { hasText: new RegExp(`^${name}$`) }) }).getByRole("button", { name: "Ir al catálogo" }).click();
   await expect(page.locator(".vc-card-badge.is-transit").first()).toHaveText("Por trasladar");
 
   await openView(page, "/traslados");

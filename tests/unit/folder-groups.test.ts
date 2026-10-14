@@ -67,3 +67,27 @@ test("large levels keep the biggest folders and fold the rest into one tile", ()
   assert.equal(total(archivo.children), archivo.sizeBytes);
   assert.equal(archivo.children[3].name, "5 carpetas más");
 });
+
+test("a folder can be explored on its own, merging namesakes and going deeper than the map", async () => {
+  const { buildFolderSubtree } = await import("../../apps/server/src/lib/folder-groups.ts");
+  const file = (diskId: string, relativePath: string, sizeBytes: number) => ({ diskId, diskName: diskId.toUpperCase(), relativePath, sizeBytes });
+  const files = [
+    file("e", "Proyectos/Testing/a/b/c/d/e/f/clip1.mp4", 10),
+    file("e", "Proyectos/Testing/suelto.mp4", 5),
+    file("f", "Testing/a/clip2.mp4", 20),
+    file("f", "Otra/clip3.mp4", 99)
+  ];
+  const node = buildFolderSubtree(files, [{ diskId: "e", path: "Proyectos/Testing" }, { diskId: "f", path: "Testing/" }], { maxDepth: 8 });
+  assert.ok(node);
+  assert.equal(node.name, "Testing");
+  assert.equal(node.kind, "group");
+  assert.deepEqual([node.sizeBytes, node.fileCount], [35, 3], "files outside the folders are left out");
+  const a = node.children.find((child) => child.name === "a")!;
+  assert.deepEqual([a.sizeBytes, a.locations.length], [30, 2], "the same subfolder on both drives is one block");
+  const loose = node.children.find((child) => child.kind === "files")!;
+  assert.deepEqual([loose.sizeBytes, loose.locations[0].path], [5, "Proyectos/Testing"]);
+  let deepest = a;
+  while (deepest.children.length > 0) deepest = deepest.children.find((child) => child.kind === "folder") ?? deepest.children[0];
+  assert.equal(deepest.name, "f", "seven levels below the root");
+  assert.equal(buildFolderSubtree(files, [{ diskId: "z", path: "Nada" }]), null);
+});

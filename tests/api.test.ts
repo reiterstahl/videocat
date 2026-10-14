@@ -1216,6 +1216,40 @@ test("favourite folders never offer their videos to move", { skip: process.env.R
   }
 });
 
+test("folder usage can be explored folder by folder down to its videos", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Explorar ${suffix}`, volumeId: `ex-${suffix}`, totalBytes: 10n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  const root = `Raiz${suffix}`;
+  try {
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: disk.id, filename: "grande.mp4", extension: "mp4", absolutePath: "X:/1", relativePath: `${root}/grande.mp4`, sizeBytes: 300n },
+        { diskId: disk.id, filename: "chico.mp4", extension: "mp4", absolutePath: "X:/2", relativePath: `${root}/chico.mp4`, sizeBytes: 100n },
+        { diskId: disk.id, filename: "hondo.mp4", extension: "mp4", absolutePath: "X:/3", relativePath: `${root}/a/b/c/d/e/hondo.mp4`, sizeBytes: 50n },
+        { diskId: disk.id, filename: "secreto.mp4", extension: "mp4", absolutePath: "X:/4", relativePath: `${root}/Private/secreto.mp4`, sizeBytes: 999n }
+      ]
+    });
+    const subtree = await app.inject({ method: "POST", url: "/api/folder-groups/subtree", headers: webMutationHeaders(cookie), payload: { locations: [{ d: disk.id, p: root }] } });
+    assert.equal(subtree.statusCode, 200);
+    const node = subtree.json().node;
+    assert.deepEqual([node.sizeBytes, node.fileCount], [450, 3], "protected folders stay hidden without the PIN");
+    assert.ok(node.children.some((child: { kind: string; sizeBytes: number }) => child.kind === "files" && child.sizeBytes === 400));
+    const deep = await app.inject({ method: "POST", url: "/api/folder-groups/subtree", headers: webMutationHeaders(cookie), payload: { locations: [{ d: disk.id, p: `${root}/a/b/c` }] } });
+    assert.equal(deep.json().node.children[0].name, "d", "any depth can be explored");
+
+    const direct = (await app.inject({ method: "POST", url: "/api/folder-groups/files", headers: webMutationHeaders(cookie), payload: { locations: [{ d: disk.id, p: root }] } })).json();
+    assert.deepEqual(direct.files.map((file: { filename: string }) => file.filename), ["grande.mp4", "chico.mp4"], "only the files of the folder itself, largest first");
+    assert.deepEqual([direct.total, direct.totalBytes], [2, 400]);
+    const all = (await app.inject({ method: "POST", url: "/api/folder-groups/files", headers: webMutationHeaders(cookie), payload: { locations: [{ d: disk.id, p: root }], direct: false } })).json();
+    assert.equal(all.total, 3);
+    const missing = await app.inject({ method: "POST", url: "/api/folder-groups/subtree", headers: webMutationHeaders(cookie), payload: { locations: [{ d: disk.id, p: "NoExiste" }] } });
+    assert.equal(missing.statusCode, 404);
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";
