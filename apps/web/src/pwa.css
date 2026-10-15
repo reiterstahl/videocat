@@ -98,3 +98,48 @@
     max-width: none;
   }
 }
+
+/* An access proxy in front of VideoCAT (Cloudflare Access, for example) asks to sign in again. */
+.vc-access-expired {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: 50%;
+  z-index: 122;
+  width: min(620px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--vc-border);
+  border-radius: 14px;
+  background: var(--vc-raised);
+  box-shadow: var(--vc-shadow-pop);
+  padding: 12px 14px;
+  color: var(--vc-text);
+  transform: translateX(-50%);
+}
+
+.vc-access-expired > svg {
+  color: #d97706;
+}
+
+.vc-access-expired div {
+  display: grid;
+  gap: 2px;
+}
+
+.vc-access-expired span {
+  color: var(--vc-text-soft);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 640px) {
+  .vc-access-expired {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .vc-access-expired .vc-button {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+}

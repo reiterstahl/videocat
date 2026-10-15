@@ -44,11 +44,19 @@ test("the web manifest is installable and its icons exist", () => {
 
 test("the service worker never answers for server routes or caches catalog data", () => {
   const workbox = pwaOptions.workbox!;
-  const denied = workbox.navigateFallbackDenylist ?? [];
-  for (const route of ["/api/files", "/api/streams/abc", "/thumbnails/disk/file/frame_01.jpg"]) {
-    assert.ok(denied.some((pattern) => pattern.test(route)), `${route} must not fall back to the app shell`);
+  assert.equal(workbox.navigateFallback, null, "pages are not served from the precache first");
+  const rules = workbox.runtimeCaching ?? [];
+  assert.equal(rules.length, 1, "only page navigations are handled at runtime");
+  const [pages] = rules;
+  assert.equal(pages.handler, "NetworkFirst");
+  const matches = pages.urlPattern as (options: { request: { mode: string }; url: URL }) => boolean;
+  const navigate = (path: string) => matches({ request: { mode: "navigate" }, url: new URL(path, "https://cat.example") });
+  assert.equal(navigate("/catalogo"), true);
+  assert.equal(navigate("/"), true);
+  for (const route of ["/api/files", "/api/session/return?to=/", "/thumbnails/disk/file/frame_01.jpg"]) {
+    assert.equal(navigate(route), false, `${route} must always reach the network`);
   }
-  assert.ok(!denied.some((pattern) => pattern.test("/catalogo")));
-  assert.deepEqual(workbox.runtimeCaching, []);
+  assert.equal(matches({ request: { mode: "cors" }, url: new URL("/api/files", "https://cat.example") }), false, "API calls are never cached");
+  assert.deepEqual(pages.options?.cacheableResponse?.statuses, [200], "proxy redirects are never cached");
   assert.equal(pwaOptions.registerType, "prompt");
 });

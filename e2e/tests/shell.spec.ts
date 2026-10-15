@@ -37,3 +37,18 @@ test("sidebar collapses and navigates between sections", async ({ page }) => {
   await expect(page).toHaveURL(/\/review$/);
   await expect(page.locator(".vc-page-title")).toHaveText("Review");
 });
+
+test("an expired access proxy session shows a sign-in notice instead of a network error", async ({ page }) => {
+  await openView(page, "/catalogo");
+  // A proxy in front of VideoCAT (Cloudflare Access, for example) now redirects every API call to its sign-in.
+  await page.route("**/api/**", (route) => {
+    if (route.request().url().includes("/api/session/return")) return route.fulfill({ status: 200, contentType: "text/plain", body: "proxy sign-in" });
+    return route.fulfill({ status: 302, headers: { location: "https://login.example.invalid/cdn-cgi/access/login" } });
+  });
+  await page.getByRole("button", { name: "Duplicados" }).first().click();
+  const notice = page.locator(".vc-access-expired");
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("Tu sesión de acceso expiró");
+  await notice.getByRole("button", { name: "Volver a iniciar sesión" }).click();
+  await expect(page).toHaveURL(/\/api\/session\/return\?to=%2Fduplicados/);
+});

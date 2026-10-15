@@ -1250,6 +1250,17 @@ test("folder usage can be explored folder by folder down to its videos", { skip:
   }
 });
 
+test("after an access proxy sign-in the server sends people back to the same page of this site", async () => {
+  const back = await app.inject({ method: "GET", url: "/api/session/return?to=%2Fcatalogo%3Fq%3Dboda" });
+  assert.equal(back.statusCode, 303);
+  assert.equal(back.headers.location, "/catalogo?q=boda");
+  assert.equal(back.headers["cache-control"], "no-store");
+  for (const target of ["https%3A%2F%2Fevil.example", "%2F%2Fevil.example", "%2Fapi%2Ffiles"]) {
+    const response = await app.inject({ method: "GET", url: `/api/session/return?to=${target}` });
+    assert.equal(response.headers.location, "/", target);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

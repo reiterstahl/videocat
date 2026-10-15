@@ -38,10 +38,28 @@ export const pwaOptions: Partial<VitePWAOptions> = {
   workbox: {
     globPatterns: ["**/*.{js,css,html,woff2,png,svg,ico,webp}"],
     globIgnores: ["pwa/screenshot-*"],
-    navigateFallback: "/index.html",
-    // Server routes must always reach the network, also when the app is opened from the icon.
-    navigateFallbackDenylist: [/^\/api\//, /^\/thumbnails\//],
-    runtimeCaching: [],
+    // Opening or reloading the app always asks the network first, so an access proxy in front of
+    // VideoCAT (Cloudflare Access, for example) can show its sign-in when its session expires. The
+    // precached shell is only the offline fallback. Server routes are never handled here.
+    navigateFallback: null,
+    runtimeCaching: [
+      {
+        urlPattern: ({ request, url }) => request.mode === "navigate" && !/^\/(api|thumbnails)\//.test(url.pathname),
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "videocat-pages",
+          networkTimeoutSeconds: 5,
+          // Only real pages: a proxy redirect (status 0) or an error page is never kept.
+          cacheableResponse: { statuses: [200] },
+          expiration: { maxEntries: 20 },
+          plugins: [
+            {
+              handlerDidError: async () => (await caches.match("/index.html", { ignoreSearch: true })) ?? Response.error()
+            }
+          ]
+        }
+      }
+    ],
     cleanupOutdatedCaches: true,
     clientsClaim: false,
     skipWaiting: false,

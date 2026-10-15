@@ -9,6 +9,7 @@ import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
 import { catalogRoutes } from "./routes/catalog.js";
 import { transferRoutes } from "./routes/transfers.js";
+import { safeReturnPath } from "./lib/safe-return.js";
 import { activityRoutes } from "./routes/activity.js";
 import { companionRoutes } from "./routes/companions.js";
 import { streamRoutes } from "./routes/streams.js";
@@ -58,6 +59,12 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   installCompanionControlTunnel(app);
   app.get("/api/health", async () => ({ ok: true }));
+  // A top-level visit here goes through whatever access proxy sits in front of VideoCAT (it shows
+  // its own sign-in when the session expired) and then comes back to the page the person was on.
+  app.get("/api/session/return", async (request, reply) => {
+    const { to } = (request.query ?? {}) as { to?: unknown };
+    return reply.header("Cache-Control", "no-store").redirect(safeReturnPath(to), 303);
+  });
   await app.register(authRoutes);
   await app.register(companionRoutes);
   await app.register(streamRoutes);

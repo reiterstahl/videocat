@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { OfflineBanner, PwaUpdatePrompt } from "./components/PwaStatus";
+import { AccessExpiredNotice } from "./components/AccessExpiredNotice";
 import { startInstallPromptCapture } from "./lib/install-prompt";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
     <OfflineBanner />
+    <AccessExpiredNotice />
     <PwaUpdatePrompt />
   </React.StrictMode>
 );
