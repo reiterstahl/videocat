@@ -360,6 +360,10 @@ Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRU
 
 Las notas de cada versión están en [OPERATIONS.md](OPERATIONS.md#upgrade).
 
+### Detrás de Cloudflare Access u otro proxy con login
+
+VideoCAT funciona detrás de un acceso previo como Cloudflare Access. Cuando la sesión de ese acceso caduca, la app muestra **Tu sesión de acceso expiró** con un botón para volver a iniciar sesión y regresar a la misma pantalla. El Companion conviene apuntarlo a la dirección interna del servidor (por ejemplo `http://192.168.1.30:8080`) o darle un *service token*, para que no dependa de ese login.
+
 ### Respaldos
 
 `scripts/backup.sh` (o `scripts/backup.ps1`) guarda la base de datos, el volumen de miniaturas, checksums y el `.env`. `scripts/verify-backup.sh` comprueba un respaldo y `scripts/restore.sh` lo restaura. Guarda los respaldos cifrados: contienen rutas y metadatos privados. Detalles y simulacro de restauración en [OPERATIONS.md](OPERATIONS.md).

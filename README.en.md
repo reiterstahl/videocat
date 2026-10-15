@@ -362,6 +362,10 @@ With HTTPS, use `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` and `
 
 Release notes for each version are in [OPERATIONS.md](OPERATIONS.md#upgrade).
 
+### Behind Cloudflare Access or another sign-in proxy
+
+VideoCAT works behind an access gateway such as Cloudflare Access. When that gateway's session expires, the app shows **Tu sesión de acceso expiró** (your access session expired) with a button to sign in again and come back to the same page. Point the Companion at the server's internal address (for example `http://192.168.1.30:8080`) or give it a service token, so it does not depend on that sign-in.
+
 ### Backups
 
 `scripts/backup.sh` (or `scripts/backup.ps1`) saves the database, the thumbnail volume, checksums and `.env`. `scripts/verify-backup.sh` checks a backup and `scripts/restore.sh` restores it. Keep backups encrypted: they contain private paths and metadata. Details and a restore drill are in [OPERATIONS.md](OPERATIONS.md).
