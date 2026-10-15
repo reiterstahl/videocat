@@ -17,6 +17,15 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.25
+
+- **Access proxies (Cloudflare Access and similar)**: when the proxy session expired, the installed app opened from its cached shell and every API call failed with "Failed to fetch" (the proxy redirects to its sign-in on another domain, which the CSP blocks). Now:
+  - opening or reloading the app asks the network first (the cached shell is only the offline fallback), so the proxy can show its sign-in;
+  - if an API call is redirected by a proxy, VideoCAT shows *Tu sesión de acceso expiró* with **Volver a iniciar sesión**, which goes through `/api/session/return` (same-site paths only) and comes back to the same page.
+  - Until the new version is installed, press **Ctrl+Shift+R** (Cmd+Shift+R on macOS) on the site to sign in to the proxy again.
+- A blocked inline script reported by the browser on a Cloudflare-proxied site comes from scripts Cloudflare injects (for example JavaScript detections); VideoCAT's CSP blocks it on purpose and nothing breaks. It can be turned off in Cloudflare › Security › Bots for that hostname.
+- No migrations or configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.24
 
 - **Uso por carpeta** is now an explorer: a click enters a block and shows that folder's whole distribution (any depth); at the last level the videos themselves appear as blocks sized by file size, with their thumbnail, and a click opens the video. A trail and **Subir** (or Backspace) go back. *Ir al catálogo* moved to the right click menu.
