@@ -23,6 +23,7 @@ import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail
 import { agentDiskIdentifierSchema, disksByAgentIdentifiers, isUuid } from "../lib/disk-identifiers.js";
 import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
+import { cancelVanishedTransfers } from "./transfers.js";
 import { activitiesSchema, storeActivity } from "../lib/companion-activity.js";
 
 const fingerprintRepairBatchLimit = 5_000;
@@ -935,6 +936,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       });
       markedAbsent = result.count;
     }
+    const cancelledTransfers = markedAbsent > 0 ? await cancelVanishedTransfers() : 0;
 
     const scan = await prisma.scan.update({
       where: { id: body.scanId },
@@ -947,8 +949,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       diskId: current.diskId,
       target: current.rootPath,
       metadata: { generation: current.generation, reconciled: body.reconcile },
-      result: { fileCount: scan.fileCount, errorCount: scan.errorCount, markedAbsent }
+      result: { fileCount: scan.fileCount, errorCount: scan.errorCount, markedAbsent, cancelledTransfers }
     });
-    return { scan, reconciliation: { markedAbsent } };
+    return { scan, reconciliation: { markedAbsent, cancelledTransfers } };
   });
 }

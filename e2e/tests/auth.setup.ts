@@ -1,9 +1,9 @@
 import { expect, test as setup } from "@playwright/test";
 
 setup("sign in as the admin user", async ({ page }) => {
+  // Before any page script runs, so the app never stores the test browser's own language first.
+  await page.addInitScript(() => localStorage.setItem("videocat-language", "es"));
   await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("videocat-language", "es"));
-  await page.reload();
   await page.getByLabel("Usuario").fill(process.env.E2E_USER ?? process.env.ADMIN_USER ?? "admin");
   await page.getByLabel("Contrasena").fill(process.env.E2E_PASSWORD ?? process.env.ADMIN_PASSWORD ?? "");
   await page.getByRole("button", { name: "Entrar" }).click();

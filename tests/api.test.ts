@@ -1261,6 +1261,46 @@ test("after an access proxy sign-in the server sends people back to the same pag
   }
 });
 
+test("a scan that no longer finds a file cancels its transfers that had not started", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Movido ${suffix}`, volumeId: `mv-${suffix}`, totalBytes: 10n, freeBytes: 10n } });
+  try {
+    const modifiedAt = "2026-10-13T12:00:00.000Z";
+    await prisma.videoFile.createMany({
+      data: ["sigue", "movido", "viajando"].map((name) => ({ diskId: disk.id, filename: `${name}.mp4`, extension: "mp4", absolutePath: `M:/V/${name}.mp4`, relativePath: `V/${name}.mp4`, sizeBytes: 10n, modifiedAt: new Date(modifiedAt) }))
+    });
+    const files = await prisma.videoFile.findMany({ where: { diskId: disk.id } });
+    const byName = (name: string) => files.find((file) => file.filename === `${name}.mp4`)!;
+    const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Destino-${suffix}`, nameKey: "destino" } });
+    const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "test" } });
+    const item = (name: string, state: string) => prisma.transferItem.create({
+      data: { jobId: job.id, videoFileId: byName(name).id, filename: `${name}.mp4`, sourceDiskId: disk.id, sourceRelativePath: `V/${name}.mp4`, targetDiskId: disk.id, targetFolder: `Destino-${suffix}`, sizeBytes: 10n, state }
+    });
+    const pendingMoved = await item("movido", "pending");
+    const inStaging = await item("viajando", "source_removed");
+
+    // The person moved "movido" by hand: the next scan only sees "sigue".
+    const scanId = (await app.inject({ method: "POST", url: "/api/agent/scan/start", headers: agentHeaders, payload: { diskId: disk.id, rootPath: "M:\\" } })).json().scan.id;
+    await app.inject({
+      method: "POST",
+      url: "/api/agent/files/batch",
+      headers: agentHeaders,
+      payload: { scanId, diskId: disk.id, files: [{ filename: "sigue.mp4", extension: ".mp4", absolutePath: "M:\\V\\sigue.mp4", relativePath: "V/sigue.mp4", sizeBytes: 10, modifiedAt, status: "scanned" }] }
+    });
+    const finish = await app.inject({ method: "POST", url: "/api/agent/scan/finish", headers: agentHeaders, payload: { scanId, reconcile: true, scanRoots: ["."] } });
+    assert.equal(finish.statusCode, 200);
+    assert.deepEqual(finish.json().reconciliation, { markedAbsent: 1, cancelledTransfers: 1 });
+    const cancelled = await prisma.transferItem.findUniqueOrThrow({ where: { id: pendingMoved.id } });
+    assert.equal(cancelled.state, "cancelled");
+    assert.match(cancelled.error ?? "", /ya no estaba en su disco/);
+    assert.equal((await prisma.transferItem.findUniqueOrThrow({ where: { id: inStaging.id } })).state, "source_removed", "a file already in staging keeps its way");
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: disk.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: disk.id } } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

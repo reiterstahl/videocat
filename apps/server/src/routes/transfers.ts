@@ -736,6 +736,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/transfers/summary", { preHandler: requireWebAuth }, async () => {
+    await cancelVanishedTransfers();
     const items = await prisma.transferItem.findMany({
       where: { state: { in: unfinishedStates } },
       select: { state: true, sourceDiskId: true, targetDiskId: true, sizeBytes: true, error: true, updatedAt: true, job: { select: { status: true } } }
@@ -836,6 +837,23 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, status, cancelledFiles };
     });
   }
+}
+
+// A file that a scan no longer found (moved or deleted by hand) cannot leave its drive: its
+// transfers that had not started are cancelled with the reason, instead of waiting forever.
+// Files already in staging are never touched here.
+export async function cancelVanishedTransfers(): Promise<number> {
+  const vanished = await prisma.transferItem.findMany({
+    where: { state: "pending", OR: [{ videoFileId: null }, { videoFile: { isPresent: false } }] },
+    select: { id: true, jobId: true }
+  });
+  if (vanished.length === 0) return 0;
+  const result = await prisma.transferItem.updateMany({
+    where: { id: { in: vanished.map((item) => item.id) }, state: "pending" },
+    data: { state: "cancelled", error: "El archivo ya no estaba en su disco en el último escaneo." }
+  });
+  for (const jobId of new Set(vanished.map((item) => item.jobId))) await closeFinishedJob(jobId);
+  return result.count;
 }
 
 async function closeFinishedJob(jobId: string): Promise<void> {

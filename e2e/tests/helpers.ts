@@ -1,7 +1,14 @@
 import { expect, type Page } from "@playwright/test";
 
 // Opens a section with a clean per-browser preference state.
+const spanishPages = new WeakSet<Page>();
+
 export async function openView(page: Page, path: string, storage: Record<string, string> = {}) {
+  // The language is set before any page script runs, on every load of this page.
+  if (!spanishPages.has(page)) {
+    spanishPages.add(page);
+    await page.addInitScript(() => localStorage.setItem("videocat-language", "es"));
+  }
   await page.goto(path);
   await page.evaluate((values) => {
     for (const key of Object.keys(localStorage)) {
