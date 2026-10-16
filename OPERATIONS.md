@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.26
+
+- Transfers no longer wait forever for a file that was moved or deleted by hand: when a scan no longer finds it, its transfers that had not started are cancelled with the reason ("El archivo ya no estaba en su disco en el último escaneo"). Files already in the staging folder are never touched. Existing stuck items are cleared the next time Traslados is opened.
+- Checked against production data: transfers do not affect duplicate detection (no duplicate group involved a file in transit, and every finished transfer points to its destination). Duplicates only count files that the last scan of their drive found.
+- No migrations or configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.25
 
 - **Access proxies (Cloudflare Access and similar)**: when the proxy session expired, the installed app opened from its cached shell and every API call failed with "Failed to fetch" (the proxy redirects to its sign-in on another domain, which the CSP blocks). Now:
