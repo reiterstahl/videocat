@@ -119,6 +119,7 @@ flowchart LR
 ### Interface
 - **Installable app (PWA)** on Windows, macOS, Android, iPhone and iPad: it opens from its own icon in a window without tabs, updates itself with every server version and tells you when you are offline. It stores no catalog data on the device.
 - **Activity indicator** in the header: what the Companion is doing right now (copying, verifying, downloading, scanning or deleting) and a panel with progress, speed, ETA and the latest movements. At the top it shows what is left with the connected drives (**x of y left to move**) and, per drive, whether it is **safe to disconnect** or worth waiting.
+- A **sign-in screen** with a contact sheet of frames beside the form (a strip on top on phones), language and theme switches, show password and clear messages for a wrong password or too many attempts. Nothing from the catalog is shown before signing in.
 - Spanish and English, light, dark, OLED or system themes, six accent colors and comfortable or compact density.
 - Responsive: collapsible sidebar on desktop, tab bar and bottom sheets on phones.
 - Every section has its own URL (`/catalogo`, `/review`, `/duplicados`…), also reachable through its English equivalent.
@@ -144,16 +145,25 @@ flowchart LR
 
 | Transfers | Group files |
 | --- | --- |
-| <img src="docs/screenshots/en/transfers.webp" alt="Transfers telling which drive to connect, with the staging folder" width="440" /> | <img src="docs/screenshots/en/group.webp" alt="Group files session with F to group and J to ignore" width="440" /> |
+| <img src="docs/screenshots/en/transfers.webp" alt="Transfers split into drives that receive files and drives that copy to the staging folder" width="440" /> | <img src="docs/screenshots/en/group.webp" alt="Group files session with F to group and J to ignore" width="440" /> |
+
+| Folder usage with instant search | Activity with the connected drives |
+| --- | --- |
+| <img src="docs/screenshots/en/folders.webp" alt="Folder usage map filtered by an instant search" width="440" /> | <img src="docs/screenshots/en/activity.webp" alt="Activity panel: x of y left to move and which drive is safe to disconnect" width="440" /> |
 
 | Administration | Windows Companion |
 | --- | --- |
-| <img src="docs/screenshots/en/admin.webp" alt="Capacity per drive and Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Companion settings (Spanish UI)" width="440" /> |
+| <img src="docs/screenshots/en/admin.webp" alt="Capacity per drive, rename and remove drives, and Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Companion settings (Spanish UI)" width="440" /> |
+
+| Sign in · light | Sign in · dark |
+| --- | --- |
+| <img src="docs/screenshots/en/login-light.webp" alt="Sign-in screen in the light theme" width="440" /> | <img src="docs/screenshots/en/login-dark.webp" alt="Sign-in screen in the dark theme" width="440" /> |
 
 <p align="center">
   <img src="docs/screenshots/en/mobile-catalog.webp" alt="Catalog on a phone" width="200" />
   <img src="docs/screenshots/en/mobile-review.webp" alt="Review on a phone with the pinned file name" width="200" />
   <img src="docs/screenshots/en/mobile-confirm.webp" alt="Animated confirmation of a decision" width="200" />
+  <img src="docs/screenshots/en/mobile-login.webp" alt="Sign in on a phone" width="200" />
 </p>
 
 All screenshots use fictional data.

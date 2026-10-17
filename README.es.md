@@ -119,6 +119,7 @@ flowchart LR
 ### Interfaz
 - **App instalable (PWA)** en Windows, macOS, Android, iPhone y iPad: se abre desde su propio ícono en una ventana sin pestañas, se actualiza sola con cada versión del servidor y avisa cuando no hay conexión. No guarda datos del catálogo en el dispositivo.
 - **Indicador de actividad** en el encabezado: qué está haciendo el Companion en este momento (copiando, verificando, descargando, escaneando o borrando) y un panel con progreso, velocidad, ETA y los últimos movimientos. Arriba muestra cuánto falta con los discos conectados (**faltan x de y por mover**) y, por disco, si **ya puedes desconectarlo** o conviene esperar.
+- **Pantalla de inicio de sesión** con una hoja de fotogramas junto al formulario (una franja arriba en el móvil), cambio de idioma y tema, mostrar contraseña y mensajes claros ante una contraseña incorrecta o demasiados intentos. No muestra nada del catálogo antes de entrar.
 - Español e inglés, temas claro, oscuro, OLED o del sistema, seis colores de acento y densidad cómoda o compacta.
 - Responsive: barra lateral contraíble en escritorio, barra de pestañas y hojas desplegables en el móvil.
 - Cada sección tiene su URL (`/catalogo`, `/review`, `/duplicados`…), que también se puede abrir con su equivalente en inglés.
@@ -144,16 +145,25 @@ flowchart LR
 
 | Traslados | Agrupar archivos |
 | --- | --- |
-| <img src="docs/screenshots/es/transfers.webp" alt="Traslados con avisos de qué disco conectar y la carpeta temporal" width="440" /> | <img src="docs/screenshots/es/group.webp" alt="Sesión para agrupar archivos con F agrupar y J ignorar" width="440" /> |
+| <img src="docs/screenshots/es/transfers.webp" alt="Traslados separados en discos que reciben material y discos que copian a la carpeta temporal" width="440" /> | <img src="docs/screenshots/es/group.webp" alt="Sesión para agrupar archivos con F agrupar y J ignorar" width="440" /> |
+
+| Uso por carpeta con búsqueda instantánea | Actividad con los discos conectados |
+| --- | --- |
+| <img src="docs/screenshots/es/folders.webp" alt="Mapa de uso por carpeta filtrado por una búsqueda instantánea" width="440" /> | <img src="docs/screenshots/es/activity.webp" alt="Panel de actividad: faltan x de y por mover y qué disco ya se puede desconectar" width="440" /> |
 
 | Administración | Companion de Windows |
 | --- | --- |
-| <img src="docs/screenshots/es/admin.webp" alt="Capacidad por disco y Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Configuración del Companion" width="440" /> |
+| <img src="docs/screenshots/es/admin.webp" alt="Capacidad por disco, renombrar y eliminar unidades, y Companions" width="440" /> | <img src="docs/screenshots/companion.webp" alt="Configuración del Companion" width="440" /> |
+
+| Inicio de sesión · claro | Inicio de sesión · oscuro |
+| --- | --- |
+| <img src="docs/screenshots/es/login-light.webp" alt="Pantalla de inicio de sesión en tema claro" width="440" /> | <img src="docs/screenshots/es/login-dark.webp" alt="Pantalla de inicio de sesión en tema oscuro" width="440" /> |
 
 <p align="center">
   <img src="docs/screenshots/es/mobile-catalog.webp" alt="Catálogo en el móvil" width="200" />
   <img src="docs/screenshots/es/mobile-review.webp" alt="Review en el móvil con el nombre fijado" width="200" />
   <img src="docs/screenshots/es/mobile-confirm.webp" alt="Confirmación animada de una decisión" width="200" />
+  <img src="docs/screenshots/es/mobile-login.webp" alt="Inicio de sesión en el móvil" width="200" />
 </p>
 
 Todas las capturas usan datos ficticios.

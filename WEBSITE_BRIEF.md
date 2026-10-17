@@ -188,6 +188,12 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - El indicador de actividad dice cuánto falta con los discos conectados ("faltan x de y por mover") y si cada disco ya se puede desconectar.
 - Mensaje clave: **nada se borra sin una copia verificada en otro lugar**. Cada copia se comprueba con SHA-256 releyéndola entera, la carpeta temporal siempre deja libre el 5 % del disco, nada se sobrescribe y un corte a mitad de camino se retoma sin perder archivos.
 
+### Inicio de sesión
+
+- Hoja de fotogramas ilustrativa junto al formulario (franja superior en el móvil); no muestra nada del catálogo antes de entrar.
+- Cambio de idioma (ES/EN) y de tema, botón para mostrar la contraseña y mensajes claros ante campos vacíos, contraseña incorrecta o demasiados intentos.
+- Respeta tema claro, oscuro, OLED y los seis colores de acento.
+
 ### Perfil y privacidad
 
 - Cambio del PIN de cuatro dígitos.
@@ -420,6 +426,12 @@ Conceptos relevantes:
 - Reproductor remoto en Android.
 - Administración con capacidad de unidades y Companions.
 - Menú de bandeja y ventana de actividad del Companion.
+- Inicio de sesión (claro y oscuro) y su versión móvil: `docs/screenshots/<es|en>/login-light.webp`, `login-dark.webp`, `mobile-login.webp`.
+- Traslados con los discos que reciben material y los que copian a la carpeta temporal: `transfers.webp`.
+- Panel de actividad con "faltan x de y por mover" y qué disco se puede desconectar: `activity.webp`.
+- Uso por carpeta con búsqueda instantánea: `folders.webp`.
+
+Todas las capturas de `docs/screenshots` usan el catálogo ficticio de demostración.
 
 Antes de publicar capturas, ocultar nombres de archivo privados, rutas personales, dominios internos, tokens, IP privadas y patrones reales de folders protegidos.
 
