@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronDown, ChevronRight, HardDrive } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { diskUsagePercent, formatCount } from "../lib/app-helpers";
@@ -62,6 +62,15 @@ function useDiskStrip(count: number) {
 
 export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, companionNeedsUpdate, companionOnline, connectedMessage, connectedPanelCollapsed, detectingConnected, disks, downloadConnectionMessage, panelDisks, panelSelectedDiskIds, selectAllPanelDisks, selectNoPanelDisks, setConnectedPanelCollapsed, showMountedDisksFromCompanion, stats, switchView, togglePanelDisk, viewMode }: CatalogContextProps) {
   const { stripRef, twoRows } = useDiskStrip(panelDisks.length);
+  // Connected drives go first (each group keeps its order), so they are in view without scrolling.
+  const orderedDisks = useMemo(() => {
+    const mounted = new Set(companionMountedDiskIds);
+    return [...panelDisks.filter((disk) => mounted.has(disk.id)), ...panelDisks.filter((disk) => !mounted.has(disk.id))];
+  }, [companionMountedDiskIds, panelDisks]);
+  const mountedKey = companionMountedDiskIds.join(",");
+  useEffect(() => {
+    if (stripRef.current) stripRef.current.scrollLeft = 0;
+  }, [mountedKey, stripRef]);
   return (
     <>
     <section className={`vc-disks ${connectedPanelCollapsed ? "is-collapsed" : ""}`} aria-label="Discos">
@@ -120,7 +129,7 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
             <div className="vc-disks-message">{connectedMessage}</div>
           ) : null}
           <div className={`vc-disk-strip ${twoRows ? "is-two-rows" : ""}`} ref={stripRef}>
-            {panelDisks.map((disk) => {
+            {orderedDisks.map((disk) => {
               const active = panelSelectedDiskIds.includes(disk.id);
               const mounted = companionMountedDiskIds.includes(disk.id);
               const usage = diskUsagePercent(disk);

@@ -33,6 +33,19 @@ test("instant search on the folder map keeps only matching blocks", async ({ pag
   await expect.poll(() => tiles.count()).toBe(before);
 });
 
+test("connected drives are listed first in the drive strip", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const disks = (await (await page.request.get("/api/disks")).json()).disks as Array<{ id: string; name: string }>;
+  const last = [...disks].sort((left, right) => left.name.localeCompare(right.name)).at(-1)!;
+  await page.route("**/api/companion/status", (route) => route.fulfill({
+    json: { online: true, version: 999, mountedDiskCount: 1, mountedDiskIds: [last.id], lastSeenAt: new Date().toISOString(), agents: [] }
+  }));
+  await page.getByRole("button", { name: "Mostrar conectados" }).click();
+  const first = page.locator(".vc-disk-strip .vc-disk-chip").first();
+  await expect(first.locator(".vc-disk-name")).toHaveText(last.name);
+  await expect(first.locator(".vc-disk-dot")).toHaveClass(/is-mounted/);
+});
+
 test("audit groups repeated errors, searches, lists actions and exports CSV", async ({ page }) => {
   await openView(page, "/auditoria");
   await expect(page.locator(".vc-audit-count").first()).toBeVisible();

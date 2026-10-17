@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.31
+
+- The drive strip lists the drives connected to the Companion first (each group keeps its alphabetical order) and scrolls back to the start when they are detected, so *Mostrar conectados* never leaves one out of view.
+- No migrations or configuration changes; the Windows Companion is 0.2.9.
+
 ## Upgrading to 0.2.30
 
 - **Eliminar unidad** in Administración, for drives that no longer exist (shown only while the drive is disconnected; typing ELIMINAR confirms). It removes the drive with its catalog, thumbnails, scans, errors and starred or favorite folders, cancels pending transfers to or from it and closes their jobs. No file on any drive is touched; the deletion history keeps the drive name, and the action is recorded in Auditoría (`disk.remove`). It is refused while the drive is connected (the next scan would add it back) or while files from or to it wait in the Companion staging folder.
