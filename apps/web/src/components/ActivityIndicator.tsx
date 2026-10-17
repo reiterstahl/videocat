@@ -41,6 +41,7 @@ type ConnectedWork = { remaining: WorkAmount; total: WorkAmount; disks: Connecte
 type ActivityResponse = {
   companions: Array<{ companionId: string; companionName: string | null; activities: LiveActivity[]; reportedAt: number }>;
   waiting: { transfers: number; downloads: number };
+  transfersWaitingForDownloads?: boolean;
   connected?: ConnectedWork | null;
   recent: Array<{ kind: "transfer" | "duplicate" | "download" | "delete" | "scan"; label: string; detail: string | null; bytes: number | null; at: string }>;
 };
@@ -339,6 +340,13 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
               })}
             </ul>
           )}
+
+          {data?.transfersWaitingForDownloads ? (
+            <p className="vc-activity-yield" role="status">
+              <Download size={15} aria-hidden="true" />
+              Los traslados esperan: las descargas van primero y siguen al terminar la cola o al pausarla.
+            </p>
+          ) : null}
 
           {data && (data.waiting.transfers > 0 || data.waiting.downloads > 0) ? (
             <div className="vc-activity-waiting">

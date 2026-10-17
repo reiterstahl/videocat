@@ -3339,3 +3339,28 @@ a.vc-button {
 .vc-needs-list .vc-status-banner {
   padding: 8px 12px;
 }
+
+/* Traslados waiting while the Companion runs its download queue (downloads come first). */
+.vc-transfers-waiting {
+  align-items: center;
+  background: var(--vc-sunken);
+}
+
+.vc-transfers-waiting > svg {
+  flex: 0 0 auto;
+  color: var(--vc-accent);
+}
+
+.vc-transfers-waiting > div {
+  flex: 1 1 auto;
+}
+
+.vc-transfers-waiting > .vc-button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .vc-transfers-waiting {
+    flex-wrap: wrap;
+  }
+}

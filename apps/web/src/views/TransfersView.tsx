@@ -6,6 +6,7 @@ import {
   ArrowUpFromLine,
   ChevronDown,
   ChevronRight,
+  Download,
   FolderInput,
   FolderSearch,
   HardDrive,
@@ -43,6 +44,7 @@ function readNeedSort(): NeedSort {
 type TransfersViewProps = {
   refreshKey: number;
   onOpenFolders: () => void;
+  onOpenDownloads: () => void;
   onChanged: () => void;
   initialGroupQuery?: string;
   onInitialGroupQueryUsed?: () => void;
@@ -87,7 +89,7 @@ function folderName(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
 }
 
-export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGroupQuery = "", onInitialGroupQueryUsed }: TransfersViewProps) {
+export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onChanged, initialGroupQuery = "", onInitialGroupQueryUsed }: TransfersViewProps) {
   const [summary, setSummary] = useState<TransferSummary | null>(null);
   const [jobs, setJobs] = useState<TransferJob[] | null>(null);
   const [destinations, setDestinations] = useState<TransferDestination[] | null>(null);
@@ -401,6 +403,17 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
       </div>
 
       {error ? <div className="form-error" role="alert">{error}</div> : null}
+
+      {summary?.waitingForDownloads ? (
+        <div className="vc-status-banner vc-transfers-waiting" role="status">
+          <Download size={18} aria-hidden="true" />
+          <div>
+            <strong>Traslados en espera: el Companion está descargando</strong>
+            <span>Las descargas van primero. El traslado en curso terminó su archivo y los traslados siguen solos cuando termine la cola de A descargar, o antes si la pausas.</span>
+          </div>
+          <button className="vc-button is-small" onClick={onOpenDownloads} type="button">Ver A descargar</button>
+        </div>
+      ) : null}
 
       {stagingMissing || (summary && summary.needs.length > 0) ? (
         <section className="vc-transfers-needs-panel" aria-label="Para continuar">

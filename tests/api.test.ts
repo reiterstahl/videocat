@@ -1317,6 +1317,14 @@ test("the Companion reports live activity and the free space of connected drives
     const idle = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json();
     assert.equal(idle.companions.some((entry: { companionId: string }) => entry.companionId === companionId), false);
 
+    // Downloads come first: while they run, Traslados says transfers are waiting.
+    const waiting = await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [], transfersWaiting: true } });
+    assert.equal(waiting.statusCode, 200);
+    assert.equal((await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().waitingForDownloads, true);
+    assert.equal((await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json().transfersWaitingForDownloads, true);
+    await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [], transfersWaiting: false } });
+    assert.equal((await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().waitingForDownloads, false);
+
     // With that drive connected, Actividad says how much is left before it can be unplugged.
     const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Dest-${suffix}`, nameKey: "dest" } });
     const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "live" } });

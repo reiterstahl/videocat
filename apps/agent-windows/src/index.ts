@@ -609,13 +609,14 @@ function companionScanPollMs(): number {
 }
 
 async function startCompanionDiskWatcher(): Promise<void> {
-  activityReporter = new ActivityReporter(async (activities) => {
+  activityReporter = new ActivityReporter(async (activities, status) => {
     if (!companionAgentApiEnabled()) return;
     await companionAgentApi("/api/agent/companion/activity", {
       method: "POST",
-      body: JSON.stringify({ companionId: await ensureCompanionIdentity(), activities })
+      body: JSON.stringify({ companionId: await ensureCompanionIdentity(), activities, transfersWaiting: status.transfersWaiting })
     });
   });
+  downloadPriority.onWaitingChange = (waiting) => activityReporter?.setTransfersWaiting(waiting);
   const pollMs = companionDiskPollMs();
   const scanPollMs = companionScanPollMs();
   const deletePollMs = companionDeletePollMs();
@@ -843,7 +844,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
           staging: await stagingStatus(),
           // Live free space of every connected drive, so "free space" warnings follow what you delete.
           disks: await mountedDiskSpace(mounted),
-          activities: activityReporter?.snapshot() ?? []
+          activities: activityReporter?.snapshot() ?? [],
+          transfersWaiting: activityReporter?.transfersWaiting() ?? false
         })
       });
       const requestedAt = response.commands?.processDeletesRequestedAt ?? 0;

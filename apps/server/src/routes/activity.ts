@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma.js";
 import { requireWebAuth } from "../lib/auth.js";
-import { liveActivity } from "../lib/companion-activity.js";
+import { liveActivity, transfersWaitingForDownloads } from "../lib/companion-activity.js";
 import { unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { connectedWork, mountedSinceByIdentifier } from "../lib/connected-work.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
@@ -121,7 +121,8 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
       .slice(0, recentLimit);
 
     return {
-      companions: liveActivity().map((entry) => ({ companionId: entry.companionId, companionName: entry.companionName, activities: entry.activities, reportedAt: entry.reportedAt })),
+      companions: liveActivity().map((entry) => ({ companionId: entry.companionId, companionName: entry.companionName, activities: entry.activities, reportedAt: entry.reportedAt, transfersWaiting: entry.transfersWaiting })),
+      transfersWaitingForDownloads: transfersWaitingForDownloads(),
       waiting: { transfers: transfersWaiting, downloads: downloadsQueued },
       connected,
       recent

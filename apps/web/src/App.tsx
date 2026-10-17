@@ -2437,6 +2437,7 @@ export function App() {
           initialGroupQuery={transfersGroupQuery}
           onInitialGroupQueryUsed={() => setTransfersGroupQuery("")}
           onOpenFolders={() => navigateToView("folders")}
+          onOpenDownloads={() => navigateToView("downloads")}
           onChanged={refreshStats}
         />
       ) : null}

@@ -6,6 +6,8 @@ export class DownloadPriority {
   private wanted = false;
   private yielded = false;
   private transferItem: Promise<void> | null = null;
+  // Told when transfers start and stop waiting for downloads, so the web can say so.
+  onWaitingChange: ((waiting: boolean) => void) | null = null;
 
   // A pass over several drives' queues counts as one: transfers do not slip in between drives.
   // Holding alone never stops transfers; only a claim (a download about to start) does.
@@ -31,12 +33,14 @@ export class DownloadPriority {
     const resume = this.wanted && this.yielded;
     this.wanted = false;
     this.yielded = false;
+    if (resume) this.onWaitingChange?.(false);
     return resume;
   }
 
   // Asked by transfers before every file: false while downloads hold the drives.
   transfersMayRun(): boolean {
     if (!this.wanted) return true;
+    if (!this.yielded) this.onWaitingChange?.(true);
     this.yielded = true;
     return false;
   }

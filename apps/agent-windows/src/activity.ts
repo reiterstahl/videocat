@@ -27,7 +27,8 @@ export type Activity = {
 
 export type ReportedActivity = Activity & { bytesPerSecond: number | null };
 
-type Sender = (activities: ReportedActivity[]) => Promise<void>;
+// transfersWaiting: transfers stepped aside while the download queue runs (see work-priority.ts).
+type Sender = (activities: ReportedActivity[], status: { transfersWaiting: boolean }) => Promise<void>;
 
 const speedWindowMs = 5000;
 
@@ -37,6 +38,7 @@ export class ActivityReporter {
   private timer: NodeJS.Timeout | null = null;
   private sending = false;
   private dirty = false;
+  private waiting = false;
 
   constructor(private readonly send: Sender, private readonly intervalMs = 1000, private readonly now = () => Date.now()) {}
 
@@ -59,6 +61,16 @@ export class ActivityReporter {
     if (!this.current.delete(key)) return;
     this.samples.delete(key);
     this.schedule();
+  }
+
+  setTransfersWaiting(waiting: boolean): void {
+    if (this.waiting === waiting) return;
+    this.waiting = waiting;
+    this.schedule();
+  }
+
+  transfersWaiting(): boolean {
+    return this.waiting;
   }
 
   snapshot(): ReportedActivity[] {
@@ -89,7 +101,7 @@ export class ActivityReporter {
     this.sending = true;
     this.dirty = false;
     try {
-      await this.send(this.snapshot());
+      await this.send(this.snapshot(), { transfersWaiting: this.waiting });
     } catch {
       // The next update retries; activity is informative only.
     } finally {

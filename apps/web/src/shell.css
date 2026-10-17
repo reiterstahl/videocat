@@ -1577,3 +1577,19 @@
     font-size: 1rem;
   }
 }
+
+.vc-activity-yield {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--vc-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.vc-activity-yield svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vc-accent);
+}

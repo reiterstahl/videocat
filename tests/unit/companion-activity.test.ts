@@ -41,3 +41,26 @@ test("the Companion reporter measures speed and sends once per interval", async 
   await reporter.flush();
   assert.deepEqual(sent.at(-1), []);
 });
+
+test("transfers waiting for downloads stay visible and expire with the Companion", async () => {
+  const { transfersWaitingForDownloads } = await import("../../apps/server/src/lib/companion-activity.ts");
+  resetActivity();
+  storeActivity("c1", "PC", [], 1_000, true);
+  assert.equal(liveActivity(2_000).length, 1, "waiting counts as live even between files");
+  assert.equal(transfersWaitingForDownloads(2_000), true);
+  assert.equal(transfersWaitingForDownloads(1_000 + 31_000), false);
+  storeActivity("c1", "PC", [], 40_000, false);
+  assert.equal(transfersWaitingForDownloads(41_000), false);
+  resetActivity();
+});
+
+test("the reporter sends whether transfers are waiting", async () => {
+  const sent: Array<{ transfersWaiting: boolean }> = [];
+  const reporter = new ActivityReporter(async (_activities, status) => { sent.push(status); }, 60_000);
+  reporter.setTransfersWaiting(true);
+  await reporter.flush();
+  reporter.setTransfersWaiting(false);
+  await reporter.flush();
+  assert.deepEqual(sent, [{ transfersWaiting: true }, { transfersWaiting: false }]);
+  assert.equal(reporter.transfersWaiting(), false);
+});

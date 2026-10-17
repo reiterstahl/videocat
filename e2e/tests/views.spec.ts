@@ -37,6 +37,18 @@ test("instant search on the folder map keeps only matching blocks", async ({ pag
   await expect.poll(() => tiles.count()).toBe(before);
 });
 
+test("Traslados says when transfers wait for the download queue", async ({ page }) => {
+  await page.route("**/api/transfers/summary", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, waitingForDownloads: true } });
+  });
+  await openView(page, "/traslados");
+  const banner = page.locator(".vc-transfers-waiting");
+  await expect(banner).toContainText("Traslados en espera");
+  await banner.getByRole("button", { name: "Ver A descargar" }).click();
+  await expect(page).toHaveURL(/\/a-descargar$/);
+});
+
 test("connected drives are listed first in the drive strip", async ({ page }) => {
   await openView(page, "/catalogo");
   const disks = (await (await page.request.get("/api/disks")).json()).disks as Array<{ id: string; name: string }>;

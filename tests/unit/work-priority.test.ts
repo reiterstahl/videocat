@@ -53,3 +53,17 @@ test("a download with no transfer running starts at once", async () => {
   assert.equal(waited, false);
   assert.equal(priority.release(), false, "transfers never stepped aside");
 });
+
+test("tells when transfers start and stop waiting, once each", async () => {
+  const priority = new DownloadPriority();
+  const changes: boolean[] = [];
+  priority.onWaitingChange = (waiting) => changes.push(waiting);
+  await priority.claim();
+  priority.transfersMayRun();
+  priority.transfersMayRun();
+  priority.release();
+  assert.deepEqual(changes, [true, false]);
+  await priority.claim();
+  priority.release();
+  assert.deepEqual(changes, [true, false], "no notice when transfers never had to wait");
+});

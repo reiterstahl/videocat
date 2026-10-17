@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.38 (Companion 0.2.13)
+
+- **Traslados says when transfers wait for downloads**: while the Companion runs its *A descargar* queue (downloads come first since Companion 0.2.12), Traslados shows *Traslados en espera: el Companion está descargando* with a button to *A descargar*, and the Actividad panel says so too. It disappears as soon as transfers continue.
+- Companion 0.2.13 (updates itself) reports that state with its live activity and heartbeat; older servers ignore it.
+- No migrations or configuration changes.
+
 ## Windows Companion 0.2.12
 
 - **Downloads come before transfers.** When the *A descargar* queue has files for a connected drive, the transfer in progress finishes its current file, then the whole download queue (every connected drive, in one turn) runs before transfers go on. Transfers resume on their own as soon as the queue is empty or paused in the web. Checking an empty queue never interrupts transfers.
