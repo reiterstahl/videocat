@@ -74,6 +74,7 @@ Un archivo **nunca existe en menos de un lugar verificado**:
   - Cada `F` suma el archivo a un único traslado de tipo *Agrupar* por carpeta, con el mismo control de espacio; deshacer lo saca mientras siga pendiente (si el Companion ya lo tomó, termina su camino). Se excluyen los que ya están en la carpeta, en otro traslado, ignorados o con una copia idéntica en el destino (quedan para Duplicados).
   - Pruebas: 4 unitarias de nombres, 1 de API (búsqueda, candidatos, F, J, Z y carpetas protegidas) y 1 e2e de la sesión.
   - El acceso desde el árbol de carpetas del catálogo llegó en la fase 4.
+  - `0.2.27`: **Mover por etiqueta**: regla permanente etiqueta → carpeta con estrella (una carpeta por etiqueta, sin "Marcado para borrar"). Se sincroniza al crear la regla, al abrir Traslados (como mucho cada 15 s) y cuando el Companion conecta un disco; quitar la etiqueta o la regla retira lo que aún no salió de su disco.
   - `0.2.23`: **carpetas favoritas** (clic derecho en Uso por carpeta o el corazón en Carpetas repetidas): sus videos, con subcarpetas, nunca se ofrecen para moverse; al marcarla, sus archivos que aún no salieron de su disco dejan los traslados. Puede seguir recibiendo archivos si tiene estrella.
   - `0.2.22`: **palabras clave** opcionales por carpeta con estrella (hasta 20, mínimo 3 letras o números, sin repetir el nombre); la búsqueda usa la mejor coincidencia entre el nombre y las palabras, y la sesión indica cuál coincidió.
 - [x] **Fase 4 — Cierre**

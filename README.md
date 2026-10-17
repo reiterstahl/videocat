@@ -99,6 +99,7 @@ flowchart LR
 ### Traslados
 - **Consolidar carpetas**: marca con estrella la carpeta más grande de un grupo repetido (por ejemplo, la "Testing" de 1.7 TB) y lleva ahí el contenido de las demás "Testing", estén en el disco que estén. Antes de empezar se ve el plan: qué sale de cada carpeta, cuánto ocupa y si cabe en el destino.
 - **Agrupar archivos**: parte de una carpeta (por ejemplo `testing001`) y busca en todos los discos archivos con un nombre parecido, ignorando mayúsculas, acentos, puntos y separadores, y con una letra de diferencia. Opcionalmente, cada carpeta suma **palabras clave** que también se buscan. Se decide uno por uno con la misma sesión de Review: `F` agrupar, `J` ignorar.
+- **Mover por etiqueta**: una regla "etiqueta → carpeta con estrella" lleva ahí todos los videos con esa etiqueta, también los que la reciban después, a medida que se conectan sus discos.
 - Los discos no necesitan estar conectados a la vez: cada archivo pasa por una **carpeta temporal del Companion** y la sección **Traslados** avisa qué disco conectar o dónde liberar espacio.
 - **Nada se borra sin una copia verificada en otro lugar** (detalle en [Traslados seguros](#traslados-seguros)).
 
