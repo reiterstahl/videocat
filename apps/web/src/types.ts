@@ -177,6 +177,7 @@ export type TransferSummary = {
   activeJobs: number;
   // The Companion's transfers wait while its download queue runs (downloads come first).
   waitingForDownloads?: boolean;
+  transfersMode?: "running" | "stopping" | "stopped";
   stagingBytes: number;
   staging: {
     configured: boolean;

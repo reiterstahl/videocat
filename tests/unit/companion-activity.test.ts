@@ -55,12 +55,14 @@ test("transfers waiting for downloads stay visible and expire with the Companion
 });
 
 test("the reporter sends whether transfers are waiting", async () => {
-  const sent: Array<{ transfersWaiting: boolean }> = [];
+  const sent: Array<{ transfersWaiting: boolean; transfersMode: string }> = [];
   const reporter = new ActivityReporter(async (_activities, status) => { sent.push(status); }, 60_000);
   reporter.setTransfersWaiting(true);
   await reporter.flush();
   reporter.setTransfersWaiting(false);
+  reporter.setTransfersMode("stopping");
   await reporter.flush();
-  assert.deepEqual(sent, [{ transfersWaiting: true }, { transfersWaiting: false }]);
+  assert.deepEqual(sent, [{ transfersWaiting: true, transfersMode: "running" }, { transfersWaiting: false, transfersMode: "stopping" }]);
   assert.equal(reporter.transfersWaiting(), false);
+  assert.equal(reporter.transfersMode(), "stopping");
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, ArrowRight, ArrowRightLeft, Copy, Download, FolderSearch, ShieldCheck, Trash2, X } from "lucide-react";
+import { Activity, ArrowRight, ArrowRightLeft, Copy, Download, FolderSearch, Pause, Play, ShieldCheck, Trash2, X } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount, transferEtaLabel } from "../lib/app-helpers";
@@ -42,6 +42,8 @@ type ActivityResponse = {
   companions: Array<{ companionId: string; companionName: string | null; activities: LiveActivity[]; reportedAt: number }>;
   waiting: { transfers: number; downloads: number };
   transfersWaitingForDownloads?: boolean;
+  // "Detener traslados": a Companion to tell, what its transfers are doing, an order not acted on yet.
+  transfers?: { live: boolean; mode: "running" | "stopping" | "stopped"; pending: "stop" | "resume" | null };
   connected?: ConnectedWork | null;
   recent: Array<{ kind: "transfer" | "duplicate" | "download" | "delete" | "scan"; label: string; detail: string | null; bytes: number | null; at: string }>;
 };
@@ -202,7 +204,9 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
   const live = data?.companions.flatMap((companion) => companion.activities.map((activity) => ({ companion, activity }))) ?? [];
-  const busy = live.length > 0;
+  const control = data?.transfers;
+  const [ordering, setOrdering] = useState(false);
+  const busy = live.length > 0 || Boolean(control?.pending) || control?.mode === "stopping";
 
   const load = useCallback(async () => {
     try {
@@ -258,6 +262,24 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
     ? `${phaseLabels[first.phase]}${first.filename ? `: ${first.filename}` : ""}`
     : "Sin actividad en este momento";
 
+  // Shown while a Companion is reporting and there are transfers to run, or transfers are stopped.
+  const showControl = Boolean(control?.live) && ((data?.waiting.transfers ?? 0) > 0 || control?.mode !== "running" || Boolean(control?.pending));
+  const stopping = control?.pending === "stop" || control?.mode === "stopping";
+  const resuming = control?.pending === "resume";
+  const stopped = control?.mode === "stopped" && !resuming;
+
+  async function orderTransfers(order: "stop" | "resume") {
+    setOrdering(true);
+    try {
+      const response = await api<{ transfers: ActivityResponse["transfers"] }>(`/api/transfers/companion/${order}`, { method: "POST", body: JSON.stringify({}) });
+      setData((current) => (current ? { ...current, transfers: response.transfers } : current));
+    } catch {
+      // The next poll shows the real state.
+    } finally {
+      setOrdering(false);
+    }
+  }
+
   function go(view: ViewMode) {
     setOpen(false);
     onNavigate(view);
@@ -275,8 +297,26 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
         aria-label={busy ? `Actividad: ${title}` : "Actividad"}
       >
         <span className="vc-activity-pulse" aria-hidden="true"><Activity size={16} /></span>
-        {busy ? <span className="vc-button-label vc-activity-label">{buttonLabel}</span> : null}
+        {live.length > 0 ? <span className="vc-button-label vc-activity-label">{buttonLabel}</span> : null}
       </button>
+
+      {showControl ? (
+        <button
+          className={`vc-button vc-transfers-control ${stopped ? "is-stopped" : ""}`}
+          type="button"
+          disabled={ordering || stopping || resuming}
+          onClick={() => void orderTransfers(stopped ? "resume" : "stop")}
+          title={stopping
+            ? "Termina el archivo en curso y no empieza otro; las descargas siguen"
+            : stopped
+              ? "Los traslados vuelven a moverse con los discos conectados"
+              : "Termina el archivo en curso y no empieza otro; las descargas siguen. Al reiniciar el Companion vuelven solos."}
+          aria-label={stopping ? "Deteniendo traslados" : resuming ? "Reanudando traslados" : stopped ? "Reanudar traslados" : "Detener traslados"}
+        >
+          {stopped || resuming ? <Play size={15} aria-hidden="true" /> : <Pause size={15} aria-hidden="true" />}
+          <span className="vc-button-label">{stopping ? "Deteniendo…" : resuming ? "Reanudando…" : stopped ? "Reanudar traslados" : "Detener traslados"}</span>
+        </button>
+      ) : null}
 
       {open ? (
         <section className="vc-theme-panel vc-activity-panel" role="dialog" aria-label="Actividad">
@@ -340,6 +380,15 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
               })}
             </ul>
           )}
+
+          {control?.mode === "stopped" || stopping ? (
+            <p className="vc-activity-yield" role="status">
+              <Pause size={15} aria-hidden="true" />
+              {stopping
+                ? "Deteniendo traslados: termina el archivo en curso y no empieza otro. Las descargas siguen."
+                : "Traslados detenidos. Las descargas siguen; vuelven con Reanudar o al reiniciar el Companion."}
+            </p>
+          ) : null}
 
           {data?.transfersWaitingForDownloads ? (
             <p className="vc-activity-yield" role="status">

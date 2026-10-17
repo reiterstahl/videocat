@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma.js";
 import { requireWebAuth } from "../lib/auth.js";
-import { liveActivity, transfersWaitingForDownloads } from "../lib/companion-activity.js";
+import { companionTransfers, liveActivity, transfersWaitingForDownloads } from "../lib/companion-activity.js";
+import { pendingTransferOrder, requestTransfers, transferOrders } from "../lib/transfer-control.js";
+import { recordAction } from "../lib/action-audit.js";
 import { unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { connectedWork, mountedSinceByIdentifier } from "../lib/connected-work.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
@@ -68,7 +70,25 @@ async function connectedDrivesWork() {
 const recentLimit = 12;
 
 // The header activity indicator: what every Companion is doing now, what is waiting and what just happened.
+// What the header needs for "Detener traslados": a Companion to tell, what its transfers are doing
+// and an order it has not acted on yet.
+async function transfersControl() {
+  const { live, mode } = companionTransfers();
+  const orders = await transferOrders();
+  return { live, mode, pending: live ? pendingTransferOrder(orders, mode) : null };
+}
+
 export async function activityRoutes(app: FastifyInstance): Promise<void> {
+  // "Detener traslados": the Companion finishes the file in progress and starts no other transfer;
+  // downloads go on. It lasts until "Reanudar traslados" or until the Companion restarts.
+  for (const order of ["stop", "resume"] as const) {
+    app.post(`/api/transfers/companion/${order}`, { preHandler: requireWebAuth }, async () => {
+      await requestTransfers(order);
+      await recordAction({ action: order === "stop" ? "transfers.stop" : "transfers.resume", actorType: "web", actorId: "admin", target: "Companion" });
+      return { ok: true, transfers: await transfersControl() };
+    });
+  }
+
   app.get("/api/activity", { preHandler: requireWebAuth }, async () => {
     const [transfersWaiting, downloadsQueued, delivered, downloads, deletions, scans, connected] = await Promise.all([
       prisma.transferItem.count({ where: { state: { in: unfinishedStates } } }),
@@ -123,6 +143,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
     return {
       companions: liveActivity().map((entry) => ({ companionId: entry.companionId, companionName: entry.companionName, activities: entry.activities, reportedAt: entry.reportedAt, transfersWaiting: entry.transfersWaiting })),
       transfersWaitingForDownloads: transfersWaitingForDownloads(),
+      transfers: await transfersControl(),
       waiting: { transfers: transfersWaiting, downloads: downloadsQueued },
       connected,
       recent

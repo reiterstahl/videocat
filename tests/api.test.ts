@@ -1325,6 +1325,23 @@ test("the Companion reports live activity and the free space of connected drives
     await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [], transfersWaiting: false } });
     assert.equal((await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().waitingForDownloads, false);
 
+    // "Detener traslados": the order reaches the Companion in its heartbeat; the web shows it pending
+    // until the Companion reports stopping (finishing its file) and then stopped.
+    const stop = await app.inject({ method: "POST", url: "/api/transfers/companion/stop", headers: webMutationHeaders(cookie), payload: {} });
+    assert.equal(stop.statusCode, 200, stop.body);
+    assert.deepEqual(stop.json().transfers, { live: true, mode: "running", pending: "stop" });
+    const orders = await app.inject({ method: "POST", url: "/api/agent/companion/heartbeat", headers: agent, payload: { companionId, mountedDiskIds: [`live-${suffix}`], activities: [], transfersMode: "stopping" } });
+    assert.ok(orders.json().commands.transfersStopRequestedAt > 0);
+    assert.deepEqual((await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json().transfers, { live: true, mode: "stopping", pending: null });
+    await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [], transfersMode: "stopped" } });
+    assert.equal((await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().transfersMode, "stopped");
+    const resume = await app.inject({ method: "POST", url: "/api/transfers/companion/resume", headers: webMutationHeaders(cookie), payload: {} });
+    assert.deepEqual(resume.json().transfers, { live: true, mode: "stopped", pending: "resume" });
+    const resumed = await app.inject({ method: "POST", url: "/api/agent/companion/heartbeat", headers: agent, payload: { companionId, mountedDiskIds: [`live-${suffix}`], activities: [], transfersMode: "running" } });
+    assert.ok(resumed.json().commands.transfersResumeRequestedAt >= resumed.json().commands.transfersStopRequestedAt);
+    assert.deepEqual((await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json().transfers, { live: true, mode: "running", pending: null });
+    assert.equal(await prisma.actionAudit.count({ where: { action: { in: ["transfers.stop", "transfers.resume"] } } }) >= 2, true);
+
     // With that drive connected, Actividad says how much is left before it can be unplugged.
     const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Dest-${suffix}`, nameKey: "dest" } });
     const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "live" } });

@@ -199,6 +199,8 @@ type CompanionHeartbeatResponse = {
   commands?: {
     processDeletesRequestedAt?: number;
     processDownloadsRequestedAt?: number;
+    transfersStopRequestedAt?: number;
+    transfersResumeRequestedAt?: number;
   };
 };
 
@@ -613,7 +615,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
     if (!companionAgentApiEnabled()) return;
     await companionAgentApi("/api/agent/companion/activity", {
       method: "POST",
-      body: JSON.stringify({ companionId: await ensureCompanionIdentity(), activities, transfersWaiting: status.transfersWaiting })
+      body: JSON.stringify({ companionId: await ensureCompanionIdentity(), activities, transfersWaiting: status.transfersWaiting, transfersMode: status.transfersMode })
     });
   });
   downloadPriority.onWaitingChange = (waiting) => activityReporter?.setTransfersWaiting(waiting);
@@ -630,6 +632,14 @@ async function startCompanionDiskWatcher(): Promise<void> {
   let heartbeatRunning = false;
   let lastHandledDeleteRequestAt = 0;
   let lastHandledDownloadRequestAt = 0;
+  // "Detener traslados" from the web: no new transfer file starts until "Reanudar". Only in memory:
+  // a restart goes back to normal transfers, so a forgotten stop never leaves files waiting.
+  let transfersStopped = false;
+  // The latest stop/resume order already seen; orders from before this start are ignored.
+  let transferOrdersSeen: number | null = null;
+  const reportTransfersMode = () => activityReporter?.setTransfersMode(
+    !transfersStopped ? "running" : downloadPriority.transferInProgress() ? "stopping" : "stopped"
+  );
 
   async function scanTarget(root: string, marker: DiskMarker, repairThumbnails: boolean): Promise<void> {
     await runScan({
@@ -734,7 +744,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   async function reviewTransfers(): Promise<void> {
     const stagingDir = process.env.COMPANION_STAGING_DIR?.trim();
     if (transferReviewRunning || !stagingDir || !companionAgentApiEnabled()) return;
-    if (!downloadPriority.transfersMayRun()) return;
+    if (transfersStopped || !downloadPriority.transfersMayRun()) return;
     transferReviewRunning = true;
     try {
       const mounted = await discoverCompanionTargets();
@@ -748,6 +758,11 @@ async function startCompanionDiskWatcher(): Promise<void> {
         let heldInStaging = 0;
         let steppedAside = false;
         for (const item of work.items) {
+          if (transfersStopped) {
+            console.log("Traslados detenidos desde la web: no se empieza otro archivo hasta reanudar.");
+            steppedAside = true;
+            break;
+          }
           if (!downloadPriority.transfersMayRun()) {
             console.log("Traslados en espera: hay descargas pendientes. Siguen cuando termine la cola de descargas o se pause.");
             steppedAside = true;
@@ -786,6 +801,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
             console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
           } finally {
             activityReporter?.clear("transfer");
+            // A stop asked during this file becomes "stopped" now that it is finished.
+            if (transfersStopped) reportTransfersMode();
           }
         }
         if (steppedAside || heldInStaging === 0) break;
@@ -845,7 +862,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
           // Live free space of every connected drive, so "free space" warnings follow what you delete.
           disks: await mountedDiskSpace(mounted),
           activities: activityReporter?.snapshot() ?? [],
-          transfersWaiting: activityReporter?.transfersWaiting() ?? false
+          transfersWaiting: activityReporter?.transfersWaiting() ?? false,
+          transfersMode: activityReporter?.transfersMode() ?? "running"
         })
       });
       const requestedAt = response.commands?.processDeletesRequestedAt ?? 0;
@@ -855,6 +873,23 @@ async function startCompanionDiskWatcher(): Promise<void> {
           console.log("Orden web recibida: procesando borrados pendientes ahora.");
           await reviewPendingDeletes();
         }
+      }
+      const stopAt = response.commands?.transfersStopRequestedAt ?? 0;
+      const resumeAt = response.commands?.transfersResumeRequestedAt ?? 0;
+      const latestOrder = Math.max(stopAt, resumeAt);
+      if (transferOrdersSeen === null) {
+        transferOrdersSeen = latestOrder;
+      } else if (latestOrder > transferOrdersSeen) {
+        transferOrdersSeen = latestOrder;
+        if (stopAt >= resumeAt && !transfersStopped) {
+          transfersStopped = true;
+          console.log("Orden web: detener traslados. El archivo en curso termina y no se empieza otro; las descargas siguen.");
+        } else if (resumeAt > stopAt && transfersStopped) {
+          transfersStopped = false;
+          console.log("Orden web: reanudar traslados.");
+          resumeTransfers?.();
+        }
+        reportTransfersMode();
       }
       const downloadRequestedAt = response.commands?.processDownloadsRequestedAt ?? 0;
       if (downloadRequestedAt > lastHandledDownloadRequestAt) {

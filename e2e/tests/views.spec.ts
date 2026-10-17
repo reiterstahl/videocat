@@ -49,6 +49,34 @@ test("Traslados says when transfers wait for the download queue", async ({ page 
   await expect(page).toHaveURL(/\/a-descargar$/);
 });
 
+test("transfers can be stopped from the header and resumed from Traslados", async ({ page }) => {
+  let mode: "running" | "stopped" = "running";
+  const orders: string[] = [];
+  await page.route("**/api/activity", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, waiting: { ...real.waiting, transfers: 3 }, transfers: { live: true, mode, pending: null } } });
+  });
+  await page.route("**/api/transfers/companion/*", async (route) => {
+    const order = route.request().url().endsWith("/stop") ? "stop" : "resume";
+    orders.push(order);
+    mode = order === "stop" ? "stopped" : "running";
+    await route.fulfill({ json: { ok: true, transfers: { live: true, mode, pending: null } } });
+  });
+  await page.route("**/api/transfers/summary", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, transfersMode: mode } });
+  });
+  await openView(page, "/catalogo");
+  await page.getByRole("button", { name: "Detener traslados" }).click();
+  await expect(page.getByRole("button", { name: "Reanudar traslados" })).toBeVisible();
+  await openView(page, "/traslados");
+  const banner = page.locator(".vc-transfers-waiting", { hasText: "Traslados detenidos" });
+  await expect(banner).toBeVisible();
+  await banner.getByRole("button", { name: "Reanudar traslados" }).click();
+  await expect(banner).toHaveCount(0);
+  expect(orders).toEqual(["stop", "resume"]);
+});
+
 test("connected drives are listed first in the drive strip", async ({ page }) => {
   await openView(page, "/catalogo");
   const disks = (await (await page.request.get("/api/disks")).json()).disks as Array<{ id: string; name: string }>;

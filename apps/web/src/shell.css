@@ -848,6 +848,24 @@
 /* Header activity indicator: quiet when idle, a pulsing icon and a short label while working. */
 .vc-activity-anchor {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* "Detener traslados" beside the activity indicator: finishes the file in progress, then waits. */
+.vc-transfers-control {
+  gap: 6px;
+  color: var(--vc-text-soft);
+}
+
+.vc-transfers-control.is-stopped {
+  color: var(--vc-accent-ink);
+}
+
+.vc-transfers-control:disabled {
+  opacity: 0.75;
+  cursor: progress;
 }
 
 .vc-activity-button {

@@ -28,6 +28,9 @@ import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
 import { cancelVanishedTransfers } from "./transfers.js";
 import { activitiesSchema, storeActivity } from "../lib/companion-activity.js";
+import { transferOrders } from "../lib/transfer-control.js";
+
+const transfersModeSchema = z.enum(["running", "stopping", "stopped"]);
 import { noteMountedDisks } from "../lib/connected-work.js";
 
 const fingerprintRepairBatchLimit = 5_000;
@@ -187,7 +190,8 @@ const companionHeartbeatSchema = z.object({
     totalBytes: z.number().int().nonnegative()
   })).max(100).optional(),
   activities: activitiesSchema.optional(),
-  transfersWaiting: z.boolean().optional()
+  transfersWaiting: z.boolean().optional(),
+  transfersMode: transfersModeSchema.optional()
 });
 const deletionResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.enum(["deleted", "missing"]) }),
@@ -255,11 +259,11 @@ async function updateMeasuredDisks(measured: Array<{ diskId: string; freeBytes: 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // Live activity (copying, verifying, downloading, scanning, deleting), sent about once a second while busy.
   app.post("/api/agent/companion/activity", { preHandler: requireAgentAuth }, async (request, reply) => {
-    const body = z.object({ companionId: z.string().uuid(), activities: activitiesSchema, transfersWaiting: z.boolean().optional() }).parse(request.body ?? {});
+    const body = z.object({ companionId: z.string().uuid(), activities: activitiesSchema, transfersWaiting: z.boolean().optional(), transfersMode: transfersModeSchema.optional() }).parse(request.body ?? {});
     const headerValue = request.headers["x-videocat-companion-id"];
     if (headerValue !== body.companionId) return reply.code(400).send({ message: "Companion identity header and body must match" });
     const companion = await prisma.companionAgent.findUnique({ where: { installationId: body.companionId }, select: { name: true } });
-    storeActivity(body.companionId, companion?.name ?? null, body.activities, Date.now(), body.transfersWaiting ?? false);
+    storeActivity(body.companionId, companion?.name ?? null, body.activities, Date.now(), body.transfersWaiting ?? false, body.transfersMode ?? "running");
     return { ok: true };
   });
 
@@ -278,7 +282,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       setAppMetricValue("companion_mounted_disk_count", BigInt(body.mountedDiskCount ?? mountedDiskIds.length)),
       setAppSettingValue(companionMountedDiskIdsKey, JSON.stringify(mountedDiskIds))
     ];
-    if (body.companionId && body.activities) storeActivity(body.companionId, body.companionName ?? null, body.activities, Date.now(), body.transfersWaiting ?? false);
+    if (body.companionId && body.activities) storeActivity(body.companionId, body.companionName ?? null, body.activities, Date.now(), body.transfersWaiting ?? false, body.transfersMode ?? "running");
     const measured = (body.disks ?? []).filter((disk) => agentDiskIdentifierSchema.safeParse(disk.diskId).success && disk.totalBytes > 0 && disk.freeBytes <= disk.totalBytes);
     if (measured.length > 0) metrics.push(updateMeasuredDisks(measured));
     if (body.staging) {
@@ -304,11 +308,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
     await Promise.all(metrics);
-    const [processDeletesRequestedAt, processDownloadsRequestedAt] = await Promise.all([
+    const [processDeletesRequestedAt, processDownloadsRequestedAt, orders] = await Promise.all([
       appMetricValue("delete_process_requested_at"),
-      appMetricValue("download_process_requested_at")
+      appMetricValue("download_process_requested_at"),
+      transferOrders()
     ]);
-    return { ok: true, commands: { processDeletesRequestedAt, processDownloadsRequestedAt } };
+    return {
+      ok: true,
+      commands: { processDeletesRequestedAt, processDownloadsRequestedAt, transfersStopRequestedAt: orders.stopRequestedAt, transfersResumeRequestedAt: orders.resumeRequestedAt }
+    };
   });
 
   app.post("/api/agent/register-disk", { preHandler: requireAgentAuth }, async (request) => {

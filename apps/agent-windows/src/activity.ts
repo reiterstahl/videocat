@@ -27,8 +27,11 @@ export type Activity = {
 
 export type ReportedActivity = Activity & { bytesPerSecond: number | null };
 
+export type TransfersMode = "running" | "stopping" | "stopped";
+
 // transfersWaiting: transfers stepped aside while the download queue runs (see work-priority.ts).
-type Sender = (activities: ReportedActivity[], status: { transfersWaiting: boolean }) => Promise<void>;
+// transfersMode: "Detener traslados" from the web: stopping while the file in progress finishes.
+type Sender = (activities: ReportedActivity[], status: { transfersWaiting: boolean; transfersMode: TransfersMode }) => Promise<void>;
 
 const speedWindowMs = 5000;
 
@@ -39,6 +42,7 @@ export class ActivityReporter {
   private sending = false;
   private dirty = false;
   private waiting = false;
+  private mode: TransfersMode = "running";
 
   constructor(private readonly send: Sender, private readonly intervalMs = 1000, private readonly now = () => Date.now()) {}
 
@@ -73,6 +77,16 @@ export class ActivityReporter {
     return this.waiting;
   }
 
+  setTransfersMode(mode: TransfersMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.schedule();
+  }
+
+  transfersMode(): TransfersMode {
+    return this.mode;
+  }
+
   snapshot(): ReportedActivity[] {
     return [...this.current.entries()].map(([key, activity]) => ({ ...activity, bytesPerSecond: this.speed(key) }));
   }
@@ -101,7 +115,7 @@ export class ActivityReporter {
     this.sending = true;
     this.dirty = false;
     try {
-      await this.send(this.snapshot(), { transfersWaiting: this.waiting });
+      await this.send(this.snapshot(), { transfersWaiting: this.waiting, transfersMode: this.mode });
     } catch {
       // The next update retries; activity is informative only.
     } finally {

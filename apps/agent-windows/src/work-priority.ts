@@ -45,6 +45,10 @@ export class DownloadPriority {
     return false;
   }
 
+  transferInProgress(): boolean {
+    return this.transferItem !== null;
+  }
+
   // Runs one transfer file, so a download claim knows when it may start.
   async runTransferItem<T>(work: () => Promise<T>): Promise<T> {
     const running = work();

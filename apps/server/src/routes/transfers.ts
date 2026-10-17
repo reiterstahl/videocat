@@ -9,7 +9,7 @@ import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js"
 import { prisma } from "../lib/prisma.js";
 import { companionStagingKey, stagingBytes, transferNeeds } from "../lib/transfer-summary.js";
 import { orderTransferWork, stagingRoom } from "../lib/transfer-order.js";
-import { transfersWaitingForDownloads } from "../lib/companion-activity.js";
+import { companionTransfers, transfersWaitingForDownloads } from "../lib/companion-activity.js";
 import { bestNameMatch, matchKey, minSearchKeyLength, searchKeys, type NameMatch } from "../lib/name-match.js";
 import { canCompanionTransition, isTransferState, unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { folderGroupExclusions, visibleFilesWhere } from "./catalog.js";
@@ -856,6 +856,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       activeJobs,
       // Downloads come first in the Companion: transfers wait while its download queue runs.
       waitingForDownloads: transfersWaitingForDownloads(),
+      // "Detener traslados" in the web header: running, stopping (finishing its file) or stopped.
+      transfersMode: companionTransfers().mode,
       stagingBytes: stagingBytes(summaryItems),
       staging: staging ? JSON.parse(staging) as unknown : null,
       needs: needs.map((need) => ({ ...need, diskName: names.get(need.diskId)?.name ?? "", driveLetter: names.get(need.diskId)?.driveLetter ?? null }))

@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.39 (Companion 0.2.14)
+
+- **Detener traslados** in the header, beside the activity indicator (shown while a Companion is connected and there are transfers, or they are stopped). The Companion gets the order with its next heartbeat (about 15 s), finishes the file in progress and starts no other transfer; downloads go on. The button shows *Deteniendo…* until that file is done, then **Reanudar traslados**; Traslados shows a notice with the same button.
+- The stop lives only in the running Companion: restarting it goes back to normal transfers, so a forgotten stop never leaves files waiting. Orders given before the Companion started are ignored.
+- Needs Companion 0.2.14 (updates itself); an older Companion ignores the order and the button goes back after two minutes. Every stop and resume is recorded in Auditoría (`transfers.stop`, `transfers.resume`).
+- No migrations or configuration changes.
+
 ## Upgrading to 0.2.38 (Companion 0.2.13)
 
 - **Traslados says when transfers wait for downloads**: while the Companion runs its *A descargar* queue (downloads come first since Companion 0.2.12), Traslados shows *Traslados en espera: el Companion está descargando* with a button to *A descargar*, and the Actividad panel says so too. It disappears as soon as transfers continue.

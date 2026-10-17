@@ -100,6 +100,7 @@ flowchart LR
 ### To download
 - A queue that copies videos from connected drives to a local Windows folder, with per-file progress, pause and clear.
 - Random selection by target size in GB, limited to drives or folders, without repeating what was already downloaded.
+- **Stop transfers** from the header: the file in progress finishes and no other starts until you resume (downloads go on); restarting the Companion resumes them on its own.
 - **Downloads come first.** If a transfer is copying when a download is requested, it finishes that file and the whole download queue runs before transfers go on; pausing the queue lets transfers continue.
 
 ### Transfers

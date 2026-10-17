@@ -100,6 +100,7 @@ flowchart LR
 ### A descargar
 - Cola para copiar videos desde discos conectados a una carpeta local de Windows, con progreso por archivo, pausa y vaciado.
 - Selección aleatoria por tamaño objetivo en GB, limitada a discos o carpetas, sin repetir lo ya descargado.
+- **Detener traslados** desde el encabezado: el archivo en curso termina y no empieza otro hasta que reanudes (las descargas siguen); si reinicias el Companion, vuelven solos.
 - **Las descargas van primero.** Si un traslado está copiando cuando pides una descarga, termina ese archivo y se procesa toda la cola de descargas antes de seguir con los traslados; pausar la cola deja que los traslados continúen.
 
 ### Traslados

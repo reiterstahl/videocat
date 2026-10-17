@@ -166,6 +166,19 @@ export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onCh
     }
   }, []);
 
+  // "Reanudar traslados": the Companion picks it up with its next heartbeat (within seconds).
+  async function resumeTransfers() {
+    setBusy(true);
+    try {
+      await api("/api/transfers/companion/resume", { method: "POST", body: JSON.stringify({}) });
+      await loadProgress();
+    } catch (reason) {
+      setError(transferError(reason, "No se pudieron reanudar los traslados."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const reload = useCallback(async () => {
     await Promise.all([loadProgress(), loadDestinations()]);
   }, [loadDestinations, loadProgress]);
@@ -403,6 +416,19 @@ export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onCh
       </div>
 
       {error ? <div className="form-error" role="alert">{error}</div> : null}
+
+      {summary?.transfersMode === "stopped" || summary?.transfersMode === "stopping" ? (
+        <div className="vc-status-banner vc-transfers-waiting" role="status">
+          <Pause size={18} aria-hidden="true" />
+          <div>
+            <strong>{summary.transfersMode === "stopping" ? "Deteniendo traslados: termina el archivo en curso" : "Traslados detenidos"}</strong>
+            <span>Los traslados no empiezan otro archivo hasta que los reanudes. Las descargas siguen, y si reinicias el Companion vuelven solos.</span>
+          </div>
+          <button className="vc-button is-small is-primary" disabled={busy} onClick={() => void resumeTransfers()} type="button">
+            <Play size={14} /> Reanudar traslados
+          </button>
+        </div>
+      ) : null}
 
       {summary?.waitingForDownloads ? (
         <div className="vc-status-banner vc-transfers-waiting" role="status">
