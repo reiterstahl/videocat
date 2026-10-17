@@ -106,8 +106,8 @@ flowchart LR
 ### Organización, administración y auditoría
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
 - **Esquema de uso** como mapa de carpetas por tamaño, navegable por niveles.
-- **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic **entra en la carpeta** y muestra toda su distribución, nivel por nivel, hasta los videos mismos como bloques proporcionales a su tamaño; los nombres genéricos se pueden excluir de la agrupación. Con clic derecho: **ir al catálogo** o marcar la carpeta como **favorita** (sus videos nunca se ofrecen para moverse a otra carpeta).
-- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza.
+- **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic **entra en la carpeta** y muestra toda su distribución, nivel por nivel, hasta los videos mismos como bloques proporcionales a su tamaño; los nombres genéricos se pueden excluir de la agrupación. Con clic derecho: **ir al catálogo** o marcar la carpeta como **favorita** (sus videos nunca se ofrecen para moverse a otra carpeta). La **búsqueda instantánea** (atajo `/`) deja solo los bloques que coinciden, sin importar mayúsculas ni tildes, y en el último nivel filtra los videos.
+- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza. Cada disco se puede renombrar, vaciar o, si ya no existe, **eliminar** de VideoCAT.
 - Auditoría de errores agrupados y acciones, con búsqueda, filtros y exportación CSV.
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
 

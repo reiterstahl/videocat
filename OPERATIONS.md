@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.30
+
+- **Eliminar unidad** in Administración, for drives that no longer exist (shown only while the drive is disconnected; typing ELIMINAR confirms). It removes the drive with its catalog, thumbnails, scans, errors and starred or favorite folders, cancels pending transfers to or from it and closes their jobs. No file on any drive is touched; the deletion history keeps the drive name, and the action is recorded in Auditoría (`disk.remove`). It is refused while the drive is connected (the next scan would add it back) or while files from or to it wait in the Companion staging folder.
+- **Uso por carpeta**: instant search on the map (shortcut `/`, Esc clears). Blocks that do not match leave and the rest grow; folders that only lead to a match shrink to it. Case and accents are ignored; at the last level it filters the videos.
+- The rename pencil in Administración now sits right after the drive name.
+- No migrations or configuration changes; the Windows Companion is 0.2.9.
+
 ## Upgrading to 0.2.29 (Companion 0.2.9)
 
 - **Smoother remote playback (4K)**: a playback request used to get 512 KB per round trip, one at a time per Companion, so high-bitrate videos stalled on *cargando* and started slowly. Now each request streams to the end with read-ahead: the server keeps up to 8 chunks in flight with the Companion and holds the amount chosen in **Perfil › Reproducción › Lectura anticipada** (8–128 MB, 32 MB by default) ahead of the browser. nginx no longer buffers `/api/streams/` (no video copies on the web container's disk, and the browser's pace reaches the server).

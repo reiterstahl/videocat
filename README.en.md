@@ -106,8 +106,8 @@ flowchart LR
 ### Organization, administration and audit
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
-- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder).
-- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup.
+- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder). **Instant search** (shortcut `/`) keeps only the matching blocks, ignoring case and accents, and filters the videos at the last level.
+- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed, emptied or, when it no longer exists, **removed** from VideoCAT.
 - Audit of grouped errors and actions, with search, filters and CSV export.
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
 
