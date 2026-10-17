@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.28
+
+- **Drive names**: Administración lets you rename a drive (pencil next to its name). The chosen name is what everyone sees in VideoCAT and scans keep it; *Usar el nombre detectado* goes back to the Companion's name on the next scan. Useful for drives added by path, which are detected as `H:\`.
+- **Favorite folders win**: verified and covered by tests; a favorite is never queued by a tag rule, and marking it afterwards withdraws what had not left its drive.
+- **Traslados**: Consolidar, Agrupar and Mover por etiqueta now sit side by side; every transfer is listed in one grid (*Traslados en curso*) with filters by kind. Hovering (or focusing) a card in *Para continuar* shows what is still due on that drive: files to copy onto it in green, files that will leave it in red, with some names.
+- Migration `0026_disk_name_locked` runs automatically. No configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.27
 
 - **Mover por etiqueta** in Traslados: a standing rule "tag → starred folder". Every video with the tag, including the ones tagged later, joins the rule's transfer and moves through the Companion staging folder when its drive is connected. Removing the tag from a video, or removing the rule, withdraws what has not left its drive yet. One folder per tag; "Marcado para borrar" cannot be used. Favorite folders, protected folders, files already in the folder and identical files at the destination are left alone.
