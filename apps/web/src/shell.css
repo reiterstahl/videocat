@@ -853,9 +853,9 @@
   gap: 6px;
 }
 
-/* "Detener traslados" beside the activity indicator: finishes the file in progress, then waits. */
+/* "Detener traslados" beside the activity indicator, icon only (its name is in the tooltip and
+   aria-label): pause while transfers run, play once stopped; it pulses while the Companion confirms. */
 .vc-transfers-control {
-  gap: 6px;
   color: var(--vc-text-soft);
 }
 
@@ -863,9 +863,12 @@
   color: var(--vc-accent-ink);
 }
 
-.vc-transfers-control:disabled {
-  opacity: 0.75;
+.vc-transfers-control.is-pending {
   cursor: progress;
+}
+
+.vc-transfers-control.is-pending svg {
+  animation: agent-pulse 1.45s ease-in-out infinite;
 }
 
 .vc-activity-button {

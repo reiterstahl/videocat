@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.40
+
+- The header's transfers control is now an icon only, the size of the theme button: pause while transfers run, play once stopped, pulsing while the Companion confirms. Its name stays in the tooltip and for screen readers.
+- No migrations or configuration changes; the Windows Companion is 0.2.14.
+
 ## Upgrading to 0.2.39 (Companion 0.2.14)
 
 - **Detener traslados** in the header, beside the activity indicator (shown while a Companion is connected and there are transfers, or they are stopped). The Companion gets the order with its next heartbeat (about 15 s), finishes the file in progress and starts no other transfer; downloads go on. The button shows *Deteniendo…* until that file is done, then **Reanudar traslados**; Traslados shows a notice with the same button.

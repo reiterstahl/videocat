@@ -302,7 +302,7 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
 
       {showControl ? (
         <button
-          className={`vc-button vc-transfers-control ${stopped ? "is-stopped" : ""}`}
+          className={`vc-icon-button vc-transfers-control ${stopped ? "is-stopped" : ""} ${stopping || resuming ? "is-pending" : ""}`}
           type="button"
           disabled={ordering || stopping || resuming}
           onClick={() => void orderTransfers(stopped ? "resume" : "stop")}
@@ -313,8 +313,7 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
               : "Termina el archivo en curso y no empieza otro; las descargas siguen. Al reiniciar el Companion vuelven solos."}
           aria-label={stopping ? "Deteniendo traslados" : resuming ? "Reanudando traslados" : stopped ? "Reanudar traslados" : "Detener traslados"}
         >
-          {stopped || resuming ? <Play size={15} aria-hidden="true" /> : <Pause size={15} aria-hidden="true" />}
-          <span className="vc-button-label">{stopping ? "Deteniendo…" : resuming ? "Reanudando…" : stopped ? "Reanudar traslados" : "Detener traslados"}</span>
+          {stopped || resuming ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}
         </button>
       ) : null}
 
