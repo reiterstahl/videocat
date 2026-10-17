@@ -84,7 +84,7 @@ export type FolderGroupLocation = {
 export type FolderGroupNode = {
   key: string;
   name: string;
-  kind: "group" | "folder" | "files" | "rest";
+  kind: "group" | "folder" | "files" | "rest" | "free";
   sizeBytes: number;
   fileCount: number;
   locations: FolderGroupLocation[];
@@ -106,6 +106,7 @@ export type FolderGroupMap = {
   roots: FolderGroupNode[];
   repeated: FolderGroupSummary[];
   excludedNames: string[];
+  free?: Array<{ diskId: string; diskName: string; driveLetter: string | null; freeBytes: number }>;
 };
 
 export type CatalogLocationScope = {

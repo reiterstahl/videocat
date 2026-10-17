@@ -18,7 +18,10 @@ test("instant search on the folder map keeps only matching blocks", async ({ pag
   const tiles = page.locator(".vc-folders-canvas .vc-folder-tile");
   await expect(tiles.first()).toBeVisible();
   const before = await tiles.count();
-  const name = ((await page.locator(".vc-folder-tile.is-depth-1 .vc-folder-tile-label strong").first().textContent()) ?? "").trim();
+  // Each drive's free space is on the map too, always in the same color, and not explorable.
+  await expect(page.locator(".vc-folder-tile.is-free").first()).toBeDisabled();
+  await expect(page.locator(".vc-usage-free")).toContainText("libres");
+  const name = ((await page.locator(".vc-folder-tile.is-depth-1:not(.is-free) .vc-folder-tile-label strong").first().textContent()) ?? "").trim();
   const search = page.getByLabel("Buscar en el mapa");
   await page.keyboard.press("/");
   await expect(search).toBeFocused();
@@ -28,6 +31,7 @@ test("instant search on the folder map keeps only matching blocks", async ({ pag
   await expect(page.locator(".vc-folders-status")).toContainText("coincide");
   await search.fill("zzz-no-existe");
   await expect(page.locator(".vc-folders-no-match")).toBeVisible();
+  await expect(page.locator(".vc-folder-tile.is-free")).toHaveCount(0);
   await search.press("Escape");
   await expect(search).toHaveValue("");
   await expect.poll(() => tiles.count()).toBe(before);

@@ -122,6 +122,16 @@ test("a file reaches the destination through staging and leaves nothing behind",
   assert.deepEqual(w.history, ["pending", "staging", "staged", "source_removed", "delivering", "delivered", "done"]);
 });
 
+test("asked to stop off its drive, a file waits in staging even with the destination connected", async () => {
+  const w = await world();
+  const held = { ...w.item, stopAt: "source_removed" as const };
+  assert.equal(await processTransferItem(w.context(), held), "source_removed");
+  assert.deepEqual(await verifiedCopies(w), [stagingPathFor(w.stagingDir, w.item)]);
+  // The next round, without the stop, delivers it.
+  assert.equal(await processTransferItem(w.context(), w.item), "done");
+  assert.deepEqual(await verifiedCopies(w), [path.join(w.targetRoot, "Testing", "clip.mp4")]);
+});
+
 for (const point of ["staging:copied", "staged:reported", "source:removed", "delivering:reported", "target:copied", "delivered:reported", "staging:removed"]) {
   test(`stopping at "${point}" never loses the file and the transfer resumes`, async () => {
     const w = await world();

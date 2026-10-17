@@ -8,12 +8,15 @@ import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { buildFolderGroups, normalizeFolderName } from "../lib/folder-groups.js";
 import { prisma } from "../lib/prisma.js";
 import { companionStagingKey, stagingBytes, transferNeeds } from "../lib/transfer-summary.js";
+import { orderTransferWork, stagingRoom } from "../lib/transfer-order.js";
 import { bestNameMatch, matchKey, minSearchKeyLength, searchKeys, type NameMatch } from "../lib/name-match.js";
 import { canCompanionTransition, isTransferState, unfinishedStates, type TransferState } from "../lib/transfer-states.js";
 import { folderGroupExclusions, visibleFilesWhere } from "./catalog.js";
 
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const workLimit = 50;
+// A staging report older than this no longer tells how much room is left.
+const stagingReportFreshMs = 5 * 60 * 1000;
 
 const destinationSchema = z.object({
   diskId: z.string().uuid(),
@@ -255,8 +258,17 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       orderBy: [{ updatedAt: "asc" }],
       take: workLimit * 2
     });
-    const rank: Record<string, number> = { delivered: 0, delivering: 1, blocked_space: 2, source_removed: 2, staged: 3, staging: 3, pending: 4 };
-    const ordered = items.sort((left, right) => (rank[left.state] ?? 9) - (rank[right.state] ?? 9)).slice(0, workLimit);
+    // Files leave their drives first, while the staging folder has room (its last report, if recent).
+    const stagingReport = await appSetting(companionStagingKey);
+    let room: number | null = null;
+    try {
+      const parsed = stagingReport ? JSON.parse(stagingReport) as { freeBytes?: unknown; totalBytes?: unknown; reportedAt?: unknown } : null;
+      if (parsed && typeof parsed.reportedAt === "number" && Date.now() - parsed.reportedAt < stagingReportFreshMs) room = stagingRoom(parsed);
+    } catch {
+      room = null;
+    }
+    const work = orderTransferWork(items, room, workLimit);
+    const ordered = work.map((entry) => entry.item);
     const disks = await diskIdentifiers([...new Set(ordered.flatMap((item) => [item.sourceDiskId, item.targetDiskId]))]);
     const identity = (diskId: string) => {
       const disk = disks.get(diskId);
@@ -264,7 +276,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     };
 
     return {
-      items: ordered.map((item) => ({
+      items: work.map(({ item, stopAt }) => ({
+        ...(stopAt ? { stopAt } : {}),
         id: item.id,
         jobId: item.jobId,
         state: item.state,

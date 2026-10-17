@@ -132,6 +132,7 @@ const en: Record<string, string> = {
   "Eliminar unidad": "Remove drive",
   "Reciben material": "Receiving files",
   "Catálogo de video self-hosted": "Self-hosted video catalog",
+  "Espacio libre del disco: no tiene carpetas que explorar": "Free space on the drive: no folders to explore",
   "F · Mantener": "F · Keep",
   "Iniciar sesión": "Sign in",
   "Inicia sesión": "Sign in",
@@ -1286,6 +1287,15 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) (disco|discos) · (.+)$/);
   if (match) return `${match[1]} ${match[2] === "disco" ? "drive" : "drives"} · ${match[3]}`;
+
+  match = text.match(/^Libre · (.+)$/);
+  if (match) return `Free · ${match[1]}`;
+
+  match = text.match(/^(.+) libres en el disco$/);
+  if (match) return `${match[1]} free on the drive`;
+
+  match = text.match(/^([\d.,]+ (?:B|KB|MB|GB|TB)) libres$/);
+  if (match) return `${match[1]} free`;
 
   match = text.match(/^"(.+)" desaparecerá de VideoCAT con sus videos, miniaturas, escaneos, errores y carpetas con estrella o favoritas\. Los traslados pendientes hacia o desde ella se cancelan\. No toca ningún archivo\. Escribe ELIMINAR para confirmar\.$/);
   if (match) return `"${match[1]}" will disappear from VideoCAT with its videos, thumbnails, scans, errors and starred or favorite folders. Pending transfers to or from it are cancelled. No file is touched. Type ELIMINAR to confirm.`;

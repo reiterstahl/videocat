@@ -111,7 +111,7 @@ flowchart LR
 ### Organization, administration and audit
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
-- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder). **Instant search** (shortcut `/`) keeps only the matching blocks, ignoring case and accents, and filters the videos at the last level.
+- **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder). Each drive's **free space** is on the map too, always in the same color, so the room left is always in view. **Instant search** (shortcut `/`) keeps only the matching blocks, ignoring case and accents, and filters the videos at the last level.
 - Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed, emptied or, when it no longer exists, **removed** from VideoCAT.
 - Audit of grouped errors and actions, with search, filters and CSV export.
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
@@ -300,6 +300,7 @@ Guarantees at every step:
 - Before removing from the source, it checks it is still the file from the last scan (size and modification time); if it changed, it is left alone.
 - Every step is recorded on the server before moving on, so a power cut or a drive unplugged halfway resumes from the last confirmed step.
 - Nothing is overwritten: an identical file at the destination leaves the original for review in Duplicates; a different one is saved as `name (2).ext`.
+- **Files leave their drives first.** With several drives connected, the Companion first moves into the staging folder everything that fits and only then delivers, so a drive that is both a source and a destination frees room before receiving files. When the staging folder is full, deliveries go first to make room.
 - The staging drive always keeps **5 %** free. A full destination **does not prevent creating a transfer**: the files leave their drive and wait in the staging folder. The web warns *Space will run short on…* from the last scan, the Companion measures again when the destination is connected and delivers once there is room.
 - While travelling, videos stay in the catalog marked **In transit**. Cancelling only stops what has not left its drive yet: whatever is already in staging finishes its way.
 

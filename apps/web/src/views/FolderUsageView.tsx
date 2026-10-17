@@ -114,6 +114,7 @@ function scopeFor(trail: FolderGroupNode[]): CatalogLocationScope | null {
 }
 
 function describe(node: FolderGroupNode): string {
+  if (node.kind === "free") return `${formatBytes(node.sizeBytes)} libres en el disco`;
   const places = node.locations.length;
   return `${formatBytes(node.sizeBytes)} · ${formatCount(node.fileCount)} videos${places > 1 ? ` · ${places} ubicaciones` : ""}`;
 }
@@ -211,8 +212,18 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
     const all = mapTerm ? filterFolderNodes(map.roots, mapTerm).nodes : map.roots;
     const kept = all.slice(0, maxRoots);
     const rest = all.slice(maxRoots);
-    if (rest.length === 0) return kept;
-    return [...kept, {
+    // Free space of each selected drive, always in the same color, so the room left is always in view.
+    const free: FolderGroupNode[] = mapTerm ? [] : (map.free ?? []).map((disk) => ({
+      key: `#free:${disk.diskId}`,
+      name: `Libre · ${disk.driveLetter ? `${disk.diskName} (${disk.driveLetter})` : disk.diskName}`,
+      kind: "free" as const,
+      sizeBytes: disk.freeBytes,
+      fileCount: 0,
+      locations: [],
+      children: []
+    }));
+    if (rest.length === 0) return [...kept, ...free];
+    return [...kept, ...free, {
       key: "#rest",
       name: `${rest.length} carpetas más`,
       kind: "rest" as const,
@@ -222,6 +233,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
       children: []
     }];
   }, [map, mapTerm]);
+  const freeBytes = useMemo(() => (map?.free ?? []).reduce((sum, disk) => sum + disk.freeBytes, 0), [map]);
 
   const focus = trail.at(-1) ?? null;
   const focusTree = focus ? subtrees.get(exploreKey(focus)) ?? null : null;
@@ -280,7 +292,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   const matchCount = filesView ? shownFiles.length : searchView.matches.size;
 
   function enter(tile: Tile) {
-    if (tile.node.kind === "rest") return;
+    if (tile.node.kind === "rest" || tile.node.kind === "free") return;
     // Entering a nested block goes through its parents, so the trail stays complete.
     // Folders cut down by the search are entered whole.
     const steps = tile.trail.filter((node) => node.kind !== "rest").map((node) => searchView.originals.get(node) ?? node);
@@ -433,6 +445,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
           <strong>{formatBytes(map?.sizeBytes ?? 0)}</strong>
           <span>{`${formatCount(map?.fileCount ?? 0)} videos`}</span>
           <span>{`${formatCount(mergedCount)} carpetas agrupadas`}</span>
+          {freeBytes > 0 ? <span className="vc-usage-free"><i aria-hidden="true" />{`${formatBytes(freeBytes)} libres`}</span> : null}
         </div>
       </div>
 
@@ -540,8 +553,8 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                     key={tile.trail.map((node) => node.key).join(">")}
                     className={`vc-folder-tile is-depth-${tile.depth} is-${tile.node.kind} ${tile.parent ? "is-parent" : ""} ${hovered === tile ? "is-hovered" : ""} ${searchView.matches.has(tile.node) ? "is-match" : ""}`}
                     style={style}
-                    disabled={tile.node.kind === "rest"}
-                    title={tile.node.kind === "rest" ? "Carpetas pequeñas agrupadas en un solo bloque" : undefined}
+                    disabled={tile.node.kind === "rest" || tile.node.kind === "free"}
+                    title={tile.node.kind === "rest" ? "Carpetas pequeñas agrupadas en un solo bloque" : tile.node.kind === "free" ? "Espacio libre del disco: no tiene carpetas que explorar" : undefined}
                     onClick={(event) => {
                       event.stopPropagation();
                       enter(tile);

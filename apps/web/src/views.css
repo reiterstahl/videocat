@@ -1555,6 +1555,27 @@ a.vc-button {
   cursor: default;
 }
 
+/* Free space of a drive: one fixed color everywhere, flat and with a dashed edge, so it reads as room left. */
+.vc-folder-tile.is-free {
+  border: 1px dashed rgba(255, 255, 255, 0.42);
+  background: repeating-linear-gradient(135deg, #2c5a4f, #2c5a4f 10px, #285246 10px, #285246 20px);
+  cursor: default;
+}
+
+.vc-usage-free {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vc-usage-free i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #2c5a4f;
+  outline: 1px dashed rgba(127, 127, 127, 0.6);
+}
+
 .vc-folder-tile.is-files {
   background:
     radial-gradient(120% 120% at 28% 18%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 55%),

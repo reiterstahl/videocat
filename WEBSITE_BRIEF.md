@@ -16,7 +16,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
 - Stack Docker actual: `0.2.35`
-- Companion Windows actual: `0.2.9` (instalador con actualización automática)
+- Companion Windows actual: `0.2.10` (instalador con actualización automática)
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 
@@ -176,6 +176,7 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 
 - Mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos.
 - Un clic entra en la carpeta y la explora nivel por nivel hasta los videos, dibujados como bloques proporcionales a su tamaño.
+- El espacio libre de cada disco aparece en el mapa, siempre del mismo color, para saber cuánto lugar queda.
 - Búsqueda instantánea (atajo `/`): los bloques que no coinciden desaparecen y los demás crecen; sin importar mayúsculas ni tildes.
 - Clic derecho: ir al catálogo o marcar la carpeta como favorita (sus videos nunca se ofrecen para moverse).
 
@@ -185,6 +186,7 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - **Agrupar archivos**: desde una carpeta (por ejemplo `testing001`) se buscan en todos los discos archivos con nombres parecidos —sin importar mayúsculas, acentos, puntos, separadores ni una letra de diferencia— y se decide uno por uno como en Review: F agrupar, J ignorar. Cada carpeta puede sumar palabras clave opcionales, que se buscan exactas como palabra completa del nombre.
 - **Mover por etiqueta**: una regla "etiqueta → carpeta con estrella" lleva ahí todos los videos con esa etiqueta, también los que la reciban después.
 - Los discos no necesitan estar conectados a la vez: cada archivo pasa por una carpeta temporal del Companion. La web separa los discos que reciben material de los que copian a la carpeta temporal, empieza por el que más datos debe recibir y avisa dónde liberar espacio.
+- Primero salen los archivos de sus discos hacia la carpeta temporal y después se entregan, así los discos que también son destino liberan espacio antes; si la carpeta temporal está llena, primero se entrega.
 - El indicador de actividad dice cuánto falta con los discos conectados ("faltan x de y por mover") y si cada disco ya se puede desconectar.
 - Mensaje clave: **nada se borra sin una copia verificada en otro lugar**. Cada copia se comprueba con SHA-256 releyéndola entera, la carpeta temporal siempre deja libre el 5 % del disco, nada se sobrescribe y un corte a mitad de camino se retoma sin perder archivos.
 

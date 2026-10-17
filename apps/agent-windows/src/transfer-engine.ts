@@ -26,6 +26,9 @@ export type TransferWorkItem = {
   sha256: string | null;
   source: TransferDisk & { relativePath: string; modifiedAt: string | null };
   target: TransferDisk & { folder: string; relativePath: string | null };
+  // The server asks to stop once the file is off its drive: other files leave theirs first and the
+  // delivery comes in a later round. Older servers never send it.
+  stopAt?: "source_removed";
 };
 
 export type TransitionExtra = { sha256?: string; targetRelativePath?: string; absolutePath?: string; error?: string };
@@ -264,6 +267,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         }
         await checkpoint("source:removed");
         if (!(await move("source_removed"))) return item.state;
+        if (item.stopAt === "source_removed") return item.state;
         break;
       }
 

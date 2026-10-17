@@ -1578,15 +1578,22 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const where: Prisma.VideoFileWhereInput = diskIds.length > 0 ? { diskId: { in: diskIds } } : {};
     applyHiddenPathFilter(where);
     if (!isProtectedFolderUnlocked(request)) applyProtectedPathFilter(where);
-    const [files, excludedNames] = await Promise.all([
+    const [files, excludedNames, disks] = await Promise.all([
       prisma.videoFile.findMany({
         where,
         select: { diskId: true, relativePath: true, sizeBytes: true, disk: { select: { name: true } } }
       }),
-      folderGroupExclusions()
+      folderGroupExclusions(),
+      prisma.disk.findMany({
+        where: { ...(diskIds.length > 0 ? { id: { in: diskIds } } : {}), freeBytes: { not: null } },
+        select: { id: true, name: true, driveLetter: true, freeBytes: true },
+        orderBy: { name: "asc" }
+      })
     ]);
     return {
       excludedNames,
+      // Free space of the selected drives (last scan or live report), drawn on the map in one color.
+      free: disks.filter((disk) => Number(disk.freeBytes) > 0).map((disk) => ({ diskId: disk.id, diskName: disk.name, driveLetter: disk.driveLetter, freeBytes: Number(disk.freeBytes) })),
       ...buildFolderGroups(
         files.map((file) => ({ diskId: file.diskId, diskName: file.disk.name, relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) })),
         { excludedNames }

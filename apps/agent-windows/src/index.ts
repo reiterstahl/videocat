@@ -38,6 +38,8 @@ import {
 } from "./deletion-identity.js";
 
 const execFileAsync = promisify(execFile);
+// Work rounds per review: files leave their drives in one round, their deliveries come in the next.
+const maxTransferRounds = 4;
 
 type Args = {
   command: string;
@@ -722,43 +724,50 @@ async function startCompanionDiskWatcher(): Promise<void> {
     try {
       const mounted = await discoverCompanionTargets();
       const roots = new Map(mounted.map(({ root, marker }) => [marker.diskId, root]));
-      const work = await companionAgentApi<{ items: TransferWorkItem[] }>(
-        `/api/agent/transfers/work?mounted=${encodeURIComponent([...roots.keys()].join(","))}`
-      );
-      for (const item of work.items) {
-        try {
-          await processTransferItem({
-            stagingDir,
-            resolveRoot: (identifiers) => identifiers.map((identifier) => roots.get(identifier)).find(Boolean) ?? null,
-            progress: ({ item: current, phase, bytesDone, bytesTotal }) => activityReporter?.set("transfer", {
-              kind: "transfer",
-              phase,
-              filename: current.filename,
-              from: phase === "staging" || phase === "verifying_staging" ? current.source.name : "Carpeta temporal",
-              to: phase === "staging" || phase === "verifying_staging" ? "Carpeta temporal" : current.target.name,
-              bytesDone,
-              bytesTotal
-            }),
-            log: (level, message) => (level === "warn" ? console.warn(message) : console.log(message)),
-            transition: async (current, to, extra) => {
-              try {
-                await companionAgentApi(`/api/agent/transfers/items/${current.id}/transition`, {
-                  method: "POST",
-                  body: JSON.stringify({ from: current.state, to, ...extra })
-                });
-                return "ok";
-              } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                if (message.startsWith("409")) return message.includes("path_taken") ? "path_taken" : "conflict";
-                throw error;
+      // Several rounds: the server sends files off their drives first and holds their delivery
+      // for the next round, so every source drive frees room before anything is copied onto them.
+      for (let round = 0; round < maxTransferRounds; round += 1) {
+        const work = await companionAgentApi<{ items: TransferWorkItem[] }>(
+          `/api/agent/transfers/work?mounted=${encodeURIComponent([...roots.keys()].join(","))}`
+        );
+        let heldInStaging = 0;
+        for (const item of work.items) {
+          try {
+            const reached = await processTransferItem({
+              stagingDir,
+              resolveRoot: (identifiers) => identifiers.map((identifier) => roots.get(identifier)).find(Boolean) ?? null,
+              progress: ({ item: current, phase, bytesDone, bytesTotal }) => activityReporter?.set("transfer", {
+                kind: "transfer",
+                phase,
+                filename: current.filename,
+                from: phase === "staging" || phase === "verifying_staging" ? current.source.name : "Carpeta temporal",
+                to: phase === "staging" || phase === "verifying_staging" ? "Carpeta temporal" : current.target.name,
+                bytesDone,
+                bytesTotal
+              }),
+              log: (level, message) => (level === "warn" ? console.warn(message) : console.log(message)),
+              transition: async (current, to, extra) => {
+                try {
+                  await companionAgentApi(`/api/agent/transfers/items/${current.id}/transition`, {
+                    method: "POST",
+                    body: JSON.stringify({ from: current.state, to, ...extra })
+                  });
+                  return "ok";
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  if (message.startsWith("409")) return message.includes("path_taken") ? "path_taken" : "conflict";
+                  throw error;
+                }
               }
-            }
-          }, item);
-        } catch (error) {
-          console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
-        } finally {
-          activityReporter?.clear("transfer");
+            }, item);
+            if (item.stopAt === "source_removed" && reached === "source_removed") heldInStaging += 1;
+          } catch (error) {
+            console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
+          } finally {
+            activityReporter?.clear("transfer");
+          }
         }
+        if (heldInStaging === 0) break;
       }
       const stale = await staleStagingFiles(stagingDir, async (ids) => {
         const response = await companionAgentApi<{ items: Array<{ id: string; state: TransferState }> }>("/api/agent/transfers/lookup", {

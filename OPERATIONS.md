@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.36 (Companion 0.2.10)
+
+- **Uso por carpeta** shows each selected drive's free space on the map, always in the same color (dashed, not explorable), and the total in the header, so the room left is always in view. It uses the drive's last scan or live report; drives without a measurement are left out. The free blocks hide while searching.
+- **Traslados: files leave their drives first.** The server now hands the Companion, in this order: staging copies to clear, files already on their way to staging, files that fit in the staging room left (by the Companion's last report), deliveries, and last the files that did not fit. Companion 0.2.10 (updates itself) stops each file once it is off its drive and delivers in the next round of the same review, so a drive that is both a source and a destination frees room before receiving files. When the staging folder is full, deliveries go first. Companion 0.2.9 keeps working with the new order, delivering each file right after staging it.
+- No migrations or configuration changes.
+
 ## Upgrading to 0.2.35
 
 - Actividad › Con los discos conectados: each drive is marked with a straight vertical line inset from the corners, instead of a line that curved with the rounded row.
