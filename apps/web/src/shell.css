@@ -1083,18 +1083,29 @@
   list-style: none;
 }
 
-/* Each drive is a flat row marked with the house's straight vertical line. */
+/* Each drive is marked with the house's straight vertical line, inset from the rounded corners. */
 .vc-activity-drives li {
+  position: relative;
   display: grid;
   gap: 4px;
   border-radius: 8px;
   background: var(--vc-surface);
-  padding: 8px 10px 8px 12px;
-  box-shadow: inset 3px 0 0 #d97706;
+  padding: 8px 10px 8px 16px;
 }
 
-.vc-activity-drives li.is-ready {
-  box-shadow: inset 3px 0 0 var(--vc-success);
+.vc-activity-drives li::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  background: #d97706;
+  content: "";
+  pointer-events: none;
+}
+
+.vc-activity-drives li.is-ready::before {
+  background: var(--vc-success);
 }
 
 .vc-activity-drive-head {
