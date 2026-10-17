@@ -1287,7 +1287,25 @@ test("the Companion reports live activity and the free space of connected drives
     assert.deepEqual([Number(updated.freeBytes), Number(updated.totalBytes)], [600, 1000]);
     const idle = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json();
     assert.equal(idle.companions.some((entry: { companionId: string }) => entry.companionId === companionId), false);
+
+    // With that drive connected, Actividad says how much is left before it can be unplugged.
+    const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Dest-${suffix}`, nameKey: "dest" } });
+    const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "live" } });
+    const other = crypto.randomUUID();
+    await prisma.transferItem.createMany({
+      data: [
+        { jobId: job.id, filename: "leaving.mp4", sourceDiskId: disk.id, sourceRelativePath: "V/leaving.mp4", targetDiskId: other, targetFolder: "X", sizeBytes: 30n, state: "pending" },
+        { jobId: job.id, filename: "left.mp4", sourceDiskId: disk.id, sourceRelativePath: "V/left.mp4", targetDiskId: other, targetFolder: "X", sizeBytes: 20n, state: "source_removed", stagedAt: new Date(Date.now() + 1000) }
+      ]
+    });
+    const work = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json().connected;
+    const drive = work.disks.find((entry: { diskId: string }) => entry.diskId === disk.id);
+    assert.deepEqual([drive.diskName, drive.remaining, drive.total, drive.canDisconnect], [`Vivo ${suffix}`, { files: 1, bytes: 30 }, { files: 2, bytes: 50 }, false]);
+    await prisma.transferItem.updateMany({ where: { jobId: job.id, state: "pending" }, data: { state: "cancelled" } });
+    const ready = (await app.inject({ method: "GET", url: "/api/activity", headers: { cookie } })).json().connected;
+    assert.equal(ready.disks.find((entry: { diskId: string }) => entry.diskId === disk.id).canDisconnect, true);
   } finally {
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: disk.id } } });
     await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
     await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
   }

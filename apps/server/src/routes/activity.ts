@@ -2,14 +2,75 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../lib/prisma.js";
 import { requireWebAuth } from "../lib/auth.js";
 import { liveActivity } from "../lib/companion-activity.js";
-import { unfinishedStates } from "../lib/transfer-states.js";
+import { unfinishedStates, type TransferState } from "../lib/transfer-states.js";
+import { connectedWork, mountedSinceByIdentifier } from "../lib/connected-work.js";
+import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
+
+const companionOnlineMs = 45_000;
+
+// What is left to move with the drives connected now, so the person knows whether a drive can go.
+async function connectedDrivesWork() {
+  const companions = await prisma.companionAgent.findMany({
+    where: { revokedAt: null, lastSeenAt: { gte: new Date(Date.now() - companionOnlineMs) } },
+    select: { mountedDiskIds: true }
+  });
+  const identifiers = [...new Set(companions.flatMap((companion) => Array.isArray(companion.mountedDiskIds) ? companion.mountedDiskIds.filter((value): value is string => typeof value === "string") : []))];
+  if (identifiers.length === 0) return null;
+  const disks = await prisma.disk.findMany({ where: disksByAgentIdentifiers(identifiers), select: { id: true, volumeId: true, name: true, driveLetter: true } });
+  if (disks.length === 0) return null;
+  const sinceByIdentifier = mountedSinceByIdentifier();
+  const now = Date.now();
+  const connected = new Map(disks.map((disk) => {
+    const seen = [sinceByIdentifier.get(disk.id), disk.volumeId ? sinceByIdentifier.get(disk.volumeId) : undefined].filter((value): value is number => value != null);
+    return [disk.id, seen.length > 0 ? Math.min(...seen) : now] as const;
+  }));
+  const ids = [...connected.keys()];
+  const earliest = new Date(Math.min(...connected.values()));
+  const [items, downloads] = await Promise.all([
+    prisma.transferItem.findMany({
+      where: {
+        OR: [{ sourceDiskId: { in: ids } }, { targetDiskId: { in: ids } }],
+        AND: [{ OR: [{ state: { in: unfinishedStates } }, { updatedAt: { gte: earliest } }] }],
+        state: { not: "cancelled" }
+      },
+      select: { state: true, sourceDiskId: true, targetDiskId: true, sizeBytes: true, stagedAt: true, deliveredAt: true, updatedAt: true, job: { select: { status: true } } }
+    }),
+    prisma.downloadQueue.findMany({
+      where: { status: { in: ["queued", "downloading"] }, videoFile: { diskId: { in: ids } } },
+      select: { videoFile: { select: { diskId: true } } }
+    })
+  ]);
+  const downloadsByDisk = new Map<string, number>();
+  for (const entry of downloads) downloadsByDisk.set(entry.videoFile.diskId, (downloadsByDisk.get(entry.videoFile.diskId) ?? 0) + 1);
+  const work = connectedWork(items.map((item) => ({
+    state: item.state as TransferState,
+    jobStatus: item.job.status,
+    sourceDiskId: item.sourceDiskId,
+    targetDiskId: item.targetDiskId,
+    sizeBytes: Number(item.sizeBytes),
+    stagedAt: item.stagedAt,
+    deliveredAt: item.deliveredAt,
+    updatedAt: item.updatedAt
+  })), connected, downloadsByDisk);
+  const byId = new Map(disks.map((disk) => [disk.id, disk]));
+  return {
+    remaining: work.remaining,
+    total: work.total,
+    disks: work.disks.map((disk) => ({
+      ...disk,
+      since: new Date(disk.since).toISOString(),
+      diskName: byId.get(disk.diskId)?.name ?? "",
+      driveLetter: byId.get(disk.diskId)?.driveLetter ?? null
+    }))
+  };
+}
 
 const recentLimit = 12;
 
 // The header activity indicator: what every Companion is doing now, what is waiting and what just happened.
 export async function activityRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/activity", { preHandler: requireWebAuth }, async () => {
-    const [transfersWaiting, downloadsQueued, delivered, downloads, deletions, scans] = await Promise.all([
+    const [transfersWaiting, downloadsQueued, delivered, downloads, deletions, scans, connected] = await Promise.all([
       prisma.transferItem.count({ where: { state: { in: unfinishedStates } } }),
       prisma.downloadQueue.count({ where: { status: { in: ["queued", "downloading"] } } }),
       prisma.actionAudit.findMany({
@@ -35,7 +96,8 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
         orderBy: { createdAt: "desc" },
         take: 4,
         select: { createdAt: true, diskId: true }
-      })
+      }),
+      connectedDrivesWork()
     ]);
     const scanDisks = await prisma.disk.findMany({ where: { id: { in: scans.flatMap((scan) => (scan.diskId ? [scan.diskId] : [])) } }, select: { id: true, name: true } });
 
@@ -61,6 +123,7 @@ export async function activityRoutes(app: FastifyInstance): Promise<void> {
     return {
       companions: liveActivity().map((entry) => ({ companionId: entry.companionId, companionName: entry.companionName, activities: entry.activities, reportedAt: entry.reportedAt })),
       waiting: { transfers: transfersWaiting, downloads: downloadsQueued },
+      connected,
       recent
     };
   });

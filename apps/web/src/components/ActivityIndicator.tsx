@@ -20,9 +20,28 @@ type LiveActivity = {
   startedAt: number;
 };
 
+type WorkAmount = { files: number; bytes: number };
+
+type ConnectedDiskWork = {
+  diskId: string;
+  diskName: string;
+  driveLetter: string | null;
+  since: string;
+  remaining: WorkAmount;
+  outgoing: WorkAmount;
+  incoming: WorkAmount;
+  total: WorkAmount;
+  blocked: WorkAmount;
+  downloads: number;
+  canDisconnect: boolean;
+};
+
+type ConnectedWork = { remaining: WorkAmount; total: WorkAmount; disks: ConnectedDiskWork[] };
+
 type ActivityResponse = {
   companions: Array<{ companionId: string; companionName: string | null; activities: LiveActivity[]; reportedAt: number }>;
   waiting: { transfers: number; downloads: number };
+  connected?: ConnectedWork | null;
   recent: Array<{ kind: "transfer" | "duplicate" | "download" | "delete" | "scan"; label: string; detail: string | null; bytes: number | null; at: string }>;
 };
 
@@ -85,6 +104,85 @@ function timeAgo(value: string): string {
   if (seconds < 3600) return `hace ${Math.floor(seconds / 60)} min`;
   if (seconds < 86400) return `hace ${Math.floor(seconds / 3600)} h`;
   return `hace ${Math.floor(seconds / 86400)} d`;
+}
+
+function donePercent(work: { remaining: WorkAmount; total: WorkAmount }): number {
+  if (work.total.bytes > 0) return Math.round(((work.total.bytes - work.remaining.bytes) / work.total.bytes) * 100);
+  if (work.total.files > 0) return Math.round(((work.total.files - work.remaining.files) / work.total.files) * 100);
+  return 100;
+}
+
+function files(count: number): string {
+  return `${formatCount(count)} ${count === 1 ? "archivo" : "archivos"}`;
+}
+
+// What still holds a drive: files leaving it, files arriving and queued downloads.
+function holdLabel(disk: ConnectedDiskWork): string {
+  return [
+    disk.outgoing.files > 0 ? `${files(disk.outgoing.files)} por salir` : null,
+    disk.incoming.files > 0 ? `${files(disk.incoming.files)} por llegar` : null,
+    disk.downloads > 0 ? `${formatCount(disk.downloads)} ${disk.downloads === 1 ? "descarga" : "descargas"} en cola` : null
+  ].filter(Boolean).join(" · ");
+}
+
+// "Faltan x de y por mover" with the drives connected now: can a drive be unplugged yet?
+function ConnectedWorkPanel({ work }: { work: ConnectedWork }) {
+  const percent = donePercent(work);
+  const pending = work.remaining.files > 0;
+  return (
+    <section className="vc-activity-connected" aria-label="Con los discos conectados">
+      <div className="vc-activity-connected-head">
+        <span className="vc-overline">Con los discos conectados</span>
+        <strong>
+          {work.total.files === 0
+            ? "Nada por mover"
+            : pending
+              ? `Faltan ${formatCount(work.remaining.files)} de ${formatCount(work.total.files)} por mover`
+              : `Listo: ${files(work.total.files)} ${work.total.files === 1 ? "movido" : "movidos"}`}
+        </strong>
+      </div>
+      {work.total.files > 0 ? (
+        <>
+          <div className={`vc-transfer-bar ${pending ? "" : "is-done"}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="Avance con los discos conectados">
+            <span style={{ width: `${percent}%` }} />
+          </div>
+          <div className="vc-transfer-caption">
+            <span>{pending ? `Faltan ${formatBytes(work.remaining.bytes)} de ${formatBytes(work.total.bytes)}` : formatBytes(work.total.bytes)}</span>
+            <span>{`${percent} %`}</span>
+          </div>
+        </>
+      ) : null}
+      <ul className="vc-activity-drives">
+        {work.disks.map((disk) => {
+          const name = disk.driveLetter ? `${disk.diskName} (${disk.driveLetter})` : disk.diskName;
+          const diskPercent = donePercent(disk);
+          return (
+            <li key={disk.diskId} className={disk.canDisconnect ? "is-ready" : "is-busy"}>
+              <div className="vc-activity-drive-head">
+                <strong title={name}>{name}</strong>
+                <span className={`vc-badge ${disk.canDisconnect ? "is-success" : "is-warning"}`}>{disk.canDisconnect ? "Puedes desconectarlo" : "Espera"}</span>
+              </div>
+              {disk.total.files > 0 ? (
+                <div className="vc-transfer-bar is-thin" aria-hidden="true"><span style={{ width: `${diskPercent}%` }} /></div>
+              ) : null}
+              <small>
+                {disk.remaining.files > 0
+                  ? `Faltan ${formatCount(disk.remaining.files)} de ${formatCount(disk.total.files)} · ${formatBytes(disk.remaining.bytes)} · ${holdLabel(disk)}`
+                  : disk.downloads > 0
+                    ? holdLabel(disk)
+                    : disk.total.files > 0
+                      ? `${files(disk.total.files)} ${disk.total.files === 1 ? "movido" : "movidos"} desde que se conectó`
+                      : "Nada pendiente con este disco"}
+              </small>
+              {disk.blocked.files > 0 ? (
+                <small className="vc-activity-drive-note">{`${files(disk.blocked.files)} esperan espacio en este disco; siguen seguros en la carpeta temporal.`}</small>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 function activityKey(companionId: string, activity: LiveActivity): string {
@@ -185,6 +283,8 @@ export function ActivityIndicator({ onNavigate }: ActivityIndicatorProps) {
             <strong>Actividad</strong>
             <button className="icon-button" onClick={() => setOpen(false)} type="button" title="Cerrar"><X size={16} /></button>
           </header>
+
+          {data?.connected ? <ConnectedWorkPanel work={data.connected} /> : null}
 
           {!busy ? (
             <p className="vc-activity-idle"><ShieldCheck size={16} aria-hidden="true" /> Sin actividad en este momento.</p>

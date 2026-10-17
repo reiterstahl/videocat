@@ -25,6 +25,7 @@ import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
 import { cancelVanishedTransfers } from "./transfers.js";
 import { activitiesSchema, storeActivity } from "../lib/companion-activity.js";
+import { noteMountedDisks } from "../lib/connected-work.js";
 
 const fingerprintRepairBatchLimit = 5_000;
 // Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
@@ -265,6 +266,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ message: "Companion identity header and body must match" });
     }
     const mountedDiskIds = [...new Set(body.mountedDiskIds ?? [])];
+    noteMountedDisks(body.companionId ?? "companion", mountedDiskIds);
     const metrics: Promise<unknown>[] = [
       setAppMetricValue("companion_last_seen_at", BigInt(Date.now())),
       setAppMetricValue("companion_version", BigInt(body.version ?? 0)),

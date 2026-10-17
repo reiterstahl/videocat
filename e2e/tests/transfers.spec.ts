@@ -18,14 +18,16 @@ function simulatedCompanion(request: APIRequestContext, stagingDir: string, root
     if (!response.ok()) throw new Error(`${response.status()} ${await response.text()}`);
     return response.json() as Promise<T>;
   };
+  const heartbeat = (mounted: string[]) => agent("/api/agent/companion/heartbeat", {
+    companionId,
+    mountedDiskIds: mounted,
+    staging: { configured: true, path: stagingDir, freeBytes: 400_000_000_000, totalBytes: 500_000_000_000 }
+  });
   return {
     agent,
+    heartbeat,
     async run(mounted: string[]) {
-      await agent("/api/agent/companion/heartbeat", {
-        companionId,
-        mountedDiskIds: mounted,
-        staging: { configured: true, path: stagingDir, freeBytes: 400_000_000_000, totalBytes: 500_000_000_000 }
-      });
+      await heartbeat(mounted);
       const { items } = await agent<{ items: TransferWorkItem[] }>(`/api/agent/transfers/work?mounted=${encodeURIComponent(mounted.join(","))}`);
       for (const item of items) {
         await processTransferItem({
@@ -93,6 +95,17 @@ test("a consolidation travels through a simulated Companion: source drive, stagi
     await expect(page.locator(".vc-needs-group.is-sending")).toContainText(`Conecta Origen ${suffix} para continuar`);
     await expect(page.locator(".vc-needs-group.is-receiving")).not.toContainText(`Origen ${suffix}`);
 
+    // The source drive is plugged in: Actividad says what is left before it can be unplugged.
+    await companion.heartbeat([sourceVolume]);
+    await page.reload();
+    await page.locator(".vc-activity-button").click();
+    const connected = page.locator(".vc-activity-connected");
+    await expect(connected).toContainText("Faltan 1 de 1 por mover");
+    const sourceRow = connected.locator(".vc-activity-drives li", { hasText: `Origen ${suffix}` });
+    await expect(sourceRow.locator(".vc-badge")).toHaveText("Espera");
+    await expect(sourceRow).toContainText("1 archivo por salir");
+    await page.keyboard.press("Escape");
+
     // Only the source drive is connected: the file leaves it, verified, and waits in staging.
     expect(await companion.run([sourceVolume])).toBe(1);
     await expect(fs.access(path.join(sourceRoot, folder, "toma-01.mp4"))).rejects.toThrow();
@@ -101,6 +114,10 @@ test("a consolidation travels through a simulated Companion: source drive, stagi
     expect(createHash("sha256").update(await fs.readFile(path.join(stagingDir, staged[0]))).digest("hex")).toBe(digest);
 
     await page.reload();
+    await page.locator(".vc-activity-button").click();
+    await expect(connected).toContainText("Listo: 1 archivo movido");
+    await expect(connected.locator(".vc-activity-drives li", { hasText: `Origen ${suffix}` }).locator(".vc-badge")).toHaveText("Puedes desconectarlo");
+    await page.keyboard.press("Escape");
     const job = page.locator(".vc-transfers-list > li", { hasText: folder });
     // Receiving drives come first; the destination now waits for its file there.
     await expect(page.locator(".vc-needs-group").first()).toHaveClass(/is-receiving/);

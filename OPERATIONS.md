@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.33
+
+- **Actividad › Con los discos conectados**, at the top of the panel: *Faltan x de y por mover* with a progress bar, overall and per connected drive, and a badge per drive: **Puedes desconectarlo** or **Espera** (files still to leave it, files that can arrive now, queued downloads). "y" counts what was done with that drive since it was connected; the connection time is kept in server memory, so after a server restart it starts again at the next heartbeat. Files waiting for room on a drive do not hold it: they stay safe in the staging folder.
+- **Palabras clave** of starred folders now match exactly, as whole words of the file name, ignoring case, accents and separators (`GATO`, `.gato.`, `mi_gato_2024` match; `gatos`, `gatito`, `gatoo` do not). The folder name itself keeps the broad search (contained, one letter of difference). Saved keywords keep working; some files that matched before may no longer be offered.
+- No migrations or configuration changes; the Windows Companion is 0.2.9.
+
 ## Upgrading to 0.2.32
 
 - **Traslados › Para continuar** in two groups, side by side: *Reciben material* (drives that files are copied onto from the staging folder, including *Faltará espacio* and *Libera espacio*) first, and *Copian a la carpeta temporal* (drives whose files still have to leave). Each group shows how many drives and how much data.

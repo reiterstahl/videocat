@@ -56,15 +56,37 @@ export function nameMatch(filename: string, key: string): NameMatch | null {
   return null;
 }
 
-export type SearchKey = { key: string; label: string };
+// Words of a name: runs of letters or of digits, without case or accents ("GATO_2024" → gato, 2024).
+function nameWords(value: string): string[] {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().match(/[a-z]+|[0-9]+/g) ?? [];
+}
+
+// A keyword matches only as whole words: GATO, gato, .GATO., "gato 2024.mp4" or Boda-Ana for
+// "boda ana"; never gatos, gatito or a one-letter difference. Separators inside the keyword do
+// not matter either ("testing001" matches "Testing_001").
+export function wordMatch(filename: string, key: string): boolean {
+  if (key.length < minSearchKeyLength) return false;
+  const words = nameWords(stem(filename));
+  for (let start = 0; start < words.length; start += 1) {
+    let joined = "";
+    for (let end = start; end < words.length && joined.length < key.length; end += 1) {
+      joined += words[end];
+      if (joined === key) return true;
+    }
+  }
+  return false;
+}
+
+// "exact" keys (the extra keywords) match whole words only; the folder name keeps the broad search.
+export type SearchKey = { key: string; label: string; exact?: boolean };
 
 // Search keys for a folder: its own name plus optional extra keywords, deduplicated and long enough.
 export function searchKeys(folderName: string, keywords: readonly string[] = []): SearchKey[] {
   const keys: SearchKey[] = [];
-  for (const label of [folderName, ...keywords]) {
+  [folderName, ...keywords].forEach((label, index) => {
     const key = matchKey(label);
-    if (key.length >= minSearchKeyLength && !keys.some((entry) => entry.key === key)) keys.push({ key, label: label.trim() });
-  }
+    if (key.length >= minSearchKeyLength && !keys.some((entry) => entry.key === key)) keys.push({ key, label: label.trim(), ...(index > 0 ? { exact: true } : {}) });
+  });
   return keys;
 }
 
@@ -72,7 +94,7 @@ export function searchKeys(folderName: string, keywords: readonly string[] = [])
 export function bestNameMatch(filename: string, keys: readonly SearchKey[]): { match: NameMatch; keyword: string } | null {
   let similar: { match: NameMatch; keyword: string } | null = null;
   for (const entry of keys) {
-    const match = nameMatch(filename, entry.key);
+    const match = entry.exact ? (wordMatch(filename, entry.key) ? "exact" : null) : nameMatch(filename, entry.key);
     if (match === "exact") return { match, keyword: entry.label };
     if (match === "similar" && !similar) similar = { match, keyword: entry.label };
   }

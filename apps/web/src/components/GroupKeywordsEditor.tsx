@@ -70,7 +70,7 @@ export function GroupKeywordsEditor({ destinationId, keywords, onSaved }: GroupK
   return (
     <div className="vc-keywords is-editing">
       <span className="vc-keywords-label"><Tags size={13} aria-hidden="true" /> Palabras clave</span>
-      <p className="vc-keywords-hint">Agrupar archivos también busca estas palabras, con las mismas reglas que el nombre de la carpeta (sin importar mayúsculas, acentos, puntos ni separadores, y con una letra de diferencia). Son opcionales.</p>
+      <p className="vc-keywords-hint">Agrupar archivos también busca estas palabras, pero exactas: como palabra completa del nombre del archivo, sin importar mayúsculas, acentos, puntos ni separadores (GATO, gato, .gato. o mi_gato_2024 sí; gatos, gatito o gatoo no). El nombre de la carpeta sigue con la búsqueda amplia. Son opcionales.</p>
       {draft.length > 0 ? (
         <ul className="vc-keywords-list">
           {draft.map((keyword) => (

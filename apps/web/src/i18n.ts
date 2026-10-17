@@ -131,6 +131,12 @@ const en: Record<string, string> = {
   "Vaciar catálogo": "Empty catalog",
   "Eliminar unidad": "Remove drive",
   "Reciben material": "Receiving files",
+  "Con los discos conectados": "With the connected drives",
+  "Nada por mover": "Nothing to move",
+  "Puedes desconectarlo": "Safe to disconnect",
+  "Espera": "Wait",
+  "Nada pendiente con este disco": "Nothing pending on this drive",
+  "Avance con los discos conectados": "Progress with the connected drives",
   "Copian a la carpeta temporal": "Copying to the staging folder",
   "Discos a los que hay que copiar archivos desde la carpeta temporal.": "Drives that files have to be copied onto from the staging folder.",
   "Discos con archivos que todavía tienen que salir hacia la carpeta temporal.": "Drives with files that still have to go to the staging folder.",
@@ -273,7 +279,7 @@ const en: Record<string, string> = {
   "Nueva palabra clave": "New keyword",
   "Ej. prueba final, sesión 2": "E.g. final test, session 2",
   "No se pudieron guardar las palabras clave.": "The keywords could not be saved.",
-  "Agrupar archivos también busca estas palabras, con las mismas reglas que el nombre de la carpeta (sin importar mayúsculas, acentos, puntos ni separadores, y con una letra de diferencia). Son opcionales.": "Group files also looks for these words, with the same rules as the folder name (ignoring case, accents, dots and separators, and allowing one letter of difference). They are optional.",
+  "Agrupar archivos también busca estas palabras, pero exactas: como palabra completa del nombre del archivo, sin importar mayúsculas, acentos, puntos ni separadores (GATO, gato, .gato. o mi_gato_2024 sí; gatos, gatito o gatoo no). El nombre de la carpeta sigue con la búsqueda amplia. Son opcionales.": "Agrupar archivos also looks for these words, but exactly: as a whole word of the file name, ignoring case, accents, dots and separators (GATO, gato, .gato. or mi_gato_2024 match; gatos, gatito or gatoo do not). The folder name keeps the broad search. They are optional.",
   "Ningún archivo de los discos tiene un nombre parecido que no esté ya en la carpeta, en otro traslado o ignorado. Puedes sumar palabras clave en Traslados › Carpetas con estrella.": "No file on the drives has a similar name that is not already in the folder, in another transfer or ignored. You can add keywords in Transfers › Starred folders.",
   "Actividad": "Activity",
   "Sin actividad en este momento": "No activity right now",
@@ -1236,6 +1242,33 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Ningún video de esta carpeta coincide con "(.+)"\.$/);
   if (match) return `No video in this folder matches "${match[1]}".`;
+
+  match = text.match(/^Faltan ([\d.,\s]+) de ([\d.,\s]+) por mover$/);
+  if (match) return `${match[1]} of ${match[2]} left to move`;
+
+  match = text.match(/^Faltan (.+) de (.+)$/);
+  if (match && !match[2].includes(" · ")) return `${match[1]} of ${match[2]} left`;
+
+  match = text.match(/^Faltan ([\d.,\s]+) de ([\d.,\s]+) · (.+)$/);
+  if (match) {
+    const parts = match[3].split(" · ").map((part) => part
+      .replace(/^([\d.,\s]+) (archivos?) por salir$/, (_all, count, noun) => `${count} ${noun === "archivo" ? "file" : "files"} to leave`)
+      .replace(/^([\d.,\s]+) (archivos?) por llegar$/, (_all, count, noun) => `${count} ${noun === "archivo" ? "file" : "files"} to arrive`)
+      .replace(/^([\d.,\s]+) (descargas?) en cola$/, (_all, count, noun) => `${count} ${noun === "descarga" ? "download" : "downloads"} queued`));
+    return `${match[1]} of ${match[2]} left · ${parts.join(" · ")}`;
+  }
+
+  match = text.match(/^Listo: ([\d.,\s]+) (archivos?) movidos?$/);
+  if (match) return `Done: ${match[1]} ${match[2] === "archivo" ? "file" : "files"} moved`;
+
+  match = text.match(/^([\d.,\s]+) (archivos?) movidos? desde que se conectó$/);
+  if (match) return `${match[1]} ${match[2] === "archivo" ? "file" : "files"} moved since it was connected`;
+
+  match = text.match(/^([\d.,\s]+) (archivos?) esperan espacio en este disco; siguen seguros en la carpeta temporal\.$/);
+  if (match) return `${match[1]} ${match[2] === "archivo" ? "file waits" : "files wait"} for room on this drive; they stay safe in the staging folder.`;
+
+  match = text.match(/^([\d.,\s]+) (descargas?) en cola$/);
+  if (match) return `${match[1]} ${match[2] === "descarga" ? "download" : "downloads"} queued`;
 
   match = text.match(/^([\d.,\s]+) (disco|discos) · (.+)$/);
   if (match) return `${match[1]} ${match[2] === "disco" ? "drive" : "drives"} · ${match[3]}`;

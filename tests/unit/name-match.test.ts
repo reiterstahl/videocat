@@ -36,6 +36,25 @@ test("one edit check", () => {
   assert.ok(!withinOneEdit("abc", "a"));
 });
 
+test("keywords match whole words only, in any case and between any separators", async () => {
+  const { bestNameMatch, searchKeys, wordMatch } = await import("../../apps/server/src/lib/name-match.ts");
+  for (const name of ["GATO.mp4", "gato.mp4", "gaTO.mov", ".GATO..mp4", "clip.gato.mp4", "mi_gato_negro.mp4", "Gato 2024.mp4", "gato2024.mp4", "Gáto.mp4"]) {
+    assert.equal(wordMatch(name, "gato"), true, name);
+  }
+  for (const name of ["gatos.mp4", "gatito.mp4", "agato.mp4", "gat0.mp4", "gatoo.mp4", "GatoNegro.mp4"]) {
+    assert.equal(wordMatch(name, "gato"), false, name);
+  }
+  // Several words, and separators that do not matter inside the keyword.
+  assert.equal(wordMatch("BODA-ANA_toma1.mov", "bodaana"), true);
+  assert.equal(wordMatch("Testing_001.mp4", "testing001"), true);
+  assert.equal(wordMatch("bodaanabel.mp4", "bodaana"), false);
+  // The folder name keeps the broad search; the keyword does not.
+  const keys = searchKeys("Mascotas", ["Gato"]);
+  assert.deepEqual(bestNameMatch("mascota.mp4", keys), { match: "similar", keyword: "Mascotas" });
+  assert.deepEqual(bestNameMatch("el.GATO.final.mp4", keys), { match: "exact", keyword: "Gato" });
+  assert.equal(bestNameMatch("gatos.mp4", keys), null);
+});
+
 test("extra keywords widen the search and say which one matched", async () => {
   const { bestNameMatch, searchKeys } = await import("../../apps/server/src/lib/name-match.ts");
   const keys = searchKeys("testing001", ["Prueba Final", "pruebafinal", "ab", " Boda-Ana "]);
