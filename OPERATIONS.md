@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.27
+
+- **Mover por etiqueta** in Traslados: a standing rule "tag → starred folder". Every video with the tag, including the ones tagged later, joins the rule's transfer and moves through the Companion staging folder when its drive is connected. Removing the tag from a video, or removing the rule, withdraws what has not left its drive yet. One folder per tag; "Marcado para borrar" cannot be used. Favorite folders, protected folders, files already in the folder and identical files at the destination are left alone.
+- Migration `0025_transfer_tag_rules` runs automatically. No configuration changes; the Windows Companion is 0.2.8.
+
 ## Upgrading to 0.2.26
 
 - Transfers no longer wait forever for a file that was moved or deleted by hand: when a scan no longer finds it, its transfers that had not started are cancelled with the reason ("El archivo ya no estaba en su disco en el último escaneo"). Files already in the staging folder are never touched. Existing stuck items are cleared the next time Traslados is opened.
