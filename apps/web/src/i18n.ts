@@ -176,6 +176,28 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Mover por etiqueta": "Move by tag",
+  "Elige una etiqueta y una carpeta con estrella: todos los videos con esa etiqueta, también los que la reciban después, van a esa carpeta cuando se conecta su disco. Si a un video le quitas la etiqueta antes de que salga de su disco, se queda donde está.": "Choose a tag and a starred folder: every video with that tag, including the ones tagged later, goes to that folder when its drive is connected. If you remove the tag from a video before it leaves its drive, it stays where it is.",
+  "Primero marca una carpeta con estrella (en Uso por carpeta o en Agrupar archivos).": "First star a folder (in Folder usage or in Group files).",
+  "Etiqueta": "Tag",
+  "Elige una etiqueta": "Choose a tag",
+  "Etiqueta para mover": "Tag to move",
+  "Carpeta con estrella": "Starred folder",
+  "Elige una carpeta": "Choose a folder",
+  "Carpeta destino de la etiqueta": "Destination folder for the tag",
+  "Crear regla": "Create rule",
+  "Sin reglas por etiqueta todavía.": "No tag rules yet.",
+  "Quitar regla": "Remove rule",
+  "Movimientos por etiqueta": "Moves by tag",
+  "Sin movimientos por etiqueta todavía.": "No moves by tag yet.",
+  "Para dejar de mover, quita la regla.": "To stop moving, remove the rule.",
+  "Regla creada. Los videos con esa etiqueta se moverán cuando se conecte su disco.": "Rule created. Videos with that tag will move when their drive is connected.",
+  "Regla quitada.": "Rule removed.",
+  "No se pudieron cargar las reglas por etiqueta.": "Tag rules could not be loaded.",
+  "No se pudo crear la regla.": "The rule could not be created.",
+  "No se pudo quitar la regla.": "The rule could not be removed.",
+  "Esa etiqueta ya mueve videos a una carpeta.": "That tag already moves videos to a folder.",
+  "Los videos marcados para borrar no se mueven.": "Videos marked for deletion are not moved.",
   "Tu sesión de acceso expiró": "Your access session expired",
   "El sitio está protegido por un acceso previo (por ejemplo, Cloudflare Access) y pide iniciar sesión otra vez. Tus datos no se perdieron.": "This site is protected by an access gateway (for example Cloudflare Access) that asks you to sign in again. Your data is safe.",
   "Volver a iniciar sesión": "Sign in again",
@@ -983,6 +1005,15 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) videos · (.+?)\. Clic: abrir el video; clic derecho: ir al catálogo\.$/);
   if (match) return `${match[1]} videos · ${match[2]}. Click: open the video; right click: go to the catalog.`;
+
+  match = text.match(/^Regla creada: ([\d.,]+) (?:video ya está|videos ya están) en camino\.$/);
+  if (match) return `Rule created: ${match[1]} ${match[1] === "1" ? "video is" : "videos are"} already on the way.`;
+
+  match = text.match(/^Regla quitada: ([\d.,]+) videos? que aún no salía(?:n)? de su disco se queda(?:n)? donde está(?:n)?\.$/);
+  if (match) return `Rule removed: ${match[1]} ${match[1] === "1" ? "video that had not left its drive stays" : "videos that had not left their drive stay"} where they are.`;
+
+  match = text.match(/^([\d.,\s]+) con la etiqueta · (.+?) · ([\d.,\s]+) en camino · ([\d.,\s]+) movidos$/);
+  if (match) return `${match[1]} tagged · ${match[2]} · ${match[3]} on the way · ${match[4]} moved`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

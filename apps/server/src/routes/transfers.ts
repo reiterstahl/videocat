@@ -56,6 +56,12 @@ export function destinationReserveBytes(totalBytes: number): number {
 const companionOnlineMs = 45_000;
 const groupCandidateLimit = 2000;
 const groupKeywordLimit = 20;
+const tagRuleBatch = 1000;
+
+const tagRuleSchema = z.object({
+  categoryKey: z.string().trim().min(1).max(100),
+  destinationId: z.string().uuid()
+});
 
 const favoriteLocationsSchema = z.object({
   locations: z.array(z.object({ d: z.string().uuid(), p: z.string().trim().min(1).max(2000) })).min(1).max(50)
@@ -183,7 +189,7 @@ async function planTransfer(destination: DestinationWithDisk, files: PlannedFile
 }
 
 // Creates a transfer, or adds the files to an open one (a grouping session adds one file at a time).
-async function createJob(reply: FastifyReply, kind: "consolidate" | "group", destination: DestinationWithDisk, plan: TransferPlan, label?: string, existingJobId?: string) {
+async function createJob(reply: FastifyReply, kind: "consolidate" | "group" | "tag", destination: DestinationWithDisk, plan: TransferPlan, label?: string, existingJobId?: string) {
   try {
     const job = await prisma.$transaction(async (tx) => {
       const created = existingJobId
@@ -232,6 +238,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       ? await prisma.disk.findMany({ where: disksByAgentIdentifiers(identifiers), select: { id: true } })
       : [];
     const mounted = mountedDisks.map((disk) => disk.id);
+    // Tagged videos on the drives that just connected join their "Mover por etiqueta" transfer.
+    if (mounted.length > 0) await syncTagRules({ diskIds: mounted });
 
     const items = await prisma.transferItem.findMany({
       where: {
@@ -496,6 +504,71 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, removed: removed.count };
   });
 
+  // ------------------------------------------------------------ Mover por etiqueta
+  app.get("/api/transfers/tag-rules", { preHandler: requireWebAuth }, async () => {
+    const rules = await prisma.transferTagRule.findMany({
+      include: { category: true, destination: { include: { disk: { select: { name: true } } } } },
+      orderBy: { createdAt: "asc" }
+    });
+    const result = [];
+    for (const rule of rules) {
+      const [tagged, items] = await Promise.all([
+        prisma.videoFile.aggregate({ where: visibleFilesWhere(false, withTag(rule.categoryKey)), _count: { _all: true }, _sum: { sizeBytes: true } }),
+        prisma.transferItem.groupBy({ by: ["state"], where: { job: { tagRuleId: rule.id } }, _count: { _all: true } })
+      ]);
+      const count = (states: string[]) => items.filter((item) => states.includes(item.state)).reduce((sum, item) => sum + item._count._all, 0);
+      result.push({
+        id: rule.id,
+        category: { key: rule.category.key, label: rule.category.label, color: rule.category.color },
+        destination: { id: rule.destination.id, diskId: rule.destination.diskId, diskName: rule.destination.disk.name, path: rule.destination.path },
+        taggedFiles: tagged._count._all,
+        taggedBytes: Number(tagged._sum.sizeBytes ?? 0n),
+        onTheirWay: count(unfinishedStates),
+        moved: count(["done"]),
+        createdAt: rule.createdAt
+      });
+    }
+    return { rules: result };
+  });
+
+  app.post("/api/transfers/tag-rules", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = tagRuleSchema.parse(request.body);
+    if (body.categoryKey === "delete") return reply.code(400).send({ message: "Videos marked for deletion are not moved", reason: "delete_tag" });
+    const [category, destination] = await Promise.all([
+      prisma.curationCategory.findUnique({ where: { key: body.categoryKey } }),
+      prisma.transferDestination.findUnique({ where: { id: body.destinationId } })
+    ]);
+    if (!category) return reply.code(404).send({ message: "Tag not found" });
+    if (!destination) return reply.code(404).send({ message: "Destination not found" });
+    try {
+      const rule = await prisma.transferTagRule.create({ data: { categoryKey: body.categoryKey, destinationId: body.destinationId } });
+      await recordAction({ action: "transfer.tag.rule.add", actorType: "web", actorId: "admin", target: category.label, result: { destination: destination.path } });
+      const sync = await syncTagRules({ force: true });
+      return { rule, added: sync.added };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return reply.code(409).send({ message: "That tag already moves videos to a folder", reason: "tag_taken" });
+      }
+      throw error;
+    }
+  });
+
+  // Removing a rule stops new moves; files that already left their drive finish their way.
+  app.delete("/api/transfers/tag-rules/:id", { preHandler: requireWebAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const rule = await prisma.transferTagRule.findUnique({ where: { id }, include: { category: true } });
+    if (!rule) return reply.code(404).send({ message: "Rule not found" });
+    const pending = await prisma.transferItem.findMany({ where: { state: "pending", job: { tagRuleId: id } }, select: { jobId: true } });
+    const withdrawn = (await prisma.transferItem.updateMany({
+      where: { state: "pending", job: { tagRuleId: id } },
+      data: { state: "cancelled", error: `Se quitó la regla de la etiqueta ${rule.category.label}.` }
+    })).count;
+    for (const jobId of new Set(pending.map((item) => item.jobId))) await closeFinishedJob(jobId);
+    await prisma.transferTagRule.delete({ where: { id } });
+    await recordAction({ action: "transfer.tag.rule.remove", actorType: "web", actorId: "admin", target: rule.category.label, result: { withdrawn } });
+    return { ok: true, withdrawn };
+  });
+
   // Optional extra words for "Agrupar archivos"; the folder name is always searched.
   app.put("/api/transfers/destinations/:id/keywords", { preHandler: requireWebAuth }, async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
@@ -737,6 +810,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/transfers/summary", { preHandler: requireWebAuth }, async () => {
     await cancelVanishedTransfers();
+    await syncTagRules();
     const items = await prisma.transferItem.findMany({
       where: { state: { in: unfinishedStates } },
       select: { state: true, sourceDiskId: true, targetDiskId: true, sizeBytes: true, error: true, updatedAt: true, job: { select: { status: true } } }
@@ -837,6 +911,82 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, status, cancelledFiles };
     });
   }
+}
+
+// ------------------------------------------------------------ Mover por etiqueta
+function withTag(categoryKey: string): Prisma.VideoFileWhereInput {
+  return { OR: [{ categories: { some: { categoryKey } } }, { curationStatus: categoryKey }] };
+}
+
+const tagSyncIntervalMs = 15_000;
+let lastFullTagSync = 0;
+
+// Brings every tag rule up to date: videos that carry the tag join the rule's transfer, and
+// videos that lost it leave it while nothing has happened to them yet. Scoped to some drives when
+// a Companion connects them; a full pass runs at most every 15 seconds.
+export async function syncTagRules(options: { diskIds?: string[]; force?: boolean } = {}): Promise<{ added: number; withdrawn: number }> {
+  if (!options.diskIds && !options.force) {
+    if (Date.now() - lastFullTagSync < tagSyncIntervalMs) return { added: 0, withdrawn: 0 };
+    lastFullTagSync = Date.now();
+  }
+  const rules = await prisma.transferTagRule.findMany({ include: { destination: { include: { disk: true } }, category: true } });
+  let added = 0;
+  let withdrawn = 0;
+  for (const rule of rules) {
+    const stale = await prisma.transferItem.findMany({
+      where: { state: "pending", job: { tagRuleId: rule.id }, OR: [{ videoFileId: null }, { videoFile: { NOT: withTag(rule.categoryKey) } }] },
+      select: { id: true, jobId: true }
+    });
+    if (stale.length > 0) {
+      withdrawn += (await prisma.transferItem.updateMany({
+        where: { id: { in: stale.map((item) => item.id) }, state: "pending" },
+        data: { state: "cancelled", error: `Ya no tiene la etiqueta ${rule.category.label}.` }
+      })).count;
+      for (const jobId of new Set(stale.map((item) => item.jobId))) await closeFinishedJob(jobId);
+    }
+
+    const files = await prisma.videoFile.findMany({
+      where: visibleFilesWhere(false, {
+        ...withTag(rule.categoryKey),
+        ...(options.diskIds ? { diskId: { in: options.diskIds } } : {}),
+        transferItems: { none: { state: { in: unfinishedStates } } }
+      }),
+      select: plannedFileSelect,
+      take: tagRuleBatch
+    });
+    if (files.length === 0) continue;
+    const plan = await planTransfer(rule.destination, files);
+    if (plan.movable.length === 0) continue;
+    const open = await prisma.transferJob.findFirst({
+      where: { tagRuleId: rule.id, status: { in: ["active", "paused"] } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true }
+    });
+    const jobId = open?.id ?? (await prisma.transferJob.create({
+      data: { kind: "tag", destinationId: rule.destinationId, tagRuleId: rule.id, label: rule.category.label }
+    })).id;
+    // Another pass may have queued some of them meanwhile: those are skipped, never duplicated.
+    const created = await prisma.transferItem.createMany({
+      data: plan.movable.map((file) => ({
+        jobId,
+        videoFileId: file.id,
+        filename: file.filename,
+        sourceDiskId: file.diskId,
+        sourceRelativePath: file.relativePath,
+        targetDiskId: rule.destination.diskId,
+        targetFolder: rule.destination.path,
+        sizeBytes: file.sizeBytes,
+        expectedModifiedAt: file.modifiedAt
+      })),
+      skipDuplicates: true
+    });
+    added += created.count;
+    if (created.count === 0 && !open) await prisma.transferJob.deleteMany({ where: { id: jobId, items: { none: {} } } });
+  }
+  if (added > 0 || withdrawn > 0) {
+    await recordAction({ action: "transfer.tag.sync", actorType: "system", result: { added, withdrawn, diskIds: options.diskIds?.length ?? null } });
+  }
+  return { added, withdrawn };
 }
 
 // A file that a scan no longer found (moved or deleted by hand) cannot leave its drive: its

@@ -23,6 +23,7 @@ import { needDetail, needTitle, stagingReserveRatio, transferStateLabels, transf
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import { GroupKeywordsEditor } from "../components/GroupKeywordsEditor";
+import { TagRulesSection } from "../components/TagRulesSection";
 import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
 
 type TransfersViewProps = {
@@ -236,7 +237,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
           <span className={`vc-badge ${job.status === "paused" ? "is-warning" : job.status === "done" ? "is-success" : ""}`}>{jobStatusLabels[job.status]}</span>
         </div>
         <p className="vc-transfers-job-route">
-          <span className={`vc-kind-tag is-${job.kind}`}>{job.kind === "consolidate" ? "Consolidar" : "Agrupar"}</span>
+          <span className={`vc-kind-tag is-${job.kind}`}>{job.kind === "consolidate" ? "Consolidar" : job.kind === "group" ? "Agrupar" : "Etiqueta"}</span>
           <Star size={12} aria-hidden="true" />
           <span>{`${job.destination.diskName}: ${job.destination.path}`}</span>
         </p>
@@ -260,7 +261,11 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             ) : (
               <button className="vc-button is-small" disabled={busy} onClick={() => void act(job, "resume")} type="button"><Play size={14} /> Reanudar</button>
             )}
-            <button className="vc-button is-small is-ghost" disabled={busy} onClick={() => setConfirmCancel(job)} type="button"><X size={14} /> Cancelar</button>
+            {job.kind === "tag" ? (
+              <span className="vc-transfers-detail">Para dejar de mover, quita la regla.</span>
+            ) : (
+              <button className="vc-button is-small is-ghost" disabled={busy} onClick={() => setConfirmCancel(job)} type="button"><X size={14} /> Cancelar</button>
+            )}
           </div>
         ) : null}
         {open ? (
@@ -287,7 +292,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     const list = jobsOf(kind);
     if (jobs === null) return <div className="loading">Cargando...</div>;
     if (list.length === 0) {
-      return <p className="vc-folders-empty">{kind === "consolidate" ? "Sin consolidaciones todavía." : "Sin archivos agrupados todavía."}</p>;
+      return <p className="vc-folders-empty">{kind === "consolidate" ? "Sin consolidaciones todavía." : kind === "group" ? "Sin archivos agrupados todavía." : "Sin movimientos por etiqueta todavía."}</p>;
     }
     return <ul className="vc-transfers-list">{list.map(renderJob)}</ul>;
   }
@@ -487,6 +492,16 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
           {renderJobs("group")}
         </section>
       </div>
+
+      <TagRulesSection
+        destinations={destinations}
+        refreshKey={refreshKey}
+        jobs={renderJobs("tag")}
+        onChanged={() => {
+          void reload();
+          onChanged();
+        }}
+      />
 
       {consolidating ? (
         <ConsolidateDialog

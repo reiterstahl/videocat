@@ -1301,6 +1301,66 @@ test("a scan that no longer finds a file cancels its transfers that had not star
   }
 });
 
+test("a tag rule moves every video with that tag to a starred folder, now and later", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const tag = `proyecto-${suffix}`;
+  const companionId = crypto.randomUUID();
+  const agent = { ...agentHeaders, "x-videocat-companion-id": companionId };
+  const target = await prisma.disk.create({ data: { name: `Etiqueta destino ${suffix}`, volumeId: `td-${suffix}`, totalBytes: 4_000_000_000_000n, freeBytes: 1_000_000_000_000n } });
+  const source = await prisma.disk.create({ data: { name: `Etiqueta origen ${suffix}`, volumeId: `ts-${suffix}`, totalBytes: 1_000_000_000_000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  try {
+    await prisma.curationCategory.create({ data: { key: tag, label: `Proyecto ${suffix}`, color: "#2A9FD6" } });
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: target.id, filename: "base.mp4", extension: "mp4", absolutePath: "E:/x", relativePath: "Destino/base.mp4", sizeBytes: 10n },
+        { diskId: source.id, filename: "uno.mp4", extension: "mp4", absolutePath: "F:/1", relativePath: "A/uno.mp4", sizeBytes: 5n },
+        { diskId: source.id, filename: "dos.mp4", extension: "mp4", absolutePath: "F:/2", relativePath: "B/dos.mp4", sizeBytes: 6n },
+        { diskId: source.id, filename: "sin.mp4", extension: "mp4", absolutePath: "F:/3", relativePath: "C/sin.mp4", sizeBytes: 7n }
+      ]
+    });
+    const files = await prisma.videoFile.findMany({ where: { diskId: source.id } });
+    const id = (name: string) => files.find((file) => file.filename === `${name}.mp4`)!.id;
+    await prisma.videoFileCategory.create({ data: { videoFileId: id("uno"), categoryKey: tag } });
+    const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: "Destino" } })).json().destination.id;
+
+    const forDelete = await app.inject({ method: "POST", url: "/api/transfers/tag-rules", headers: webMutationHeaders(cookie), payload: { categoryKey: "delete", destinationId } });
+    assert.equal(forDelete.statusCode, 400, "videos marked for deletion are not moved");
+    const created = await app.inject({ method: "POST", url: "/api/transfers/tag-rules", headers: webMutationHeaders(cookie), payload: { categoryKey: tag, destinationId } });
+    assert.equal(created.statusCode, 200);
+    assert.equal(created.json().added, 1, "the video that already has the tag joins right away");
+    const again = await app.inject({ method: "POST", url: "/api/transfers/tag-rules", headers: webMutationHeaders(cookie), payload: { categoryKey: tag, destinationId } });
+    assert.equal(again.statusCode, 409, "one folder per tag");
+    const job = await prisma.transferJob.findFirstOrThrow({ where: { tagRule: { categoryKey: tag } } });
+    assert.equal(job.kind, "tag");
+
+    // Tagged later: it joins when its drive connects (the Companion asks for work).
+    await prisma.videoFileCategory.create({ data: { videoFileId: id("dos"), categoryKey: tag } });
+    const work = (await app.inject({ method: "GET", url: `/api/agent/transfers/work?mounted=ts-${suffix}`, headers: agent })).json().items;
+    assert.deepEqual(work.map((item: { filename: string }) => item.filename).sort(), ["dos.mp4", "uno.mp4"]);
+
+    // The tag is removed before the file left its drive: it leaves the transfer.
+    await prisma.videoFileCategory.delete({ where: { videoFileId_categoryKey: { videoFileId: id("uno"), categoryKey: tag } } });
+    await app.inject({ method: "GET", url: `/api/agent/transfers/work?mounted=ts-${suffix}`, headers: agent });
+    const withdrawn = await prisma.transferItem.findFirstOrThrow({ where: { videoFileId: id("uno") } });
+    assert.equal(withdrawn.state, "cancelled");
+    assert.match(withdrawn.error ?? "", /Ya no tiene la etiqueta/);
+
+    const listed = (await app.inject({ method: "GET", url: "/api/transfers/tag-rules", headers: { cookie } })).json().rules.find((rule: { category: { key: string } }) => rule.category.key === tag);
+    assert.deepEqual([listed.taggedFiles, listed.onTheirWay, listed.destination.path], [1, 1, "Destino"]);
+
+    const removed = await app.inject({ method: "DELETE", url: `/api/transfers/tag-rules/${listed.id}`, headers: webMutationHeaders(cookie) });
+    assert.equal(removed.json().withdrawn, 1, "removing the rule withdraws what had not started");
+    assert.equal(await prisma.transferTagRule.count({ where: { categoryKey: tag } }), 0);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
+    for (const disk of [source, target]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+    await prisma.curationCategory.deleteMany({ where: { key: tag } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

@@ -322,3 +322,37 @@ test("a right click marks a folder as favorite and its videos are no longer offe
   await expect(tile.locator(".vc-favorite-mark")).toHaveCount(0);
   await group.locator(".vc-folders-locations li").first().getByRole("button", { name: /Quitar estrella/ }).click();
 });
+
+test("a tag rule sends tagged videos to a starred folder and can be removed", async ({ page }) => {
+  await openView(page, "/traslados");
+  // A starred folder to receive them.
+  await page.getByRole("textbox", { name: "Buscar carpeta para agrupar archivos" }).fill("boda");
+  await page.locator(".vc-transfers-folder-results li").first().getByRole("button", { name: "Agrupar aquí" }).click();
+  const session = page.getByRole("dialog", { name: "Sesión para agrupar archivos" });
+  await expect(session.locator(".vc-review-heading")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(session).toHaveCount(0);
+  await expect(page.locator(".vc-starred-card").first()).toBeVisible();
+
+  const section = page.getByRole("region", { name: "Mover por etiqueta" });
+  const tagSelect = section.getByRole("combobox", { name: "Etiqueta para mover" });
+  const options = await tagSelect.locator("option").allTextContents();
+  expect(options).not.toContain("Marcado para borrar");
+  await tagSelect.selectOption({ label: "Mantener" });
+  await section.getByRole("combobox", { name: "Carpeta destino de la etiqueta" }).selectOption({ index: 1 });
+  await section.getByRole("button", { name: "Crear regla" }).click();
+  await expect(section.locator(".vc-notice")).toContainText("Regla creada");
+  await expect(section.locator(".vc-tag-rules li")).toHaveCount(1);
+  await expect(section.locator(".vc-transfers-list > li").first()).toContainText("Etiqueta");
+
+  await section.getByRole("button", { name: "Quitar regla" }).click();
+  await expect(section.locator(".vc-notice")).toContainText("Regla quitada");
+  await expect(section.locator(".vc-tag-rules li")).toHaveCount(0);
+
+  const stars = page.locator(".vc-transfers-destinations").getByRole("button", { name: "Quitar estrella" });
+  while (await stars.count() > 0) {
+    const count = await stars.count();
+    await stars.first().click();
+    await expect(stars).toHaveCount(count - 1);
+  }
+});

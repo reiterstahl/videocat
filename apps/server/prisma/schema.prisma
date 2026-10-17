@@ -217,6 +217,7 @@ model CurationCategory {
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
   files     VideoFileCategory[]
+  tagRules  TransferTagRule[]
 
   @@index([builtIn])
   @@index([label])
@@ -325,6 +326,7 @@ model TransferDestination {
   createdAt     DateTime              @default(now())
   disk          Disk                  @relation(fields: [diskId], references: [id], onDelete: Cascade)
   jobs          TransferJob[]
+  tagRules      TransferTagRule[]
   ignored       TransferGroupIgnore[]
 
   @@unique([diskId, path])
@@ -354,12 +356,26 @@ model TransferGroupIgnore {
   @@index([videoFileId])
 }
 
+// "Mover por etiqueta": every video with this tag goes to the starred folder, now and later.
+model TransferTagRule {
+  id            String              @id @default(uuid()) @db.Uuid
+  categoryKey   String              @unique
+  destinationId String              @db.Uuid
+  createdAt     DateTime            @default(now())
+  category      CurationCategory    @relation(fields: [categoryKey], references: [key], onDelete: Cascade)
+  destination   TransferDestination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  jobs          TransferJob[]
+}
+
 model TransferJob {
   id            String              @id @default(uuid()) @db.Uuid
   kind          String
   destinationId String              @db.Uuid
   status        String              @default("active")
   label         String
+  // Set for transfers created by a "Mover por etiqueta" rule.
+  tagRuleId     String?             @db.Uuid
+  tagRule       TransferTagRule?    @relation(fields: [tagRuleId], references: [id], onDelete: SetNull)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   destination   TransferDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)

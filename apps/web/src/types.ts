@@ -182,7 +182,7 @@ export type TransferSummary = {
 
 export type TransferJob = {
   id: string;
-  kind: "consolidate" | "group";
+  kind: "consolidate" | "group" | "tag";
   label: string | null;
   status: "active" | "paused" | "cancelled" | "done";
   createdAt: string;

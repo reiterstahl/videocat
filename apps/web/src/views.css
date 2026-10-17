@@ -2829,3 +2829,121 @@ a.vc-button {
   font-family: var(--vc-font-mono);
   font-size: 0.68rem;
 }
+
+/* Mover por etiqueta: its own colour, like Consolidar and Agrupar. */
+:root {
+  --vc-tagmove: #be185d;
+}
+
+:root[data-theme="dark"] {
+  --vc-tagmove: #f472b6;
+}
+
+.vc-transfers-kind.is-tag {
+  --kind: var(--vc-tagmove);
+}
+
+.vc-kind-tag.is-tag {
+  background: color-mix(in srgb, var(--vc-tagmove) 14%, var(--vc-surface));
+  color: var(--vc-tagmove);
+}
+
+.vc-transfers-list > li.vc-transfers-job.is-tag {
+  --vc-accent-bar-color: var(--vc-tagmove);
+}
+
+.vc-transfers-job.is-tag .vc-transfers-progress {
+  background: color-mix(in srgb, var(--vc-tagmove) 18%, var(--vc-border));
+}
+
+.vc-transfers-job.is-tag .vc-transfers-progress span {
+  background: var(--vc-tagmove);
+}
+
+.vc-tag-rule-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.vc-tag-rule-form select {
+  width: 100%;
+}
+
+.vc-tag-rule-arrow {
+  margin-bottom: 10px;
+  color: var(--vc-muted);
+}
+
+.vc-tag-rules {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-tag-rules li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 10px;
+  border: 1px solid var(--vc-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+}
+
+.vc-tag-rule-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.vc-tag-rule-tag i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--tag-color, var(--vc-accent));
+}
+
+.vc-tag-rule-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-tag-rule-stats {
+  color: var(--vc-muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .vc-tag-rule-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vc-tag-rule-arrow {
+    display: none;
+  }
+
+  .vc-tag-rules li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .vc-tag-rules li > svg {
+    display: none;
+  }
+
+  .vc-tag-rule-stats {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
