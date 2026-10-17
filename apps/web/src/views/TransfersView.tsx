@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDownToLine,
   ArrowRightLeft,
+  ArrowUpFromLine,
   ChevronDown,
   ChevronRight,
   FolderInput,
@@ -19,12 +21,24 @@ import {
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
-import { driveName, needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
+import { driveName, groupNeeds, needDetail, needGroupTotals, needSortLabels, needTitle, stagingReserveRatio, transferStateLabels, transferError, type NeedSort } from "../lib/transfers";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import { GroupKeywordsEditor } from "../components/GroupKeywordsEditor";
 import { TagRulesSection } from "../components/TagRulesSection";
-import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferState, TransferSummary } from "../types";
+import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferNeed, TransferState, TransferSummary } from "../types";
+
+const needSortKey = "videocat-transfers-need-sort";
+
+// The chosen order is a per-browser convenience; "Más datos" when nothing is stored.
+function readNeedSort(): NeedSort {
+  try {
+    const stored = localStorage.getItem(needSortKey);
+    return stored === "connected" || stored === "name" ? stored : "data";
+  } catch {
+    return "data";
+  }
+}
 
 type TransfersViewProps = {
   refreshKey: number;
@@ -84,6 +98,17 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
   const [confirmCancel, setConfirmCancel] = useState<TransferJob | null>(null);
   const [groupQuery, setGroupQuery] = useState(initialGroupQuery);
   const [jobFilter, setJobFilter] = useState<JobKind | "all">("all");
+  const [needSort, setNeedSort] = useState<NeedSort>(readNeedSort);
+  const neededGroups = useMemo(() => (summary && summary.needs.length > 0 ? groupNeeds(summary.needs, needSort) : null), [needSort, summary]);
+
+  function changeNeedSort(next: NeedSort) {
+    setNeedSort(next);
+    try {
+      localStorage.setItem(needSortKey, next);
+    } catch {
+      // Without storage the order lasts for this visit.
+    }
+  }
   const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
   const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
   const [consolidating, setConsolidating] = useState<TransferDestination | null>(null);
@@ -298,6 +323,45 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     return <ul className="vc-transfers-list vc-transfers-grid">{list.map(renderJob)}</ul>;
   }
 
+  function renderNeed(need: TransferNeed) {
+    return (
+      <div key={`${need.kind}:${need.diskId}`} className="vc-need" tabIndex={0} aria-describedby={`need-${need.kind}-${need.diskId}`}>
+        <div className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.kind === "space_short" || !need.connected ? "is-warning" : ""}`}>
+          {need.kind === "free_space" || need.kind === "space_short" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
+          <div>
+            <strong>{needTitle(need)}</strong>
+            <span>{needDetail(need)}</span>
+            {need.detail ? <span className="vc-transfers-detail">{need.detail}</span> : null}
+          </div>
+        </div>
+        {need.movement && (need.movement.incoming.files > 0 || need.movement.outgoing.files > 0) ? (
+          <div className="vc-need-popover" role="tooltip" id={`need-${need.kind}-${need.diskId}`}>
+            <strong>{`Pendiente en ${driveName(need)}`}</strong>
+            {need.movement.incoming.files > 0 ? (
+              <section className="is-incoming">
+                <span>{`+ ${formatCount(need.movement.incoming.files)} ${need.movement.incoming.files === 1 ? "archivo por copiar" : "archivos por copiar"} a este disco · ${formatBytes(need.movement.incoming.bytes)}`}</span>
+                <ul>
+                  {need.movement.incoming.names.map((name) => <li key={name} title={name}>{name}</li>)}
+                  {need.movement.incoming.files > need.movement.incoming.names.length ? <li className="is-more">{`y ${formatCount(need.movement.incoming.files - need.movement.incoming.names.length)} más`}</li> : null}
+                </ul>
+              </section>
+            ) : null}
+            {need.movement.outgoing.files > 0 ? (
+              <section className="is-outgoing">
+                <span>{`− ${formatCount(need.movement.outgoing.files)} ${need.movement.outgoing.files === 1 ? "archivo saldrá" : "archivos saldrán"} de este disco · ${formatBytes(need.movement.outgoing.bytes)}`}</span>
+                <ul>
+                  {need.movement.outgoing.names.map((name) => <li key={name} title={name}>{name}</li>)}
+                  {need.movement.outgoing.files > need.movement.outgoing.names.length ? <li className="is-more">{`y ${formatCount(need.movement.outgoing.files - need.movement.outgoing.names.length)} más`}</li> : null}
+                </ul>
+              </section>
+            ) : null}
+            <small>Los que salen se borran de este disco solo después de verificar su copia en la carpeta temporal.</small>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <section className="vc-view vc-transfers" aria-label="Traslados">
       <div className="vc-panel vc-transfers-hero">
@@ -340,7 +404,16 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
 
       {stagingMissing || (summary && summary.needs.length > 0) ? (
         <section className="vc-transfers-needs-panel" aria-label="Para continuar">
-        <h3 className="vc-transfers-kind-subtitle is-first">Para continuar</h3>
+        <div className="vc-needs-head">
+          <h3 className="vc-transfers-kind-subtitle is-first">Para continuar</h3>
+          {summary && summary.needs.length > 1 ? (
+            <div className="vc-segmented" role="group" aria-label="Ordenar discos">
+              {(Object.keys(needSortLabels) as NeedSort[]).map((option) => (
+                <button key={option} type="button" aria-pressed={needSort === option} onClick={() => changeNeedSort(option)}>{needSortLabels[option]}</button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <div className="vc-transfers-needs" aria-live="polite">
           {stagingMissing ? (
             <div className="vc-status-banner is-danger">
@@ -351,42 +424,30 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
               </div>
             </div>
           ) : null}
-          {summary?.needs.map((need) => (
-            <div key={`${need.kind}:${need.diskId}`} className="vc-need" tabIndex={0} aria-describedby={`need-${need.kind}-${need.diskId}`}>
-              <div className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.kind === "space_short" || !need.connected ? "is-warning" : ""}`}>
-                {need.kind === "free_space" || need.kind === "space_short" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
-                <div>
-                  <strong>{needTitle(need)}</strong>
-                  <span>{needDetail(need)}</span>
-                  {need.detail ? <span className="vc-transfers-detail">{need.detail}</span> : null}
-                </div>
-              </div>
-              {need.movement && (need.movement.incoming.files > 0 || need.movement.outgoing.files > 0) ? (
-                <div className="vc-need-popover" role="tooltip" id={`need-${need.kind}-${need.diskId}`}>
-                  <strong>{`Pendiente en ${driveName(need)}`}</strong>
-                  {need.movement.incoming.files > 0 ? (
-                    <section className="is-incoming">
-                      <span>{`+ ${formatCount(need.movement.incoming.files)} ${need.movement.incoming.files === 1 ? "archivo por copiar" : "archivos por copiar"} a este disco · ${formatBytes(need.movement.incoming.bytes)}`}</span>
-                      <ul>
-                        {need.movement.incoming.names.map((name) => <li key={name} title={name}>{name}</li>)}
-                        {need.movement.incoming.files > need.movement.incoming.names.length ? <li className="is-more">{`y ${formatCount(need.movement.incoming.files - need.movement.incoming.names.length)} más`}</li> : null}
-                      </ul>
-                    </section>
-                  ) : null}
-                  {need.movement.outgoing.files > 0 ? (
-                    <section className="is-outgoing">
-                      <span>{`− ${formatCount(need.movement.outgoing.files)} ${need.movement.outgoing.files === 1 ? "archivo saldrá" : "archivos saldrán"} de este disco · ${formatBytes(need.movement.outgoing.bytes)}`}</span>
-                      <ul>
-                        {need.movement.outgoing.names.map((name) => <li key={name} title={name}>{name}</li>)}
-                        {need.movement.outgoing.files > need.movement.outgoing.names.length ? <li className="is-more">{`y ${formatCount(need.movement.outgoing.files - need.movement.outgoing.names.length)} más`}</li> : null}
-                      </ul>
-                    </section>
-                  ) : null}
-                  <small>Los que salen se borran de este disco solo después de verificar su copia en la carpeta temporal.</small>
-                </div>
-              ) : null}
+          {neededGroups ? (
+            <div className="vc-needs-groups">
+              {([
+                { key: "receiving", title: "Reciben material", help: "Discos a los que hay que copiar archivos desde la carpeta temporal.", icon: <ArrowDownToLine size={16} aria-hidden="true" />, items: neededGroups.receiving },
+                { key: "sending", title: "Copian a la carpeta temporal", help: "Discos con archivos que todavía tienen que salir hacia la carpeta temporal.", icon: <ArrowUpFromLine size={16} aria-hidden="true" />, items: neededGroups.sending }
+              ] as const).map((group) => (
+                <section key={group.key} className={`vc-panel vc-needs-group vc-accent-bar is-${group.key}`} aria-label={group.title}>
+                  <header>
+                    <h4>{group.icon}{group.title}</h4>
+                    <span className="vc-needs-group-total">
+                      {group.items.length === 0 ? "Nada pendiente" : (() => {
+                        const totals = needGroupTotals(group.items);
+                        return `${formatCount(totals.disks)} ${totals.disks === 1 ? "disco" : "discos"} · ${formatBytes(totals.bytes)}`;
+                      })()}
+                    </span>
+                    <p>{group.help}</p>
+                  </header>
+                  {group.items.length === 0 ? <p className="vc-folders-empty">Ningún disco en este grupo.</p> : (
+                    <div className="vc-needs-list">{group.items.map(renderNeed)}</div>
+                  )}
+                </section>
+              ))}
             </div>
-          ))}
+          ) : null}
         </div>
         </section>
       ) : null}

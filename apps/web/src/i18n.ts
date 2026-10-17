@@ -130,6 +130,16 @@ const en: Record<string, string> = {
   "Uso físico reportado por el Companion y contenido catalogado. Vaciar el catálogo no borra archivos del disco.": "Physical usage reported by the Companion and catalogued content. Emptying the catalog doesn't delete files from the drive.",
   "Vaciar catálogo": "Empty catalog",
   "Eliminar unidad": "Remove drive",
+  "Reciben material": "Receiving files",
+  "Copian a la carpeta temporal": "Copying to the staging folder",
+  "Discos a los que hay que copiar archivos desde la carpeta temporal.": "Drives that files have to be copied onto from the staging folder.",
+  "Discos con archivos que todavía tienen que salir hacia la carpeta temporal.": "Drives with files that still have to go to the staging folder.",
+  "Nada pendiente": "Nothing pending",
+  "Ningún disco en este grupo.": "No drive in this group.",
+  "Ordenar discos": "Sort drives",
+  "Más datos": "Most data",
+  "Conectados": "Connected",
+  "Nombre": "Name",
   "Buscar en el mapa": "Search the map",
   "Buscar video": "Search videos",
   "Atajo: /": "Shortcut: /",
@@ -1226,6 +1236,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Ningún video de esta carpeta coincide con "(.+)"\.$/);
   if (match) return `No video in this folder matches "${match[1]}".`;
+
+  match = text.match(/^([\d.,\s]+) (disco|discos) · (.+)$/);
+  if (match) return `${match[1]} ${match[2] === "disco" ? "drive" : "drives"} · ${match[3]}`;
 
   match = text.match(/^"(.+)" desaparecerá de VideoCAT con sus videos, miniaturas, escaneos, errores y carpetas con estrella o favoritas\. Los traslados pendientes hacia o desde ella se cancelan\. No toca ningún archivo\. Escribe ELIMINAR para confirmar\.$/);
   if (match) return `"${match[1]}" will disappear from VideoCAT with its videos, thumbnails, scans, errors and starred or favorite folders. Pending transfers to or from it are cancelled. No file is touched. Type ELIMINAR to confirm.`;

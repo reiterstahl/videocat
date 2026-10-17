@@ -90,7 +90,8 @@ test("a consolidation travels through a simulated Companion: source drive, stagi
     await group.getByRole("button", { name: /^Consolidar en / }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Crear traslado" }).click();
     await expect(page).toHaveURL(/\/traslados$/);
-    await expect(page.locator(".vc-transfers-needs")).toContainText(`Conecta Origen ${suffix} para continuar`);
+    await expect(page.locator(".vc-needs-group.is-sending")).toContainText(`Conecta Origen ${suffix} para continuar`);
+    await expect(page.locator(".vc-needs-group.is-receiving")).not.toContainText(`Origen ${suffix}`);
 
     // Only the source drive is connected: the file leaves it, verified, and waits in staging.
     expect(await companion.run([sourceVolume])).toBe(1);
@@ -101,7 +102,9 @@ test("a consolidation travels through a simulated Companion: source drive, stagi
 
     await page.reload();
     const job = page.locator(".vc-transfers-list > li", { hasText: folder });
-    await expect(page.locator(".vc-transfers-needs")).toContainText(`Conecta Destino ${suffix} para continuar`);
+    // Receiving drives come first; the destination now waits for its file there.
+    await expect(page.locator(".vc-needs-group").first()).toHaveClass(/is-receiving/);
+    await expect(page.locator(".vc-needs-group.is-receiving")).toContainText(`Conecta Destino ${suffix} para continuar`);
     await expect(job).toContainText("Esperando el disco de destino: 1");
     await expect(page.locator(".vc-transfers-staging")).toContainText(stagingDir);
 

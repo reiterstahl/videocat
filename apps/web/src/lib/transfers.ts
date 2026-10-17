@@ -66,3 +66,53 @@ export function transferError(reason: unknown, fallback: string): string {
   if (!(reason instanceof Error)) return fallback;
   return transferMessages[reason.message] ?? reason.message;
 }
+
+export type NeedSort = "data" | "connected" | "name";
+
+// Bytes still due onto each drive. Notices about one drive overlap ("Faltará espacio" also counts
+// files not yet copied to staging), so the largest figure stands for the drive instead of their sum.
+function incomingByDisk(needs: readonly TransferNeed[]): Map<string, number> {
+  const incoming = new Map<string, number>();
+  for (const need of needs) {
+    const bytes = Math.max(need.bytes, need.movement?.incoming.bytes ?? 0);
+    incoming.set(need.diskId, Math.max(incoming.get(need.diskId) ?? 0, bytes));
+  }
+  return incoming;
+}
+
+// Drives and bytes in one group of "Para continuar".
+export function needGroupTotals(needs: readonly TransferNeed[]): { disks: number; bytes: number } {
+  const perDisk = needs.some((need) => need.kind !== "connect_source")
+    ? incomingByDisk(needs)
+    : new Map(needs.map((need) => [need.diskId, need.bytes]));
+  return { disks: perDisk.size, bytes: [...perDisk.values()].reduce((sum, bytes) => sum + bytes, 0) };
+}
+
+export const needSortLabels: Record<NeedSort, string> = {
+  data: "Más datos",
+  connected: "Conectados",
+  name: "Nombre"
+};
+
+// "Para continuar" in two groups: drives that receive files (from the staging folder) and
+// drives whose files still have to be copied to the staging folder. Receiving comes first.
+export function groupNeeds(needs: readonly TransferNeed[], sort: NeedSort): { receiving: TransferNeed[]; sending: TransferNeed[] } {
+  const receiving = needs.filter((need) => need.kind !== "connect_source");
+  const sending = needs.filter((need) => need.kind === "connect_source");
+  // A drive with several receiving notices is ranked by everything still headed to it, and they stay together.
+  const incoming = incomingByDisk(receiving);
+  const kindOrder: Record<TransferNeed["kind"], number> = { free_space: 0, space_short: 1, connect_target: 2, connect_source: 3 };
+  const byName = (left: TransferNeed, right: TransferNeed) => driveName(left).localeCompare(driveName(right), undefined, { numeric: true, sensitivity: "base" });
+  const order = (total: (need: TransferNeed) => number) => (left: TransferNeed, right: TransferNeed) => {
+    if (sort === "connected" && left.connected !== right.connected) return left.connected ? -1 : 1;
+    if (sort !== "name") {
+      const difference = total(right) - total(left);
+      if (difference !== 0) return difference;
+    }
+    return byName(left, right) || left.diskId.localeCompare(right.diskId) || kindOrder[left.kind] - kindOrder[right.kind];
+  };
+  return {
+    receiving: [...receiving].sort(order((need) => incoming.get(need.diskId) ?? need.bytes)),
+    sending: [...sending].sort(order((need) => need.bytes))
+  };
+}

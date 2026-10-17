@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.32
+
+- **Traslados › Para continuar** in two groups, side by side: *Reciben material* (drives that files are copied onto from the staging folder, including *Faltará espacio* and *Libera espacio*) first, and *Copian a la carpeta temporal* (drives whose files still have to leave). Each group shows how many drives and how much data.
+- By default the drive that still has to receive the most data comes first; its notices stay together. *Conectados* and *Nombre* are the other orders; the choice is remembered in that browser.
+- No migrations or configuration changes; the Windows Companion is 0.2.9.
+
 ## Upgrading to 0.2.31
 
 - The drive strip lists the drives connected to the Companion first (each group keeps its alphabetical order) and scrolls back to the start when they are detected, so *Mostrar conectados* never leaves one out of view.

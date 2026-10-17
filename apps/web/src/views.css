@@ -1936,7 +1936,7 @@ a.vc-button {
 
 .vc-transfers-needs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -3231,4 +3231,90 @@ a.vc-button {
     flex: 1 1 100%;
     margin-left: 0;
   }
+}
+
+/* "Para continuar": drives that receive files first, then the ones that copy to staging. */
+.vc-needs-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.vc-needs-head .vc-transfers-kind-subtitle {
+  flex: 1 1 auto;
+}
+
+.vc-needs-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.vc-needs-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px 14px 14px 20px;
+}
+
+.vc-needs-group.is-receiving {
+  --vc-accent-bar-color: var(--vc-success);
+}
+
+.vc-needs-group.is-sending {
+  --vc-accent-bar-color: var(--vc-accent);
+}
+
+.vc-needs-group.vc-accent-bar::before {
+  top: 16px;
+  bottom: auto;
+  height: 34px;
+}
+
+.vc-needs-group header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+.vc-needs-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.vc-needs-group.is-receiving h4 svg {
+  color: var(--vc-success);
+}
+
+.vc-needs-group.is-sending h4 svg {
+  color: var(--vc-accent);
+}
+
+.vc-needs-group-total {
+  color: var(--vc-text-soft);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vc-needs-group header p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--vc-muted);
+  font-size: 0.8rem;
+}
+
+.vc-needs-list {
+  display: grid;
+  gap: 8px;
+}
+
+.vc-needs-list .vc-status-banner {
+  padding: 8px 12px;
 }
