@@ -21,7 +21,7 @@ type TagRule = {
 type TagRulesSectionProps = {
   destinations: TransferDestination[] | null;
   refreshKey: number;
-  jobs: ReactNode;
+  jobs?: ReactNode;
   onChanged: () => void;
 };
 
@@ -159,8 +159,12 @@ export function TagRulesSection({ destinations, refreshKey, jobs, onChanged }: T
         </ul>
       )}
 
-      <h4 className="vc-transfers-kind-subtitle">Movimientos por etiqueta</h4>
-      {jobs}
+      {jobs ? (
+        <>
+          <h4 className="vc-transfers-kind-subtitle">Movimientos por etiqueta</h4>
+          {jobs}
+        </>
+      ) : null}
     </section>
   );
 }

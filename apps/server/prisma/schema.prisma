@@ -10,6 +10,8 @@ datasource db {
 model Disk {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
+  // Set when the name was chosen in the web: scans keep it instead of the detected one.
+  nameLocked           Boolean               @default(false)
   volumeLabel          String?
   volumeId             String?
   driveLetter          String?

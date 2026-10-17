@@ -163,6 +163,12 @@ test("a starred folder consolidates its namesakes and the transfer shows up in T
   const job = page.locator(".vc-transfers-list > li", { hasText: name }).first();
   await expect(job).toBeVisible();
   await expect(page.locator(".vc-transfers-needs .vc-status-banner").first()).toContainText("Conecta");
+  // Hovering a drive shows what is still due on it.
+  await page.locator(".vc-transfers-needs .vc-need").first().hover();
+  const due = page.locator(".vc-transfers-needs .vc-need-popover").first();
+  await expect(due).toBeVisible();
+  await expect(due.locator(".is-outgoing")).toContainText("de este disco");
+  await expect(due.locator(".is-outgoing li").first()).toBeVisible();
 
   await job.getByRole("button", { name: "Pausar" }).click();
   await expect(job.locator(".vc-badge")).toHaveText("En pausa");
@@ -343,7 +349,10 @@ test("a tag rule sends tagged videos to a starred folder and can be removed", as
   await section.getByRole("button", { name: "Crear regla" }).click();
   await expect(section.locator(".vc-notice")).toContainText("Regla creada");
   await expect(section.locator(".vc-tag-rules li")).toHaveCount(1);
-  await expect(section.locator(".vc-transfers-list > li").first()).toContainText("Etiqueta");
+  const running = page.getByRole("region", { name: "Traslados en curso" });
+  await running.getByRole("button", { name: /^Etiqueta/ }).click();
+  await expect(running.locator(".vc-transfers-list > li").first()).toContainText("Etiqueta");
+  await running.getByRole("button", { name: /^Todos/ }).click();
 
   await section.getByRole("button", { name: "Quitar regla" }).click();
   await expect(section.locator(".vc-notice")).toContainText("Regla quitada");
@@ -355,4 +364,25 @@ test("a tag rule sends tagged videos to a starred folder and can be removed", as
     await stars.first().click();
     await expect(stars).toHaveCount(count - 1);
   }
+});
+
+test("a drive can be renamed for everyone and keeps that name", async ({ page }) => {
+  await openView(page, "/administracion");
+  const card = page.locator(".vc-admin-disk").first();
+  const original = (await card.locator("header strong").textContent())!.trim();
+  await card.getByRole("button", { name: `Cambiar el nombre de ${original}` }).click();
+  await card.getByRole("textbox", { name: "Nombre del disco" }).fill("Disco del cliente");
+  await card.getByRole("button", { name: "Guardar" }).click();
+  await expect(card.locator("header strong")).toHaveText("Disco del cliente");
+  await expect(card).toContainText("nombre elegido");
+  // The new name is what the rest of VideoCAT shows.
+  await openView(page, "/catalogo");
+  await expect(page.locator(".vc-disk-chip", { hasText: "Disco del cliente" }).first()).toBeVisible();
+
+  await openView(page, "/administracion");
+  await page.getByRole("button", { name: "Cambiar el nombre de Disco del cliente" }).click();
+  const editing = page.locator(".vc-admin-rename");
+  await editing.getByRole("textbox", { name: "Nombre del disco" }).fill(original);
+  await editing.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.locator(".vc-admin-disk", { hasText: original }).first()).toBeVisible();
 });

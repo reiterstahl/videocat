@@ -1361,6 +1361,67 @@ test("a tag rule moves every video with that tag to a starred folder, now and la
   }
 });
 
+test("a favorite folder always wins over tag rules, also when it is marked afterwards", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const tag = `fav-${suffix}`;
+  const companionId = crypto.randomUUID();
+  const agent = { ...agentHeaders, "x-videocat-companion-id": companionId };
+  const target = await prisma.disk.create({ data: { name: `Fav destino ${suffix}`, volumeId: `ft-${suffix}`, totalBytes: 4_000_000_000_000n, freeBytes: 1_000_000_000_000n } });
+  const source = await prisma.disk.create({ data: { name: `Fav origen ${suffix}`, volumeId: `fs-${suffix}`, totalBytes: 1_000_000_000_000n, freeBytes: 10n } });
+  const cookie = await authenticatedCookie();
+  try {
+    await prisma.curationCategory.create({ data: { key: tag, label: `Fav ${suffix}`, color: "#2A9FD6" } });
+    await prisma.videoFile.createMany({
+      data: [
+        { diskId: target.id, filename: "base.mp4", extension: "mp4", absolutePath: "E:/x", relativePath: "Destino/base.mp4", sizeBytes: 10n },
+        { diskId: source.id, filename: "protegido.mp4", extension: "mp4", absolutePath: "F:/1", relativePath: "Favorita/protegido.mp4", sizeBytes: 5n },
+        { diskId: source.id, filename: "luego.mp4", extension: "mp4", absolutePath: "F:/2", relativePath: "Luego/luego.mp4", sizeBytes: 6n }
+      ]
+    });
+    const files = await prisma.videoFile.findMany({ where: { diskId: source.id } });
+    for (const file of files) await prisma.videoFileCategory.create({ data: { videoFileId: file.id, categoryKey: tag } });
+    const later = files.find((file) => file.filename === "luego.mp4")!;
+    await app.inject({ method: "POST", url: "/api/folder-favorites", headers: webMutationHeaders(cookie), payload: { locations: [{ d: source.id, p: "Favorita" }] } });
+    const destinationId = (await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId: target.id, path: "Destino" } })).json().destination.id;
+
+    const rule = await app.inject({ method: "POST", url: "/api/transfers/tag-rules", headers: webMutationHeaders(cookie), payload: { categoryKey: tag, destinationId } });
+    assert.equal(rule.json().added, 1, "the tagged video in the favorite folder is never queued");
+
+    // Marked as favorite after the rule queued it: it leaves, and the rule does not bring it back.
+    const marked = await app.inject({ method: "POST", url: "/api/folder-favorites", headers: webMutationHeaders(cookie), payload: { locations: [{ d: source.id, p: "Luego" }] } });
+    assert.equal(marked.json().cancelledPending, 1);
+    const work = (await app.inject({ method: "GET", url: `/api/agent/transfers/work?mounted=fs-${suffix}`, headers: agent })).json().items;
+    assert.equal(work.length, 0);
+    assert.equal(await prisma.transferItem.count({ where: { videoFileId: later.id, state: { notIn: ["cancelled"] } } }), 0);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: source.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: target.id } } });
+    for (const disk of [source, target]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+    await prisma.curationCategory.deleteMany({ where: { key: tag } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
+});
+
+test("a drive keeps the name chosen in the web across scans, until it is reset", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const cookie = await authenticatedCookie();
+  const registered = (await app.inject({ method: "POST", url: "/api/agent/register-disk", headers: agentHeaders, payload: { name: "H:\\", volumeId: `nm-${suffix}` } })).json().disk;
+  try {
+    const renamed = await app.inject({ method: "PATCH", url: `/api/disks/${registered.id}`, headers: webMutationHeaders(cookie), payload: { name: "  Backup cliente  " } });
+    assert.equal(renamed.statusCode, 200);
+    assert.equal(renamed.json().disk.name, "Backup cliente");
+    await app.inject({ method: "POST", url: "/api/agent/register-disk", headers: agentHeaders, payload: { name: "H:\\", volumeId: `nm-${suffix}` } });
+    assert.equal((await prisma.disk.findUniqueOrThrow({ where: { id: registered.id } })).name, "Backup cliente", "a scan does not overwrite it");
+    const empty = await app.inject({ method: "PATCH", url: `/api/disks/${registered.id}`, headers: webMutationHeaders(cookie), payload: { name: "" } });
+    assert.equal(empty.statusCode, 400);
+    await app.inject({ method: "PATCH", url: `/api/disks/${registered.id}`, headers: webMutationHeaders(cookie), payload: { name: null } });
+    await app.inject({ method: "POST", url: "/api/agent/register-disk", headers: agentHeaders, payload: { name: "Detectado", volumeId: `nm-${suffix}` } });
+    assert.equal((await prisma.disk.findUniqueOrThrow({ where: { id: registered.id } })).name, "Detectado", "after a reset the detected name comes back");
+  } finally {
+    await prisma.disk.delete({ where: { id: registered.id } }).catch(() => undefined);
+  }
+});
+
 test("audit errors filter, group and export safely; folder tree and maintenance report", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let diskId = "";

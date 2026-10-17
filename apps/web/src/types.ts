@@ -1,6 +1,8 @@
 export type Disk = {
   id: string;
   name: string;
+  // True when the name was chosen in the web (scans keep it).
+  nameLocked?: boolean;
   volumeLabel?: string | null;
   volumeId?: string | null;
   driveLetter?: string | null;
@@ -163,6 +165,11 @@ export type TransferNeed = {
   connected: boolean;
   detail: string | null;
   shortBytes?: number;
+  // What is still due on that drive: files to copy onto it and files that will leave it.
+  movement?: {
+    incoming: { files: number; bytes: number; names: string[] };
+    outgoing: { files: number; bytes: number; names: string[] };
+  };
 };
 
 export type TransferSummary = {

@@ -813,7 +813,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     await syncTagRules();
     const items = await prisma.transferItem.findMany({
       where: { state: { in: unfinishedStates } },
-      select: { state: true, sourceDiskId: true, targetDiskId: true, sizeBytes: true, error: true, updatedAt: true, job: { select: { status: true } } }
+      select: { state: true, sourceDiskId: true, targetDiskId: true, sizeBytes: true, error: true, updatedAt: true, filename: true, job: { select: { status: true } } }
     });
     const summaryItems = items.map((item) => ({
       state: item.state as TransferState,
@@ -822,7 +822,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       sizeBytes: Number(item.sizeBytes),
       jobStatus: item.job.status,
       error: item.error,
-      updatedAt: item.updatedAt
+      updatedAt: item.updatedAt,
+      filename: item.filename
     }));
     const connected = await connectedDiskIds();
     const targetDisks = await prisma.disk.findMany({

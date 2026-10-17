@@ -176,6 +176,17 @@ const en: Record<string, string> = {
   "Sesión de review": "Review session",
   "Mantenido": "Kept",
   "Uso por carpeta": "Folder usage",
+  "Traslados en curso": "Transfers in progress",
+  "Todos los traslados, de cualquier tipo. Se actualiza solo mientras el Companion trabaja.": "Every transfer, of any kind. It updates by itself while the Companion works.",
+  "Filtrar traslados": "Filter transfers",
+  "No hay traslados todavía.": "No transfers yet.",
+  "nombre elegido": "chosen name",
+  "Los que salen se borran de este disco solo después de verificar su copia en la carpeta temporal.": "Files leaving are removed from this drive only after their copy in the staging folder is verified.",
+  "Nombre del disco": "Drive name",
+  "Usar el nombre detectado": "Use the detected name",
+  "Vuelve al nombre que detecta el Companion en el próximo escaneo": "Goes back to the name the Companion detects on the next scan",
+  "Cambiar el nombre que se ve en VideoCAT": "Change the name shown in VideoCAT",
+  "No se pudo cambiar el nombre.": "The name could not be changed.",
   "Mover por etiqueta": "Move by tag",
   "Elige una etiqueta y una carpeta con estrella: todos los videos con esa etiqueta, también los que la reciban después, van a esa carpeta cuando se conecta su disco. Si a un video le quitas la etiqueta antes de que salga de su disco, se queda donde está.": "Choose a tag and a starred folder: every video with that tag, including the ones tagged later, goes to that folder when its drive is connected. If you remove the tag from a video before it leaves its drive, it stays where it is.",
   "Primero marca una carpeta con estrella (en Uso por carpeta o en Agrupar archivos).": "First star a folder (in Folder usage or in Group files).",
@@ -1014,6 +1025,21 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) con la etiqueta · (.+?) · ([\d.,\s]+) en camino · ([\d.,\s]+) movidos$/);
   if (match) return `${match[1]} tagged · ${match[2]} · ${match[3]} on the way · ${match[4]} moved`;
+
+  match = text.match(/^Pendiente en (.+)$/);
+  if (match) return `Still due on ${match[1]}`;
+
+  match = text.match(/^\+ ([\d.,\s]+) archivos? por copiar a este disco · (.+)$/);
+  if (match) return `+ ${match[1]} ${match[1].trim() === "1" ? "file" : "files"} to copy onto this drive · ${match[2]}`;
+
+  match = text.match(/^− ([\d.,\s]+) archivos? saldrán? de este disco · (.+)$/);
+  if (match) return `− ${match[1]} ${match[1].trim() === "1" ? "file leaves" : "files leave"} this drive · ${match[2]}`;
+
+  match = text.match(/^y ([\d.,\s]+) más$/);
+  if (match) return `and ${match[1]} more`;
+
+  match = text.match(/^Cambiar el nombre de (.+)$/);
+  if (match) return `Rename ${match[1]}`;
 
   match = text.match(/^Libera espacio en (.+)$/);
   if (match) return `Free up space on ${match[1]}`;

@@ -11,6 +11,7 @@ export type SummaryItem = {
   jobStatus: string;
   error: string | null;
   updatedAt: Date;
+  filename?: string;
 };
 
 export type TransferNeed = {
@@ -25,7 +26,28 @@ export type TransferNeed = {
   detail: string | null;
   // space_short only: how much has to be freed on that drive.
   shortBytes?: number;
+  // What is still due on that drive: files to copy onto it and files that will leave it.
+  movement?: DiskMovement;
 };
+
+export type MovementSide = { files: number; bytes: number; names: string[] };
+export type DiskMovement = { incoming: MovementSide; outgoing: MovementSide };
+
+const movementNames = 6;
+
+// What is left for one drive: files on their way to it (still to be copied there) and files that
+// will leave it (their source copy is removed once the staging copy is verified).
+export function diskMovement(items: SummaryItem[], diskId: string): DiskMovement {
+  const side = (list: SummaryItem[]): MovementSide => ({
+    files: list.length,
+    bytes: list.reduce((sum, item) => sum + item.sizeBytes, 0),
+    names: [...list].sort((left, right) => right.sizeBytes - left.sizeBytes).slice(0, movementNames).flatMap((item) => (item.filename ? [item.filename] : []))
+  });
+  return {
+    incoming: side(items.filter((item) => item.targetDiskId === diskId && headedToTarget.includes(item.state) && (item.jobStatus === "active" || item.state !== "pending"))),
+    outgoing: side(items.filter((item) => item.sourceDiskId === diskId && ["pending", "staging", "staged"].includes(item.state) && (item.jobStatus === "active" || item.state !== "pending")))
+  };
+}
 
 export type DiskRoom = { diskId: string; roomBytes: number | null };
 
@@ -87,7 +109,7 @@ export function transferNeeds(items: SummaryItem[], connectedDiskIds: ReadonlySe
     });
   }
   return [...needs.values()]
-    .map(({ latest: _latest, ...need }) => need)
+    .map(({ latest: _latest, ...need }) => ({ ...need, movement: diskMovement(items, need.diskId) }))
     .sort((left, right) => kindOrder[left.kind] - kindOrder[right.kind] || right.bytes - left.bytes);
 }
 

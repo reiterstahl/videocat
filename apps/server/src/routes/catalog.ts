@@ -918,6 +918,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // The name people see for a drive. Without a name, it goes back to the detected one on the next scan.
+  app.patch("/api/disks/:id", { preHandler: requireWebAuth }, async (request, reply) => {
+    const { id } = uuidParamsSchema.parse(request.params);
+    const body = z.object({ name: z.string().trim().min(1).max(80).nullable() }).parse(request.body);
+    const disk = await prisma.disk.findUnique({ where: { id } });
+    if (!disk) return reply.code(404).send({ message: "Disk not found" });
+    const updated = await prisma.disk.update({
+      where: { id },
+      data: body.name ? { name: body.name, nameLocked: true } : { nameLocked: false }
+    });
+    await recordAction({ action: "disk.rename", actorType: "web", actorId: "admin", diskId: id, target: body.name ?? "(detected name)", result: { previous: disk.name } });
+    return { disk: serializeDisk(updated) };
+  });
+
   app.get("/api/categories", { preHandler: requireWebAuth }, async () => {
     const categories = await prisma.curationCategory.findMany({
       orderBy: [{ builtIn: "desc" }, { label: "asc" }]

@@ -19,7 +19,7 @@ import {
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
-import { needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
+import { driveName, needDetail, needTitle, stagingReserveRatio, transferStateLabels, transferError } from "../lib/transfers";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import { GroupKeywordsEditor } from "../components/GroupKeywordsEditor";
@@ -83,6 +83,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState<TransferJob | null>(null);
   const [groupQuery, setGroupQuery] = useState(initialGroupQuery);
+  const [jobFilter, setJobFilter] = useState<JobKind | "all">("all");
   const [groupFolders, setGroupFolders] = useState<GroupFolder[] | null>(null);
   const [groupingDestinationId, setGroupingDestinationId] = useState<string | null>(null);
   const [consolidating, setConsolidating] = useState<TransferDestination | null>(null);
@@ -218,8 +219,8 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
   const openJobs = jobs?.filter(jobIsOpen) ?? [];
   const stagingMissing = openJobs.length > 0 && (!staging || !staging.configured);
 
-  function jobsOf(kind: JobKind) {
-    const ofKind = jobs?.filter((job) => job.kind === kind) ?? [];
+  function jobsOf(kind: JobKind | "all") {
+    const ofKind = jobs?.filter((job) => kind === "all" || job.kind === kind) ?? [];
     return [...ofKind.filter(jobIsOpen), ...ofKind.filter((job) => !jobIsOpen(job)).slice(0, recentClosedJobs)];
   }
 
@@ -288,13 +289,13 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
     );
   }
 
-  function renderJobs(kind: JobKind) {
+  function renderJobs(kind: JobKind | "all") {
     const list = jobsOf(kind);
     if (jobs === null) return <div className="loading">Cargando...</div>;
     if (list.length === 0) {
-      return <p className="vc-folders-empty">{kind === "consolidate" ? "Sin consolidaciones todavía." : kind === "group" ? "Sin archivos agrupados todavía." : "Sin movimientos por etiqueta todavía."}</p>;
+      return <p className="vc-folders-empty">{kind === "all" ? "No hay traslados todavía." : kind === "consolidate" ? "Sin consolidaciones todavía." : kind === "group" ? "Sin archivos agrupados todavía." : "Sin movimientos por etiqueta todavía."}</p>;
     }
-    return <ul className="vc-transfers-list">{list.map(renderJob)}</ul>;
+    return <ul className="vc-transfers-list vc-transfers-grid">{list.map(renderJob)}</ul>;
   }
 
   return (
@@ -351,13 +352,39 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             </div>
           ) : null}
           {summary?.needs.map((need) => (
-            <div key={`${need.kind}:${need.diskId}`} className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.kind === "space_short" || !need.connected ? "is-warning" : ""}`}>
-              {need.kind === "free_space" || need.kind === "space_short" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
-              <div>
-                <strong>{needTitle(need)}</strong>
-                <span>{needDetail(need)}</span>
-                {need.detail ? <span className="vc-transfers-detail">{need.detail}</span> : null}
+            <div key={`${need.kind}:${need.diskId}`} className="vc-need" tabIndex={0} aria-describedby={`need-${need.kind}-${need.diskId}`}>
+              <div className={`vc-status-banner ${need.kind === "free_space" ? "is-danger" : need.kind === "space_short" || !need.connected ? "is-warning" : ""}`}>
+                {need.kind === "free_space" || need.kind === "space_short" ? <AlertTriangle size={18} /> : need.connected ? <HardDrive size={18} /> : <Plug size={18} />}
+                <div>
+                  <strong>{needTitle(need)}</strong>
+                  <span>{needDetail(need)}</span>
+                  {need.detail ? <span className="vc-transfers-detail">{need.detail}</span> : null}
+                </div>
               </div>
+              {need.movement && (need.movement.incoming.files > 0 || need.movement.outgoing.files > 0) ? (
+                <div className="vc-need-popover" role="tooltip" id={`need-${need.kind}-${need.diskId}`}>
+                  <strong>{`Pendiente en ${driveName(need)}`}</strong>
+                  {need.movement.incoming.files > 0 ? (
+                    <section className="is-incoming">
+                      <span>{`+ ${formatCount(need.movement.incoming.files)} ${need.movement.incoming.files === 1 ? "archivo por copiar" : "archivos por copiar"} a este disco · ${formatBytes(need.movement.incoming.bytes)}`}</span>
+                      <ul>
+                        {need.movement.incoming.names.map((name) => <li key={name} title={name}>{name}</li>)}
+                        {need.movement.incoming.files > need.movement.incoming.names.length ? <li className="is-more">{`y ${formatCount(need.movement.incoming.files - need.movement.incoming.names.length)} más`}</li> : null}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {need.movement.outgoing.files > 0 ? (
+                    <section className="is-outgoing">
+                      <span>{`− ${formatCount(need.movement.outgoing.files)} ${need.movement.outgoing.files === 1 ? "archivo saldrá" : "archivos saldrán"} de este disco · ${formatBytes(need.movement.outgoing.bytes)}`}</span>
+                      <ul>
+                        {need.movement.outgoing.names.map((name) => <li key={name} title={name}>{name}</li>)}
+                        {need.movement.outgoing.files > need.movement.outgoing.names.length ? <li className="is-more">{`y ${formatCount(need.movement.outgoing.files - need.movement.outgoing.names.length)} más`}</li> : null}
+                      </ul>
+                    </section>
+                  ) : null}
+                  <small>Los que salen se borran de este disco solo después de verificar su copia en la carpeta temporal.</small>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -423,7 +450,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
         )}
       </section>
 
-      <div className="vc-transfers-columns">
+      <div className="vc-transfers-columns is-three">
         <section className="vc-panel vc-transfers-kind vc-accent-bar is-consolidate" aria-label="Consolidar carpetas">
           <header className="vc-transfers-kind-head">
             <span className="vc-kind-icon" aria-hidden="true"><FolderInput size={20} /></span>
@@ -438,8 +465,6 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
             </button>
             <span className="vc-transfers-detail">o usa Consolidar en una carpeta con estrella.</span>
           </div>
-          <h4 className="vc-transfers-kind-subtitle">Consolidaciones</h4>
-          {renderJobs("consolidate")}
         </section>
 
         <section className="vc-panel vc-transfers-kind vc-accent-bar is-group vc-transfers-group" aria-label="Agrupar archivos" ref={groupCardRef}>
@@ -488,20 +513,36 @@ export function TransfersView({ refreshKey, onOpenFolders, onChanged, initialGro
           ) : (
             <p className="vc-transfers-detail">Escribe al menos 3 letras. La carpeta que elijas queda marcada con estrella.</p>
           )}
-          <h4 className="vc-transfers-kind-subtitle">Agrupaciones</h4>
-          {renderJobs("group")}
         </section>
+        <TagRulesSection
+          destinations={destinations}
+          refreshKey={refreshKey}
+          onChanged={() => {
+            void reload();
+            onChanged();
+          }}
+        />
       </div>
 
-      <TagRulesSection
-        destinations={destinations}
-        refreshKey={refreshKey}
-        jobs={renderJobs("tag")}
-        onChanged={() => {
-          void reload();
-          onChanged();
-        }}
-      />
+      <section className="vc-panel vc-transfers-running" aria-label="Traslados en curso">
+        <div className="vc-transfers-running-head">
+          <div className="vc-transfers-section-head">
+            <h3><ArrowRightLeft size={17} aria-hidden="true" /> Traslados en curso</h3>
+            <p>Todos los traslados, de cualquier tipo. Se actualiza solo mientras el Companion trabaja.</p>
+          </div>
+          <div className="vc-segmented" role="group" aria-label="Filtrar traslados">
+            {(["all", "consolidate", "group", "tag"] as const).map((kind) => (
+              <button key={kind} type="button" aria-pressed={jobFilter === kind} onClick={() => setJobFilter(kind)}>
+                {kind === "all" ? "Todos" : kind === "consolidate" ? "Consolidar" : kind === "group" ? "Agrupar" : "Etiqueta"}
+                <span className="vc-count-badge is-quiet">{formatCount(kind === "all" ? openJobs.length : openJobs.filter((job) => job.kind === kind).length)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {renderJobs(jobFilter)}
+      </section>
+
+
 
       {consolidating ? (
         <ConsolidateDialog

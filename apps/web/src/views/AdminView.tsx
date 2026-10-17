@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Database, HardDrive, History, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { Check, Copy, Database, HardDrive, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
@@ -18,6 +18,7 @@ type PruneResponse = {
 };
 
 type AdminViewProps = {
+  onDiskRenamed: (disk: Disk) => void;
   locale: string;
   refreshKey: number;
   mountedDiskIds: string[];
@@ -26,7 +27,9 @@ type AdminViewProps = {
 
 const onlineWindowMs = 45_000;
 
-export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged }: AdminViewProps) {
+export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, onDiskRenamed }: AdminViewProps) {
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [renameError, setRenameError] = useState("");
   const [disks, setDisks] = useState<AdminDiskOverview[]>([]);
   const [companions, setCompanions] = useState<CompanionAdminItem[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceResponse | null>(null);
@@ -130,6 +133,18 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged }: 
     }
   }
 
+
+  async function renameDisk(disk: Disk, name: string | null) {
+    setRenameError("");
+    try {
+      const response = await api<{ disk: Disk }>(`/api/disks/${disk.id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+      setRenaming(null);
+      setDisks((current) => current.map((item) => (item.disk.id === disk.id ? { ...item, disk: { ...item.disk, ...response.disk } } : item)));
+      onDiskRenamed(response.disk);
+    } catch (reason) {
+      setRenameError(reason instanceof Error ? reason.message : "No se pudo cambiar el nombre.");
+    }
+  }
   return (
     <section className="vc-view vc-admin" aria-label="Administración">
       {message ? <div className="vc-notice" role="status">{message}</div> : null}
@@ -237,10 +252,39 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged }: 
               <article className="vc-admin-disk" key={disk.id}>
                 <header>
                   <HardDrive size={18} aria-hidden="true" />
-                  <div>
-                    <strong>{disk.name}</strong>
-                    <span>{[disk.driveLetter, disk.fileSystem].filter(Boolean).join(" · ") || "Sin datos del volumen"}</span>
-                  </div>
+                  {renaming?.id === disk.id ? (
+                    <form
+                      className="vc-admin-rename"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void renameDisk(disk, renaming.name.trim());
+                      }}
+                    >
+                      <input
+                        value={renaming.name}
+                        onChange={(event) => setRenaming({ id: disk.id, name: event.target.value })}
+                        maxLength={80}
+                        aria-label="Nombre del disco"
+                        autoFocus
+                      />
+                      <button className="vc-button is-small is-primary" disabled={!renaming.name.trim()} type="submit"><Check size={14} /> Guardar</button>
+                      {disk.nameLocked ? (
+                        <button className="vc-button is-small" onClick={() => void renameDisk(disk, null)} type="button" title="Vuelve al nombre que detecta el Companion en el próximo escaneo">Usar el nombre detectado</button>
+                      ) : null}
+                      <button className="vc-button is-small is-ghost" onClick={() => setRenaming(null)} type="button">Cancelar</button>
+                      {renameError ? <span className="form-error" role="alert">{renameError}</span> : null}
+                    </form>
+                  ) : (
+                    <div>
+                      <strong>
+                        {disk.name}
+                        <button className="icon-button vc-admin-rename-button" onClick={() => { setRenameError(""); setRenaming({ id: disk.id, name: disk.name }); }} type="button" title="Cambiar el nombre que se ve en VideoCAT" aria-label={`Cambiar el nombre de ${disk.name}`}>
+                          <Pencil size={13} />
+                        </button>
+                      </strong>
+                      <span>{[disk.driveLetter, disk.fileSystem].filter(Boolean).join(" · ") || "Sin datos del volumen"}{disk.nameLocked ? " · nombre elegido" : ""}</span>
+                    </div>
+                  )}
                   <span className={`vc-badge ${connected ? "is-success" : ""}`}>{connected ? "Conectado" : "Desconectado"}</span>
                 </header>
 

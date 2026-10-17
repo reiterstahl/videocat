@@ -314,7 +314,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       ? await prisma.disk.update({
           where: { id: existing.id },
           data: {
-            name: body.name,
+            // A name chosen in the web is kept; only the detected one follows the drive.
+            ...(existing.nameLocked ? {} : { name: body.name }),
             volumeLabel: body.volumeLabel,
             driveLetter: body.driveLetter,
             totalBytes: body.totalBytes ?? undefined,
