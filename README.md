@@ -100,6 +100,7 @@ flowchart LR
 ### To download
 - A queue that copies videos from connected drives to a local Windows folder, with per-file progress, pause and clear.
 - Random selection by target size in GB, limited to drives or folders, without repeating what was already downloaded.
+- **Downloads come first.** If a transfer is copying when a download is requested, it finishes that file and the whole download queue runs before transfers go on; pausing the queue lets transfers continue.
 
 ### Transfers
 - **Consolidate folders**: star the largest folder of a repeated group (for example the 1.7 TB "Testing") and move the contents of every other "Testing" into it, whatever drive they are on. Before anything starts you see the plan: what leaves each folder, how much it takes and whether it fits at the destination.

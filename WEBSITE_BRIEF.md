@@ -16,7 +16,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
 - Stack Docker actual: `0.2.37`
-- Companion Windows actual: `0.2.11` (instalador con actualización automática)
+- Companion Windows actual: `0.2.12` (instalador con actualización automática)
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 
@@ -158,6 +158,7 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - Posibilidad de retirar videos de la cola antes de copiarlos.
 - Detección de copias estancadas para marcar error y continuar con el siguiente archivo.
 - Etiquetas de año/mes para no repetir selecciones ya descargadas.
+- Prioridad: las descargas van antes que los traslados; el traslado en curso termina su archivo, se procesa toda la cola de descargas y luego siguen los traslados (o antes, si se pausa la cola).
 
 ### Esquema de uso, auditoría y administración
 

@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Windows Companion 0.2.12
+
+- **Downloads come before transfers.** When the *A descargar* queue has files for a connected drive, the transfer in progress finishes its current file, then the whole download queue (every connected drive, in one turn) runs before transfers go on. Transfers resume on their own as soon as the queue is empty or paused in the web. Checking an empty queue never interrupts transfers.
+- A download requested from the web no longer holds the heartbeat while the queue runs, so the Companion keeps showing as connected during long downloads.
+- The server stays on 0.2.37; no migrations or configuration changes.
+
 ## Upgrading to 0.2.37 (Companion 0.2.11)
 
 - **Damaged or unfinished videos** (for example an MP4 whose recording or copy stopped before the end: FFmpeg says *moov atom not found* or *Invalid data found when processing input*) are no longer a cryptic metadata error repeated on every scan:

@@ -32,6 +32,7 @@ import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
+import { DownloadPriority } from "./work-priority.js";
 import { ActivityReporter } from "./activity.js";
 import {
   deletionFingerprintFrameIndexes,
@@ -236,6 +237,10 @@ const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
 const companionVersion = 20;
 let downloadProcessingRunning = false;
+// Downloads come before transfers; see work-priority.ts.
+const downloadPriority = new DownloadPriority();
+// Set by the watcher: starts transfers again once downloads gave the drives back.
+let resumeTransfers: (() => void) | null = null;
 let deleteProcessingRunning = false;
 let companionScanRunning = false;
 let companionControlTunnel: CompanionControlTunnel | null = null;
@@ -707,6 +712,8 @@ async function startCompanionDiskWatcher(): Promise<void> {
   async function reviewPendingDownloads(): Promise<void> {
     if (downloadReviewRunning) return;
     downloadReviewRunning = true;
+    // Every drive's queue in one turn: transfers wait until the whole queue is done.
+    downloadPriority.hold();
     try {
       const mounted = await discoverCompanionTargets();
       for (const { root, marker } of mounted) {
@@ -714,6 +721,10 @@ async function startCompanionDiskWatcher(): Promise<void> {
       }
     } finally {
       downloadReviewRunning = false;
+      if (downloadPriority.release()) {
+        console.log("Cola de descargas terminada o pausada: los traslados siguen.");
+        resumeTransfers?.();
+      }
     }
   }
 
@@ -722,6 +733,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
   async function reviewTransfers(): Promise<void> {
     const stagingDir = process.env.COMPANION_STAGING_DIR?.trim();
     if (transferReviewRunning || !stagingDir || !companionAgentApiEnabled()) return;
+    if (!downloadPriority.transfersMayRun()) return;
     transferReviewRunning = true;
     try {
       const mounted = await discoverCompanionTargets();
@@ -733,9 +745,15 @@ async function startCompanionDiskWatcher(): Promise<void> {
           `/api/agent/transfers/work?mounted=${encodeURIComponent([...roots.keys()].join(","))}`
         );
         let heldInStaging = 0;
+        let steppedAside = false;
         for (const item of work.items) {
+          if (!downloadPriority.transfersMayRun()) {
+            console.log("Traslados en espera: hay descargas pendientes. Siguen cuando termine la cola de descargas o se pause.");
+            steppedAside = true;
+            break;
+          }
           try {
-            const reached = await processTransferItem({
+            const reached = await downloadPriority.runTransferItem(() => processTransferItem({
               stagingDir,
               resolveRoot: (identifiers) => identifiers.map((identifier) => roots.get(identifier)).find(Boolean) ?? null,
               progress: ({ item: current, phase, bytesDone, bytesTotal }) => activityReporter?.set("transfer", {
@@ -761,7 +779,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
                   throw error;
                 }
               }
-            }, item);
+            }, item));
             if (item.stopAt === "source_removed" && reached === "source_removed") heldInStaging += 1;
           } catch (error) {
             console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
@@ -769,7 +787,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
             activityReporter?.clear("transfer");
           }
         }
-        if (heldInStaging === 0) break;
+        if (steppedAside || heldInStaging === 0) break;
       }
       const stale = await staleStagingFiles(stagingDir, async (ids) => {
         const response = await companionAgentApi<{ items: Array<{ id: string; state: TransferState }> }>("/api/agent/transfers/lookup", {
@@ -841,7 +859,10 @@ async function startCompanionDiskWatcher(): Promise<void> {
         lastHandledDownloadRequestAt = downloadRequestedAt;
         if (Date.now() - downloadRequestedAt <= 10 * 60 * 1000) {
           console.log("Orden web recibida: procesando descargas pendientes ahora.");
-          await reviewPendingDownloads();
+          // In the background: a long queue must not hold the heartbeat (the server would think we left).
+          void reviewPendingDownloads().catch((error) => {
+            console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
+          });
         }
       }
     } catch (error) {
@@ -876,6 +897,11 @@ async function startCompanionDiskWatcher(): Promise<void> {
       console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
     });
   }, downloadPollMs);
+  resumeTransfers = () => {
+    void reviewTransfers().catch((error) => {
+      console.warn(`Fallo revisando traslados: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  };
   const transferPollMs = Math.max(15_000, Number(process.env.COMPANION_TRANSFER_POLL_MS ?? 60_000) || 60_000);
   setInterval(() => {
     void reviewTransfers().catch((error) => {
@@ -1341,6 +1367,7 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
     return;
   }
   downloadProcessingRunning = true;
+  let claimed = false;
   try {
     const downloadDir = process.env.COMPANION_DOWNLOAD_DIR?.trim();
     if (!downloadDir) {
@@ -1379,6 +1406,10 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
         break;
       }
 
+      if (!claimed) {
+        claimed = true;
+        await downloadPriority.claim(() => console.log("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas."));
+      }
       checked += 1;
       console.log(`Revision ${root} (${marker.diskName}): descargando 1 archivo pendiente.`);
 
@@ -1426,13 +1457,22 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
     if (checked > 0) console.log(`Descargas automaticas terminadas en ${marker.diskName}: copiados ${copied}, fallos ${failed}.`);
   } finally {
     downloadProcessingRunning = false;
+    if (claimed && downloadPriority.release()) {
+      console.log("Cola de descargas terminada o pausada: los traslados siguen.");
+      resumeTransfers?.();
+    }
   }
 }
 
 async function processDownloadQueueForMountedDisks(): Promise<{ processedDisks: number }> {
   const mounted = await discoverCompanionTargets();
-  for (const { root, marker } of mounted) {
-    await processDownloadQueueForDisk(root, marker);
+  downloadPriority.hold();
+  try {
+    for (const { root, marker } of mounted) {
+      await processDownloadQueueForDisk(root, marker);
+    }
+  } finally {
+    if (downloadPriority.release()) resumeTransfers?.();
   }
   return { processedDisks: mounted.length };
 }
