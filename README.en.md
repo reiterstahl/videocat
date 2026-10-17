@@ -9,6 +9,7 @@
 
   <p>
     <a href="https://videocat.centeran.com"><img alt="Website" src="https://img.shields.io/badge/Website-videocat.centeran.com-FC6121?style=for-the-badge" /></a>
+    <a href="https://github.com/reiterstahl/videocat/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/reiterstahl/videocat?style=for-the-badge&logo=github&color=FC6121&label=Stars" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/reiterstahl/videocat?label=Release&style=for-the-badge&color=FC6121" /></a>
     <a href="https://hub.docker.com/r/reiterstahl/videocat-web"><img alt="Docker Hub" src="https://img.shields.io/docker/v/reiterstahl/videocat-web?sort=semver&label=Docker%20Hub&style=for-the-badge&logo=docker&logoColor=white&color=2496ED" /></a>
     <a href="https://github.com/reiterstahl/videocat/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/reiterstahl/videocat/ci.yml?branch=main&label=CI&style=for-the-badge" /></a>
@@ -19,6 +20,9 @@
 </div>
 
 VideoCAT indexes the videos on your external drives — even ones that are rarely plugged in — and lets you search, review, find duplicates, play remotely and free up space from a browser or your phone. **Your videos never leave your drives:** the server only stores metadata, relative paths and thumbnails.
+
+> [!TIP]
+> ⭐ If VideoCAT is useful to you, [star it on GitHub](https://github.com/reiterstahl/videocat/stargazers): it helps more people with collections on external drives find it.
 
 <p align="center">
   <img src="docs/screenshots/en/catalog.webp" alt="VideoCAT catalog with drives, filters and thumbnails" width="900" />
@@ -70,7 +74,7 @@ flowchart LR
 ### Catalog
 - Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a detail panel.
 - Filters by drive, extension, folder (lazy-loaded tree), tags, categories and duplicates.
-- Drive strip with capacity and usage, plus **Show connected** to work only with what is plugged in.
+- Drive strip with capacity and usage, plus **Show connected** to work only with what is plugged in; connected drives are always listed first.
 - Drives are identified by `.videocat-disk.json`, so they are recognized even when Windows changes the drive letter.
 - Thumbnails, a 15-frame gallery per video, folder size and last indexed date.
 
@@ -90,6 +94,7 @@ flowchart LR
 ### Remote playback
 - Watch any video from your phone or another browser through the Companion's outbound tunnel, without sharing Windows paths or mounting drives on the server.
 - Touch-friendly player: double-tap to seek, next video and shuffle across connected drives.
+- Adjustable **read-ahead** (8 to 128 MB, in Profile › Playback): the server asks the Companion for several chunks at once so 4K videos do not keep loading.
 - Optional temporary MP4 remux for H.264/AAC in unsupported containers. Optional Chromecast with signed, short-lived links.
 
 ### To download
@@ -100,7 +105,7 @@ flowchart LR
 - **Consolidate folders**: star the largest folder of a repeated group (for example the 1.7 TB "Testing") and move the contents of every other "Testing" into it, whatever drive they are on. Before anything starts you see the plan: what leaves each folder, how much it takes and whether it fits at the destination.
 - **Group files**: start from a folder (for example `testing001`) and find files with a similar name on every drive, ignoring case, accents, dots and separators, plus one letter of difference. Optionally, each folder adds **keywords** that are searched exactly, as whole words of the name (ignoring case and separators: `GATO`, `.gato.` or `mi_gato_2024` match; `gatos` or `gatito` do not). You decide one by one in the same Review session: `F` group, `J` ignore.
 - **Move by tag**: a "tag → starred folder" rule takes every video with that tag there, including the ones tagged later, as their drives get connected.
-- The drives never need to be connected at the same time: each file goes through a **Companion staging folder**, and the **Transfers** section tells you which drive to connect or where to free space.
+- The drives never need to be connected at the same time: each file goes through a **Companion staging folder**. In **Transfers › To continue**, drives are split into those that **receive files** and those that **copy to the staging folder**, with the one that has the most data to receive first, and you are told where to free space.
 - **Nothing is removed without a verified copy somewhere else** (details in [Safe transfers](#safe-transfers)).
 
 ### Organization, administration and audit
@@ -113,7 +118,7 @@ flowchart LR
 
 ### Interface
 - **Installable app (PWA)** on Windows, macOS, Android, iPhone and iPad: it opens from its own icon in a window without tabs, updates itself with every server version and tells you when you are offline. It stores no catalog data on the device.
-- **Activity indicator** in the header: what the Companion is doing right now (copying, verifying, downloading, scanning or deleting) and a panel with progress, speed, ETA and the latest movements.
+- **Activity indicator** in the header: what the Companion is doing right now (copying, verifying, downloading, scanning or deleting) and a panel with progress, speed, ETA and the latest movements. At the top it shows what is left with the connected drives (**x of y left to move**) and, per drive, whether it is **safe to disconnect** or worth waiting.
 - Spanish and English, light, dark, OLED or system themes, six accent colors and comfortable or compact density.
 - Responsive: collapsible sidebar on desktop, tab bar and bottom sheets on phones.
 - Every section has its own URL (`/catalogo`, `/review`, `/duplicados`…), also reachable through its English equivalent.
@@ -538,6 +543,7 @@ Web (session):
 | [apps/agent-windows/TRAY.md](apps/agent-windows/TRAY.md) | Tray Companion details (Spanish). |
 | [ROADMAP.md](ROADMAP.md) | Hardening and reliability plan. |
 | [REMOTE_STREAMING_PLAN.md](REMOTE_STREAMING_PLAN.md) | Design of secure remote playback. |
+| [COMMUNITY_SCRIPTS_PLAN.es.md](COMMUNITY_SCRIPTS_PLAN.es.md) | Plan to publish VideoCAT on community-scripts (Proxmox VE), in Spanish. |
 | [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md) | Phased interface redesign. |
 | [TRANSFERS_PLAN.es.md](TRANSFERS_PLAN.es.md) | Design and progress of Transfers (consolidate and group), in Spanish. |
 | [PUBLISHING.md](PUBLISHING.md) | Checklist for publishing official artifacts. |

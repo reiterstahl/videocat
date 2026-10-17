@@ -9,6 +9,7 @@
 
   <p>
     <a href="https://videocat.centeran.com"><img alt="Website" src="https://img.shields.io/badge/Website-videocat.centeran.com-FC6121?style=for-the-badge" /></a>
+    <a href="https://github.com/reiterstahl/videocat/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/reiterstahl/videocat?style=for-the-badge&logo=github&color=FC6121&label=Stars" /></a>
     <a href="https://github.com/reiterstahl/videocat/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/reiterstahl/videocat?label=Release&style=for-the-badge&color=FC6121" /></a>
     <a href="https://hub.docker.com/r/reiterstahl/videocat-web"><img alt="Docker Hub" src="https://img.shields.io/docker/v/reiterstahl/videocat-web?sort=semver&label=Docker%20Hub&style=for-the-badge&logo=docker&logoColor=white&color=2496ED" /></a>
     <a href="https://github.com/reiterstahl/videocat/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/reiterstahl/videocat/ci.yml?branch=main&label=CI&style=for-the-badge" /></a>
@@ -19,6 +20,9 @@
 </div>
 
 VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas.
+
+> [!TIP]
+> ⭐ Si VideoCAT te sirve, [dale una estrella en GitHub](https://github.com/reiterstahl/videocat/stargazers): ayuda a que más gente con colecciones en discos externos lo encuentre.
 
 <p align="center">
   <img src="docs/screenshots/es/catalog.webp" alt="Catálogo de VideoCAT con discos, filtros y miniaturas" width="900" />
@@ -70,7 +74,7 @@ flowchart LR
 ### Catálogo
 - Cuadrícula o lista, búsqueda con `Ctrl K` tolerante a acentos, chips de filtros activos y panel de detalle.
 - Filtros por disco, extensión, carpeta (árbol con carga bajo demanda), etiquetas, categorías y duplicados.
-- Tira de discos con capacidad y uso, y **Mostrar conectados** para trabajar solo con lo que está enchufado.
+- Tira de discos con capacidad y uso, y **Mostrar conectados** para trabajar solo con lo que está enchufado; los discos conectados aparecen siempre primero.
 - Discos identificados por `.videocat-disk.json`: se reconocen aunque Windows cambie la letra de la unidad.
 - Miniaturas, galería de 15 fotogramas por video, tamaño de la carpeta y fecha del último indexado.
 
@@ -90,6 +94,7 @@ flowchart LR
 ### Reproducción remota
 - Ve cualquier video desde el móvil u otro navegador a través del túnel saliente del Companion, sin compartir rutas de Windows ni montar discos en el servidor.
 - Reproductor táctil: doble toque para avanzar o retroceder, siguiente video y modo aleatorio entre discos conectados.
+- **Lectura anticipada** ajustable (8 a 128 MB, en Perfil › Reproducción): el servidor pide varios fragmentos a la vez al Companion para que los videos 4K no se queden cargando.
 - Remux temporal opcional a MP4 para H.264/AAC en contenedores incompatibles. Chromecast opcional con enlaces firmados y temporales.
 
 ### A descargar
@@ -100,7 +105,7 @@ flowchart LR
 - **Consolidar carpetas**: marca con estrella la carpeta más grande de un grupo repetido (por ejemplo, la "Testing" de 1.7 TB) y lleva ahí el contenido de las demás "Testing", estén en el disco que estén. Antes de empezar se ve el plan: qué sale de cada carpeta, cuánto ocupa y si cabe en el destino.
 - **Agrupar archivos**: parte de una carpeta (por ejemplo `testing001`) y busca en todos los discos archivos con un nombre parecido, ignorando mayúsculas, acentos, puntos y separadores, y con una letra de diferencia. Opcionalmente, cada carpeta suma **palabras clave** que se buscan exactas, como palabra completa del nombre (sin importar mayúsculas ni separadores: `GATO`, `.gato.` o `mi_gato_2024` sí; `gatos` o `gatito` no). Se decide uno por uno con la misma sesión de Review: `F` agrupar, `J` ignorar.
 - **Mover por etiqueta**: una regla "etiqueta → carpeta con estrella" lleva ahí todos los videos con esa etiqueta, también los que la reciban después, a medida que se conectan sus discos.
-- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una **carpeta temporal del Companion** y la sección **Traslados** avisa qué disco conectar o dónde liberar espacio.
+- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una **carpeta temporal del Companion**. En **Traslados › Para continuar**, los discos se separan en los que **reciben material** y los que **copian a la carpeta temporal**, con el que más datos debe recibir primero, y se avisa dónde liberar espacio.
 - **Nada se borra sin una copia verificada en otro lugar** (detalle en [Traslados seguros](#traslados-seguros)).
 
 ### Organización, administración y auditoría
@@ -113,7 +118,7 @@ flowchart LR
 
 ### Interfaz
 - **App instalable (PWA)** en Windows, macOS, Android, iPhone y iPad: se abre desde su propio ícono en una ventana sin pestañas, se actualiza sola con cada versión del servidor y avisa cuando no hay conexión. No guarda datos del catálogo en el dispositivo.
-- **Indicador de actividad** en el encabezado: qué está haciendo el Companion en este momento (copiando, verificando, descargando, escaneando o borrando) y un panel con progreso, velocidad, ETA y los últimos movimientos.
+- **Indicador de actividad** en el encabezado: qué está haciendo el Companion en este momento (copiando, verificando, descargando, escaneando o borrando) y un panel con progreso, velocidad, ETA y los últimos movimientos. Arriba muestra cuánto falta con los discos conectados (**faltan x de y por mover**) y, por disco, si **ya puedes desconectarlo** o conviene esperar.
 - Español e inglés, temas claro, oscuro, OLED o del sistema, seis colores de acento y densidad cómoda o compacta.
 - Responsive: barra lateral contraíble en escritorio, barra de pestañas y hojas desplegables en el móvil.
 - Cada sección tiene su URL (`/catalogo`, `/review`, `/duplicados`…), que también se puede abrir con su equivalente en inglés.
@@ -536,6 +541,7 @@ Web (sesión):
 | [apps/agent-windows/TRAY.md](apps/agent-windows/TRAY.md) | Detalle del Companion de bandeja. |
 | [ROADMAP.es.md](ROADMAP.es.md) | Plan de endurecimiento y fiabilidad. |
 | [REMOTE_STREAMING_PLAN.es.md](REMOTE_STREAMING_PLAN.es.md) | Diseño de la reproducción remota segura. |
+| [COMMUNITY_SCRIPTS_PLAN.es.md](COMMUNITY_SCRIPTS_PLAN.es.md) | Plan para publicar VideoCAT en community-scripts (Proxmox VE). |
 | [UI_REDESIGN_PLAN.es.md](UI_REDESIGN_PLAN.es.md) | Rediseño de la interfaz por fases. |
 | [TRANSFERS_PLAN.es.md](TRANSFERS_PLAN.es.md) | Diseño y avance de Traslados (consolidar y agrupar). |
 | [PUBLISHING.md](PUBLISHING.md) | Lista de control para publicar artefactos oficiales. |

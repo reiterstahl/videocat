@@ -165,3 +165,7 @@ Acordado en octubre de 2026, después de endurecer las imágenes en `0.2.17` (De
 8. Automatización de respaldo y restauración.
 
 Los reportes de seguridad deben seguir [SECURITY.md](SECURITY.md). El trabajo público puede organizarse mediante issues y pull requests enlazados con la fase correspondiente.
+
+## Pendiente: Publicación En community-scripts (Proxmox)
+
+Instalar VideoCAT en un LXC de Proxmox con un comando de [community-scripts.org](https://community-scripts.org). Piden al menos 1.000 estrellas y 6 meses de antigüedad (desde el 2026-12-14), además de una instalación nativa sin Docker y releases propios del stack. Plan y requisitos en [COMMUNITY_SCRIPTS_PLAN.es.md](COMMUNITY_SCRIPTS_PLAN.es.md).

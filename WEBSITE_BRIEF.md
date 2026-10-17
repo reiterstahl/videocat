@@ -102,7 +102,7 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - Review inmersivo con atajos de teclado y deshacer; duplicados con comparación asistida A/B.
 - Menú sticky de una sola línea y menú compacto en móvil.
 - URLs independientes para cada sección.
-- Selección rápida de discos y filtro de discos conectados.
+- Selección rápida de discos y filtro de discos conectados; los discos conectados aparecen siempre primero.
 - Búsqueda parcial y tolerante a acentos en nombre y ruta.
 - Árbol de carpetas colapsable y búsqueda de folders.
 - Filtros por extensión, carpetas, etiquetas, categorías y duplicados.
@@ -167,15 +167,25 @@ Companion Windows -> discos externos / carpetas locales / rutas de red
 - Administración por unidad con capacidad total, usada y libre.
 - Tamaño catalogado, cantidad de videos, escaneos y actividad reciente.
 - Eliminación administrativa del catálogo de una unidad sin borrar el disco físico.
+- Renombrar una unidad (el nombre elegido se conserva en los escaneos) y eliminar de VideoCAT una unidad que ya no existe, solo si está desconectada y sin archivos en la carpeta temporal.
 - Gestión y revocación de Companions emparejados.
 - Indicador global de Companion conectado.
 - Aviso de una versión estable más reciente publicada en Docker Hub.
 
+### Uso por carpeta
+
+- Mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos.
+- Un clic entra en la carpeta y la explora nivel por nivel hasta los videos, dibujados como bloques proporcionales a su tamaño.
+- Búsqueda instantánea (atajo `/`): los bloques que no coinciden desaparecen y los demás crecen; sin importar mayúsculas ni tildes.
+- Clic derecho: ir al catálogo o marcar la carpeta como favorita (sus videos nunca se ofrecen para moverse).
+
 ### Traslados
 
 - **Consolidar carpetas**: las carpetas con el mismo nombre en distintos discos (por ejemplo, varias "Testing") se juntan en la más grande, marcada con estrella. Antes de empezar se muestra el plan con lo que se mueve, cuánto ocupa y si cabe.
-- **Agrupar archivos**: desde una carpeta (por ejemplo `testing001`) se buscan en todos los discos archivos con nombres parecidos —sin importar mayúsculas, acentos, puntos, separadores ni una letra de diferencia— y se decide uno por uno como en Review: F agrupar, J ignorar.
-- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una carpeta temporal del Companion y la web avisa qué disco conectar o dónde liberar espacio.
+- **Agrupar archivos**: desde una carpeta (por ejemplo `testing001`) se buscan en todos los discos archivos con nombres parecidos —sin importar mayúsculas, acentos, puntos, separadores ni una letra de diferencia— y se decide uno por uno como en Review: F agrupar, J ignorar. Cada carpeta puede sumar palabras clave opcionales, que se buscan exactas como palabra completa del nombre.
+- **Mover por etiqueta**: una regla "etiqueta → carpeta con estrella" lleva ahí todos los videos con esa etiqueta, también los que la reciban después.
+- Los discos no necesitan estar conectados a la vez: cada archivo pasa por una carpeta temporal del Companion. La web separa los discos que reciben material de los que copian a la carpeta temporal, empieza por el que más datos debe recibir y avisa dónde liberar espacio.
+- El indicador de actividad dice cuánto falta con los discos conectados ("faltan x de y por mover") y si cada disco ya se puede desconectar.
 - Mensaje clave: **nada se borra sin una copia verificada en otro lugar**. Cada copia se comprueba con SHA-256 releyéndola entera, la carpeta temporal siempre deja libre el 5 % del disco, nada se sobrescribe y un corte a mitad de camino se retoma sin perder archivos.
 
 ### Perfil y privacidad
@@ -202,6 +212,7 @@ La reproducción remota está pensada principalmente para un navegador móvil en
 - Reproducción aleatoria persistente entre videos presentes en discos conectados.
 - El cambio de video reemplaza la sesión anterior para evitar conflictos por reproducción simultánea.
 - Los estados de preparación, buffer y desconexión tienen feedback visual.
+- Lectura anticipada ajustable por el administrador (8 a 128 MB): el servidor pide varios fragmentos a la vez al Companion para que los videos de alta tasa de bits (4K) no se queden cargando. Si se entra por un dominio público, la velocidad de subida de la conexión a internet pone el techo.
 
 Compatibilidad:
 
@@ -431,4 +442,5 @@ Antes de publicar capturas, ocultar nombres de archivo privados, rutas personale
 3. Companion Windows: <https://github.com/reiterstahl/videocat/releases/latest>
 4. Código fuente: <https://github.com/reiterstahl/videocat>
 5. Documentación y seguridad dentro del repositorio.
-6. GitHub Sponsors y PayPal como acciones secundarias.
+6. Estrella en GitHub (<https://github.com/reiterstahl/videocat/stargazers>) como acción secundaria de apoyo, sin cifras inventadas.
+7. GitHub Sponsors y PayPal como acciones secundarias.
