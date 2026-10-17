@@ -90,7 +90,7 @@ Official VideoCAT distributions should include:
 - `LICENSE`
 - `NOTICE`
 - `README.md`
-- `README.en.md`
+- `README.es.md`
 - `.env.example`
 
 Forks and modified versions may remove or replace optional donation links, provided they comply with the project license and preserve required copyright and attribution notices.
