@@ -993,6 +993,35 @@ test("a drive that no longer exists can be removed, but not while files from it 
   }
 });
 
+test("a damaged video is reported as such and not retried on every scan", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Damaged ${suffix}`, volumeId: `damaged-${suffix}` } });
+  try {
+    const scanId = (await app.inject({ method: "POST", url: "/api/agent/scan/start", headers: agentHeaders, payload: { diskId: disk.id, rootPath: "D:\\" } })).json().scan.id;
+    const damaged = "Archivo de video incompleto o dañado: falta el índice del MP4 (moov): la grabación o la copia se cortó antes de terminar. Si todavía se está copiando, se vuelve a leer cuando cambie.\nDetalle: moov atom not found";
+    const batch = await app.inject({
+      method: "POST",
+      url: "/api/agent/files/batch",
+      headers: agentHeaders,
+      payload: {
+        scanId,
+        diskId: disk.id,
+        files: [
+          { filename: "cut.mp4", extension: ".mp4", absolutePath: "D:\\cut.mp4", relativePath: "cut.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: damaged },
+          { filename: "probe.mp4", extension: ".mp4", absolutePath: "D:\\probe.mp4", relativePath: "probe.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: "ffprobe timed out after 60 s" }
+        ]
+      }
+    });
+    assert.equal(batch.statusCode, 200, batch.body);
+    const errors = await prisma.agentError.findMany({ where: { diskId: disk.id }, orderBy: { relativePath: "asc" } });
+    assert.deepEqual(errors.map((error) => [error.relativePath, error.category]), [["cut.mp4", "damaged_file"], ["probe.mp4", "metadata"]]);
+    const queue = (await app.inject({ method: "GET", url: `/api/agent/disks/${disk.id}/thumbnail-repair-queue`, headers: agentHeaders })).json();
+    assert.deepEqual(queue.files.map((file: { relativePath: string }) => file.relativePath), ["probe.mp4"], "a tool failure is retried, a damaged file is not");
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("a scan of the source drive does not hide a file that is waiting in staging", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = Math.random().toString(36).slice(2, 8);
   const disk = await prisma.disk.create({ data: { name: `Scan ${suffix}`, volumeId: `scan-${suffix}`, totalBytes: 10n, freeBytes: 10n } });

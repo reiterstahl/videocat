@@ -5,7 +5,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   agentErrorsBatchSchema,
+  damagedMediaPrefix,
+  damagedMediaReason,
   filesBatchSchema,
+  isDamagedMediaMessage,
   registerDiskSchema,
   scanStartSchema,
   thumbnailKindSchema,
@@ -134,6 +137,7 @@ function scannedScopeWhere(scanRoots: string[]): Prisma.VideoFileWhereInput {
 }
 
 function errorCategory(status: string, message?: string | null): string {
+  if (isDamagedMediaMessage(message) || damagedMediaReason(message)) return "damaged_file";
   const text = `${status} ${message ?? ""}`.toLowerCase();
   if (text.includes("eperm") || text.includes("eacces") || text.includes("permission")) return "permission";
   if (text.includes("enoent") || text.includes("not found")) return "missing_path";
@@ -450,7 +454,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
 
     const files = await prisma.videoFile.findMany({
-      where: { diskId: disk.id, isPresent: true },
+      // A damaged file cannot give thumbnails: it is only read again when it changes (the Companion
+      // notices the new size or date), never on every scan.
+      where: { diskId: disk.id, isPresent: true, NOT: { scanStatus: "metadata_failed", errorMessage: { startsWith: damagedMediaPrefix } } },
       select: {
         relativePath: true,
         thumbnails: { select: { kind: true, relativePath: true } }

@@ -17,6 +17,16 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.37 (Companion 0.2.11)
+
+- **Damaged or unfinished videos** (for example an MP4 whose recording or copy stopped before the end: FFmpeg says *moov atom not found* or *Invalid data found when processing input*) are no longer a cryptic metadata error repeated on every scan:
+  - Companion 0.2.11 (updates itself) logs *Archivo dañado* with the reason and stores it in the catalog, keeping the tool output as detail;
+  - the catalog card shows a **Dañado** badge and the detail shows the reason;
+  - Auditoría groups them under the category `damaged_file`;
+  - the server no longer offers them for thumbnail repair, so they are only read again when the file changes (a copy that finishes, a repaired file).
+- Files already in the catalog with the old error are read once more by the next scan with Companion 0.2.11, get the new message and stop being retried. Nothing is deleted: decide in the catalog what to do with them.
+- No migrations or configuration changes.
+
 ## Upgrading to 0.2.36 (Companion 0.2.10)
 
 - **Uso por carpeta** shows each selected drive's free space on the map, always in the same color (dashed, not explorable), and the total in the header, so the room left is always in view. It uses the drive's last scan or live report; drives without a measurement are left out. The free blocks hide while searching.

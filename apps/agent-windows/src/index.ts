@@ -14,6 +14,8 @@ import {
   AgentErrorInput,
   AgentFileInput,
   companionDefaultPort,
+  damagedMediaMessage,
+  damagedMediaReason,
   companionPortCandidates,
   encodeVisualFingerprint,
   formatBytes,
@@ -2339,12 +2341,17 @@ async function processFile(
       thumbnails: thumbs
     };
   } catch (error) {
-    console.warn(`Metadatos fallidos para ${compactFileLabel(filePath)}: ${compactToolError(error)}`);
+    // A damaged or unfinished file (an interrupted recording or copy) is not a tool failure: it says
+    // so plainly, keeps the tool output as detail, and is only read again when the file changes.
+    const detail = boundedErrorMessage(error, 4000, "metadata_failed");
+    const damaged = damagedMediaReason(detail);
+    if (damaged) console.warn(`Archivo dañado ${compactFileLabel(filePath)}: ${damaged}`);
+    else console.warn(`Metadatos fallidos para ${compactFileLabel(filePath)}: ${compactToolError(error)}`);
     return {
       record: {
         ...baseRecord,
         status: "metadata_failed",
-        errorMessage: boundedErrorMessage(error, 4000, "metadata_failed"),
+        errorMessage: damaged ? `${damagedMediaMessage(damaged)}\nDetalle: ${detail.slice(0, 1500)}` : detail,
         visualFingerprint: createFingerprint ? null : undefined,
         fingerprintVersion: createFingerprint ? null : undefined,
         metadata: null

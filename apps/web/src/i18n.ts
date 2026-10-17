@@ -132,6 +132,7 @@ const en: Record<string, string> = {
   "Eliminar unidad": "Remove drive",
   "Reciben material": "Receiving files",
   "Catálogo de video self-hosted": "Self-hosted video catalog",
+  "Dañado": "Damaged",
   "Espacio libre del disco: no tiene carpetas que explorar": "Free space on the drive: no folders to explore",
   "F · Mantener": "F · Keep",
   "Iniciar sesión": "Sign in",
@@ -1287,6 +1288,17 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) (disco|discos) · (.+)$/);
   if (match) return `${match[1]} ${match[2] === "disco" ? "drive" : "drives"} · ${match[3]}`;
+
+  match = text.match(/^Archivo de video incompleto o dañado: (.+) Si todavía se está copiando, se vuelve a leer cuando cambie\.$/);
+  if (match) {
+    const reasons: Record<string, string> = {
+      "falta el índice del MP4 (moov): la grabación o la copia se cortó antes de terminar.": "the MP4 index (moov) is missing: the recording or the copy stopped before it finished.",
+      "la cabecera del archivo MKV está dañada.": "the MKV header is damaged.",
+      "el archivo está cortado: termina antes de lo que indica su contenido.": "the file is cut short: it ends before its content says it should.",
+      "sus datos no se pueden leer como video.": "its data cannot be read as video."
+    };
+    return `Incomplete or damaged video file: ${reasons[match[1]] ?? match[1]} If it is still being copied, it is read again when it changes.`;
+  }
 
   match = text.match(/^Libre · (.+)$/);
   if (match) return `Free · ${match[1]}`;
