@@ -35,7 +35,7 @@ import { MobileNav } from "./components/MobileNav";
 import { ProtectedPinModal } from "./components/ProtectedPinModal";
 import { RecoverableSpaceModal } from "./components/RecoverableSpaceModal";
 import { ReviewSession } from "./components/ReviewSession";
-import { WaterRippleBackdrop } from "./components/WaterRippleBackdrop";
+import { LoginScreen } from "./components/LoginScreen";
 import { useCompanionStatus } from "./hooks/useCompanionStatus";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useThemePreferences } from "./hooks/useThemePreferences";
@@ -456,7 +456,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = language;
     localStorage.setItem("videocat-language", language);
-    const root = document.querySelector(".login-screen, .vc-frame");
+    const root = document.querySelector(".vc-login, .vc-frame");
     return root ? observeLocalization(root, language) : undefined;
   }, [language, sessionChecked, authenticated, viewMode, catalogVersion, files, downloadSummary, reviewPending, reviewRecent, duplicateGroups]);
 
@@ -899,8 +899,7 @@ export function App() {
     };
   }, [activeDownload]);
 
-  async function login(event: FormEvent) {
-    event.preventDefault();
+  async function login() {
     setLoginError("");
     try {
       await api("/api/auth/login", {
@@ -2121,54 +2120,18 @@ export function App() {
 
   if (!authenticated) {
     return (
-      <main className="login-screen">
-        <WaterRippleBackdrop />
-        <section className="login-panel">
-          <div className="login-panel-actions">
-            <button className="theme-button login-theme-button" onClick={toggleTheme} title="Cambiar tema">
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-          </div>
-          <div className="brand-lockup login-brand">
-            <span className="vc-catmark is-large" aria-hidden="true" />
-            <div className="brand-word">
-              Video<span>CAT</span>
-            </div>
-          </div>
-          <form onSubmit={login} className="login-form">
-            <label>
-              Usuario
-              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
-            </label>
-            <label>
-              Contrasena
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                autoComplete="current-password"
-              />
-            </label>
-            {loginError ? <div className="form-error">{loginError}</div> : null}
-            <button type="submit" className="primary-button">
-              <Shield size={18} />
-              Entrar
-            </button>
-          </form>
-          <div className="login-footer-controls">
-            <select
-              className="language-select login-language-select"
-              value={language}
-              onChange={(event) => setLanguage(normalizeLanguage(event.target.value))}
-              title="Idioma"
-              aria-label="Idioma"
-            >
-              <option value="es">{languageLabel("es")}</option>
-              <option value="en">{languageLabel("en")}</option>
-            </select>
-          </div>
-        </section>
-      </main>
+      <LoginScreen
+        username={username}
+        password={password}
+        error={loginError}
+        theme={theme}
+        language={language}
+        onUsernameChange={setUsername}
+        onPasswordChange={setPassword}
+        onSubmit={login}
+        onToggleTheme={toggleTheme}
+        onLanguageChange={setLanguage}
+      />
     );
   }
 

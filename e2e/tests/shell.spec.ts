@@ -52,3 +52,30 @@ test("an expired access proxy session shows a sign-in notice instead of a networ
   await notice.getByRole("button", { name: "Volver a iniciar sesión" }).click();
   await expect(page).toHaveURL(/\/api\/session\/return\?to=%2Fduplicados/);
 });
+
+test.describe("sign-in screen", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("validates, explains a wrong password, shows the password and switches language", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("videocat-language", "es"));
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Inicia sesión" })).toBeVisible();
+    const password = page.getByLabel("Contraseña", { exact: true });
+
+    await page.getByLabel("Usuario", { exact: true }).fill("");
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Escribe tu usuario y tu contraseña.");
+
+    await page.getByLabel("Usuario", { exact: true }).fill("admin");
+    await password.fill("not-the-password");
+    await page.getByRole("button", { name: "Mostrar contraseña" }).click();
+    await expect(password).toHaveAttribute("type", "text");
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Usuario o contraseña incorrectos.");
+    await expect(page.locator(".vc-frame")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "EN", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+  });
+});

@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.34
+
+- **New sign-in screen**: a decorative contact sheet of frames beside the form (on a phone, a strip on top), the VideoCAT mark in the chosen accent, ES/EN and theme switches, a show-password button and clear messages for empty fields, a wrong password and too many attempts. It follows light, dark, OLED and the six accents. Nothing from the catalog is shown before signing in: the frames and drives on that screen are illustrations.
+- No migrations or configuration changes; the Windows Companion is 0.2.9.
+
 ## Upgrading to 0.2.33
 
 - **Actividad › Con los discos conectados**, at the top of the panel: *Faltan x de y por mover* with a progress bar, overall and per connected drive, and a badge per drive: **Puedes desconectarlo** or **Espera** (files still to leave it, files that can arrive now, queued downloads). "y" counts what was done with that drive since it was connected; the connection time is kept in server memory, so after a server restart it starts again at the next heartbeat. Files waiting for room on a drive do not hold it: they stay safe in the staging folder.
