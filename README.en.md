@@ -304,6 +304,8 @@ The player first checks whether the browser supports the container and codecs. F
 
 VideoCAT does not transcode H.265, AV1 or other codecs, because that would use a lot of CPU. Each session belongs to the user who created it, has duration, idle and concurrency limits, and closes when the player stops or the tunnel drops.
 
+**Read-ahead.** While a video plays, the server asks the Companion for several chunks at once and keeps the amount chosen in **Profile › Playback** ahead (8 to 128 MB, 32 MB by default), so a 4K video does not keep *loading*. It uses that much server memory per playback. If you open VideoCAT through a public domain (for example behind Cloudflare Tunnel), the video leaves and comes back through your internet connection even on the same network: that connection's upload speed is the ceiling.
+
 Chromecast is off by default: enable it in **Profile**. The Google Cast SDK only loads when you use the button, and the receiver gets a signed, short-lived URL, never your credentials. The Chromecast must be able to reach VideoCAT's domain or IP.
 
 ## Production deployment

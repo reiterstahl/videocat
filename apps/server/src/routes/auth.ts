@@ -16,6 +16,7 @@ import {
   signSession
 } from "../lib/auth.js";
 import {
+  isRemoteStreamBufferMb,
   isValidProtectedFolderPin,
   normalizeProtectedPatterns,
   protectedSecurityProfile,
@@ -35,7 +36,8 @@ const profileSecuritySchema = z.object({
   currentPin: z.string().regex(/^\d{4}$/).optional().or(z.literal("")),
   newPin: z.string().regex(/^\d{4}$/).optional().or(z.literal("")),
   protectedFolderPatterns: z.array(z.string().trim().min(1).max(80)).max(50),
-  chromecastEnabled: z.boolean().optional()
+  chromecastEnabled: z.boolean().optional(),
+  remoteStreamBufferMb: z.number().int().refine(isRemoteStreamBufferMb, "Unsupported buffer size").optional()
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -85,7 +87,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       currentPin: body.currentPin || undefined,
       newPin: body.newPin || undefined,
       protectedFolderPatterns: normalizeProtectedPatterns(body.protectedFolderPatterns),
-      chromecastEnabled: body.chromecastEnabled
+      chromecastEnabled: body.chromecastEnabled,
+      remoteStreamBufferMb: body.remoteStreamBufferMb
     });
     if (body.newPin) clearProtectedFolderCookie(reply);
     return profile;

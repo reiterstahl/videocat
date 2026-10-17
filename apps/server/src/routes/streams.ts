@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import {
   authenticatedCastStreamUsername,
@@ -11,7 +12,8 @@ import { prisma } from "../lib/prisma.js";
 import {
   chromecastStreamingEnabled,
   protectedFolderPatterns,
-  relativePathMatchesProtectedPatterns
+  relativePathMatchesProtectedPatterns,
+  remoteStreamBufferMb
 } from "../lib/protected-settings.js";
 import {
   cancelCompanionStream,
@@ -19,7 +21,8 @@ import {
   openCompanionStream,
   readCompanionStreamRange
 } from "../lib/companion-control-tunnel.js";
-import { companionStreamMaxRangeBytes } from "@videocat/shared";
+import { companionStreamMaxRangeBytes, remoteStreamMaxInFlightRanges } from "@videocat/shared";
+import { pumpRange } from "../lib/stream-pump.js";
 import { env } from "../lib/env.js";
 import { rateLimit } from "../lib/security.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
@@ -33,16 +36,16 @@ const streamParamsSchema = z.object({ id: z.string().uuid() });
 const castStreamQuerySchema = z.object({ castToken: z.string().min(1).max(2000).optional() });
 const activeStreamStatuses = ["opening", "ready", "streaming"];
 
+// Open ranges run to the end of the file: the response streams with read-ahead and the
+// browser stops reading (or asks a new range) when it has enough or seeks.
 function parseRange(value: string | undefined, sizeBytes: number): { start: number; end: number } | null {
-  if (!value) return { start: 0, end: Math.min(sizeBytes - 1, companionStreamMaxRangeBytes - 1) };
+  if (!value) return { start: 0, end: sizeBytes - 1 };
   const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
   if (!match) return null;
   const start = match[1] ? Number(match[1]) : NaN;
   const requestedEnd = match[2] ? Number(match[2]) : NaN;
   if (!Number.isSafeInteger(start) || start < 0 || start >= sizeBytes) return null;
-  const end = Number.isNaN(requestedEnd)
-    ? Math.min(sizeBytes - 1, start + companionStreamMaxRangeBytes - 1)
-    : Math.min(sizeBytes - 1, requestedEnd, start + companionStreamMaxRangeBytes - 1);
+  const end = Number.isNaN(requestedEnd) ? sizeBytes - 1 : Math.min(sizeBytes - 1, requestedEnd);
   return end >= start ? { start, end } : null;
 }
 
@@ -106,6 +109,11 @@ async function readStreamRangeWithRetry(
     }
   }
   throw lastError;
+}
+
+async function* continueWith(first: Buffer, rest: AsyncGenerator<Buffer>): AsyncGenerator<Buffer> {
+  yield first;
+  yield* rest;
 }
 
 export async function streamRoutes(app: FastifyInstance): Promise<void> {
@@ -333,19 +341,38 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         }
       }
       if (request.method === "HEAD") return reply.send();
+      const readRange = (offset: number, rangeLength: number) => readStreamRangeWithRetry(app, {
+        companionId: session.companionId,
+        sessionId: session.id,
+        offset,
+        length: rangeLength
+      });
+      // Long playback keeps the session alive without a database write per chunk.
+      let touchedAt = Date.now();
+      const touch = () => {
+        if (Date.now() - touchedAt < 15_000) return;
+        touchedAt = Date.now();
+        void prisma.streamSession.update({ where: { id }, data: { lastAccessedAt: new Date() } }).catch(() => undefined);
+      };
+      const chunks = pumpRange({
+        start: range.start,
+        end: range.end,
+        chunkBytes: companionStreamMaxRangeBytes,
+        bufferBytes: (await remoteStreamBufferMb()) * 1024 * 1024,
+        maxInFlight: remoteStreamMaxInFlightRanges,
+        read: readRange,
+        onChunk: touch
+      });
+      let first: Buffer;
       try {
         await prisma.streamSession.update({ where: { id }, data: { lastAccessedAt: new Date() } });
-        const data = await readStreamRangeWithRetry(app, {
-          companionId: session.companionId,
-          sessionId: session.id,
-          offset: range.start,
-          length
-        });
-        if (data.length !== length) throw new Error("Unexpected range length");
+        // The first chunk arrives before the headers go out, so an unavailable Companion still answers 503.
+        const head = await chunks.next();
+        if (head.done) throw new Error("Unexpected range length");
+        first = head.value;
         await prisma.streamSession.update({ where: { id }, data: { status: "streaming", lastAccessedAt: new Date() } });
-        if (request.raw.aborted || reply.raw.destroyed) return reply;
-        return reply.send(data);
       } catch (error) {
+        await chunks.return(undefined);
         if (request.raw.aborted || reply.raw.destroyed) return reply;
         app.log.warn({
           streamSessionId: session.id,
@@ -356,6 +383,13 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         }, "Remote stream range failed; session remains available for retry");
         return reply.code(503).header("Retry-After", "1").send({ message: "Companion stream range is temporarily unavailable" });
       }
+      if (request.raw.aborted || reply.raw.destroyed) {
+        await chunks.return(undefined);
+        return reply;
+      }
+      if (first.length === length) return reply.send(first);
+      // A failure later on cuts the response; the browser asks again from where it stopped.
+      return reply.send(Readable.from(continueWith(first, chunks), { objectMode: false }));
     }
   });
 }

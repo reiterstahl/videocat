@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { remoteStreamBufferDefaultMb, remoteStreamBufferOptionsMb } from "@videocat/shared";
 import { env } from "./env.js";
 import { constantTimeStringEqual, hashPin, verifyHashedPin } from "./pin-security.js";
 import { prisma } from "./prisma.js";
@@ -6,12 +7,14 @@ import { prisma } from "./prisma.js";
 const pinHashKey = "protected_folder_pin_hash";
 const patternsKey = "protected_folder_patterns";
 const chromecastEnabledKey = "profile_chromecast_enabled";
+const remoteStreamBufferKey = "remote_stream_buffer_mb";
 
 type SettingRow = {
   value: string;
 };
 
 let patternsCache: { value: string[]; expiresAt: number } | null = null;
+let streamBufferCache: { value: number; expiresAt: number } | null = null;
 
 function envPatterns(): string[] {
   return normalizeProtectedPatterns(env.PROTECTED_FOLDER_PATTERNS.split(","));
@@ -65,6 +68,7 @@ export function relativePathMatchesProtectedPatterns(relativePath: string, patte
 
 export function clearProtectedSettingsCache(): void {
   patternsCache = null;
+  streamBufferCache = null;
 }
 
 export async function protectedFolderPatterns(): Promise<string[]> {
@@ -93,16 +97,33 @@ export async function chromecastStreamingEnabled(): Promise<boolean> {
   return (await getSetting(chromecastEnabledKey)) === "true";
 }
 
-export async function protectedSecurityProfile(): Promise<{
+export function isRemoteStreamBufferMb(value: number): boolean {
+  return (remoteStreamBufferOptionsMb as readonly number[]).includes(value);
+}
+
+// Read ahead per remote playback; read on every range request, so it is cached briefly.
+export async function remoteStreamBufferMb(): Promise<number> {
+  if (streamBufferCache && streamBufferCache.expiresAt > Date.now()) return streamBufferCache.value;
+  const stored = Number(await getSetting(remoteStreamBufferKey));
+  const value = isRemoteStreamBufferMb(stored) ? stored : remoteStreamBufferDefaultMb;
+  streamBufferCache = { value, expiresAt: Date.now() + 10_000 };
+  return value;
+}
+
+type SecurityProfile = {
   hasPin: boolean;
   protectedFolderPatterns: string[];
   chromecastEnabled: boolean;
-}> {
+  remoteStreamBufferMb: number;
+};
+
+export async function protectedSecurityProfile(): Promise<SecurityProfile> {
   const storedHash = await getSetting(pinHashKey);
   return {
     hasPin: Boolean(storedHash || env.PROTECTED_FOLDER_PIN),
     protectedFolderPatterns: await protectedFolderPatterns(),
-    chromecastEnabled: await chromecastStreamingEnabled()
+    chromecastEnabled: await chromecastStreamingEnabled(),
+    remoteStreamBufferMb: await remoteStreamBufferMb()
   };
 }
 
@@ -111,7 +132,8 @@ export async function updateProtectedSecurityProfile(input: {
   newPin?: string;
   protectedFolderPatterns: string[];
   chromecastEnabled?: boolean;
-}): Promise<{ hasPin: boolean; protectedFolderPatterns: string[]; chromecastEnabled: boolean }> {
+  remoteStreamBufferMb?: number;
+}): Promise<SecurityProfile> {
   const storedHash = await getSetting(pinHashKey);
   if (input.newPin) {
     if (storedHash && (!input.currentPin || !verifyHashedPin(input.currentPin, storedHash))) {
@@ -124,6 +146,9 @@ export async function updateProtectedSecurityProfile(input: {
   await setSetting(patternsKey, JSON.stringify(normalizedPatterns));
   if (input.chromecastEnabled !== undefined) {
     await setSetting(chromecastEnabledKey, String(input.chromecastEnabled));
+  }
+  if (input.remoteStreamBufferMb !== undefined && isRemoteStreamBufferMb(input.remoteStreamBufferMb)) {
+    await setSetting(remoteStreamBufferKey, String(input.remoteStreamBufferMb));
   }
   clearProtectedSettingsCache();
   return protectedSecurityProfile();

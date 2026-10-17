@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.29 (Companion 0.2.9)
+
+- **Smoother remote playback (4K)**: a playback request used to get 512 KB per round trip, one at a time per Companion, so high-bitrate videos stalled on *cargando* and started slowly. Now each request streams to the end with read-ahead: the server keeps up to 8 chunks in flight with the Companion and holds the amount chosen in **Perfil › Reproducción › Lectura anticipada** (8–128 MB, 32 MB by default) ahead of the browser. nginx no longer buffers `/api/streams/` (no video copies on the web container's disk, and the browser's pace reaches the server).
+- Windows Companion 0.2.9 (updates itself) keeps the file open while it plays instead of opening it for every chunk, and lets go of it after 30 s without reads so the drive can be ejected. The server works with Companion 0.2.8 too.
+- Opening VideoCAT through a public domain (Cloudflare Tunnel) sends the video out and back through the internet connection, even on the LAN: its upload speed caps playback.
+- No migrations or configuration changes.
+
 ## Upgrading to 0.2.28
 
 - **Drive names**: Administración lets you rename a drive (pencil next to its name). The chosen name is what everyone sees in VideoCAT and scans keep it; *Usar el nombre detectado* goes back to the Companion's name on the next scan. Useful for drives added by path, which are detected as `H:\`.

@@ -101,6 +101,10 @@ const en: Record<string, string> = {
   "No se pudo limpiar la unidad.": "Could not clean the drive.",
   "No se pudo revocar el Companion.": "Could not revoke the Companion.",
   "Opciones para enviar videos a otros dispositivos.": "Options for sending videos to other devices.",
+  "Reproducción desde el Companion y envío a otros dispositivos.": "Playback from the Companion and sending to other devices.",
+  "Lectura anticipada al reproducir desde el Companion": "Read-ahead when playing from the Companion",
+  "Lectura anticipada": "Read-ahead",
+  "Cuánto video pide el servidor al Companion por delante de lo que se ve. Más ayuda con videos 4K o discos lentos en despertar; usa esa memoria en el servidor por cada reproducción.": "How much video the server asks the Companion for ahead of what is playing. More helps with 4K videos or drives slow to wake up; it uses that much server memory per playback.",
   "Primera vez": "First seen",
   "Quita de la lista las descargas completadas": "Removes completed downloads from the list",
   "Registro de acciones": "Action log",
@@ -917,6 +921,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) videos? pendientes?$/);
   if (match) return `${match[1]} pending ${match[1].trim() === "1" ? "video" : "videos"}`;
+
+  match = text.match(/^(\d+) MB \(recomendado\)$/);
+  if (match) return `${match[1]} MB (recommended)`;
 
   match = text.match(/^Ver fotograma (\d+) en grande$/);
   if (match) return `View frame ${match[1]} full size`;

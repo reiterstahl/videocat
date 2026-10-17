@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Cast, KeyRound, Lock, Palette, Shield } from "lucide-react";
+import { remoteStreamBufferDefaultMb, remoteStreamBufferOptionsMb } from "@videocat/shared";
 import { InstallAppPanel } from "../components/InstallApp";
 import { ThemeControls } from "../components/ThemeControls";
 import type { Language } from "../i18n";
@@ -55,6 +56,7 @@ export function ProfileView({
   const [newPin, setNewPin] = useState("");
   const [patternsText, setPatternsText] = useState("");
   const [chromecastEnabled, setChromecastEnabled] = useState(false);
+  const [streamBufferMb, setStreamBufferMb] = useState<number>(remoteStreamBufferDefaultMb);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -65,6 +67,7 @@ export function ProfileView({
     if (!security) return;
     setPatternsText(security.protectedFolderPatterns.join("\n"));
     setChromecastEnabled(security.chromecastEnabled);
+    setStreamBufferMb(security.remoteStreamBufferMb ?? remoteStreamBufferDefaultMb);
   }, [security]);
 
   async function saveSecurity(event: FormEvent) {
@@ -84,7 +87,8 @@ export function ProfileView({
           currentPin: currentPin.trim(),
           newPin: nextPin,
           protectedFolderPatterns: parsePatterns(patternsText),
-          chromecastEnabled
+          chromecastEnabled,
+          remoteStreamBufferMb: streamBufferMb
         })
       });
       setCurrentPin("");
@@ -175,7 +179,7 @@ export function ProfileView({
           <div className="vc-panel-head">
             <div>
               <h2 id="profile-playback-title"><Cast size={16} aria-hidden="true" /> Reproducción</h2>
-              <p>Opciones para enviar videos a otros dispositivos.</p>
+              <p>Reproducción desde el Companion y envío a otros dispositivos.</p>
             </div>
           </div>
           <div className="vc-panel-body">
@@ -185,6 +189,15 @@ export function ProfileView({
                 <strong>Permitir reproducción en Chromecast</strong>
                 <small>VideoCAT genera enlaces temporales para que un Chromecast pida el video a tu servidor. Google Cast solo se carga cuando usas esta función.</small>
               </span>
+            </label>
+            <label className="vc-field">
+              <span>Lectura anticipada al reproducir desde el Companion</span>
+              <select value={streamBufferMb} onChange={(event) => setStreamBufferMb(Number(event.target.value))} aria-label="Lectura anticipada">
+                {remoteStreamBufferOptionsMb.map((option) => (
+                  <option key={option} value={option}>{option === remoteStreamBufferDefaultMb ? `${option} MB (recomendado)` : `${option} MB`}</option>
+                ))}
+              </select>
+              <small>Cuánto video pide el servidor al Companion por delante de lo que se ve. Más ayuda con videos 4K o discos lentos en despertar; usa esa memoria en el servidor por cada reproducción.</small>
             </label>
           </div>
         </section>

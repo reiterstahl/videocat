@@ -11,6 +11,7 @@ import {
   companionTunnelProtocolVersion,
   companionStreamChunkSchema,
   companionStreamErrorSchema,
+  companionStreamMaxPendingRanges,
   companionStreamMaxRangeBytes,
   companionStreamOpenSchema,
   companionStreamRangeSchema,
@@ -64,8 +65,8 @@ class CompanionControlTunnelRegistry {
   private readonly connections = new Map<string, TunnelConnection>();
   private readonly pendingOpens = new Map<string, PendingOpen>();
   private readonly pendingRanges = new Map<string, PendingRange>();
-  private readonly activeRangeByCompanion = new Map<string, string>();
-  private readonly rangeTailByCompanion = new Map<string, Promise<void>>();
+  // A chunk header names the range its binary frame answers; the frame follows right after it.
+  private readonly awaitingBinaryByCompanion = new Map<string, { requestId: string; discard: boolean }>();
   private readonly server = new WebSocketServer({
     noServer: true,
     clientTracking: false,
@@ -139,24 +140,12 @@ class CompanionControlTunnelRegistry {
     });
   }
 
+  // Several ranges may be in flight at once: playback reads ahead while the browser consumes.
   async readStreamRange(input: { companionId: string; sessionId: string; offset: number; length: number }): Promise<Buffer> {
-    const previous = this.rangeTailByCompanion.get(input.companionId) ?? Promise.resolve();
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const tail = previous.catch(() => undefined).then(() => gate);
-    this.rangeTailByCompanion.set(input.companionId, tail);
-
-    await previous.catch(() => undefined);
-    try {
-      return await this.readStreamRangeNow(input);
-    } finally {
-      release();
-      if (this.rangeTailByCompanion.get(input.companionId) === tail) {
-        this.rangeTailByCompanion.delete(input.companionId);
-      }
-    }
+    let pending = 0;
+    for (const range of this.pendingRanges.values()) if (range.companionId === input.companionId) pending += 1;
+    if (pending >= companionStreamMaxPendingRanges) throw new Error("Companion has too many ranges in flight");
+    return this.readStreamRangeNow(input);
   }
 
   private async readStreamRangeNow(input: { companionId: string; sessionId: string; offset: number; length: number }): Promise<Buffer> {
@@ -176,7 +165,6 @@ class CompanionControlTunnelRegistry {
       const timeout = setTimeout(() => this.rejectRange(requestId, new Error("Companion range request timed out")), companionStreamRequestTimeoutMs);
       timeout.unref();
       this.pendingRanges.set(requestId, { companionId: input.companionId, sessionId: input.sessionId, resolve, reject, timeout });
-      this.activeRangeByCompanion.set(input.companionId, requestId);
       send(connection.socket, message);
     });
   }
@@ -363,9 +351,15 @@ class CompanionControlTunnelRegistry {
       }
       const chunk = companionStreamChunkSchema.safeParse(value);
       if (chunk.success) {
+        if (this.awaitingBinaryByCompanion.has(companionId)) {
+          this.disconnect(companionId, "stream chunk header without data");
+          return;
+        }
         const pending = this.pendingRanges.get(chunk.data.requestId);
-        if (!pending || pending.companionId !== companionId || pending.sessionId !== chunk.data.sessionId || pending.expectedBytes !== undefined) return;
-        pending.expectedBytes = chunk.data.bytes;
+        // A late answer to a range that already timed out or was cancelled: its data is dropped.
+        const valid = Boolean(pending && pending.companionId === companionId && pending.sessionId === chunk.data.sessionId && pending.expectedBytes === undefined);
+        if (pending && valid) pending.expectedBytes = chunk.data.bytes;
+        this.awaitingBinaryByCompanion.set(companionId, { requestId: chunk.data.requestId, discard: !valid });
         return;
       }
       const streamError = companionStreamErrorSchema.safeParse(value);
@@ -382,11 +376,14 @@ class CompanionControlTunnelRegistry {
   }
 
   private handleStreamBinary(companionId: string, data: Buffer): void {
-    const requestId = this.activeRangeByCompanion.get(companionId);
-    if (!requestId) {
+    const awaiting = this.awaitingBinaryByCompanion.get(companionId);
+    if (!awaiting) {
       this.disconnect(companionId, "unexpected stream data");
       return;
     }
+    this.awaitingBinaryByCompanion.delete(companionId);
+    if (awaiting.discard) return;
+    const { requestId } = awaiting;
     const pending = this.pendingRanges.get(requestId);
     if (!pending || pending.expectedBytes === undefined || pending.expectedBytes !== data.length || data.length > companionStreamMaxRangeBytes) {
       this.rejectRange(requestId, new Error("Invalid stream chunk"));
@@ -394,7 +391,6 @@ class CompanionControlTunnelRegistry {
       return;
     }
     this.pendingRanges.delete(requestId);
-    this.activeRangeByCompanion.delete(companionId);
     clearTimeout(pending.timeout);
     pending.resolve(data);
   }
@@ -411,12 +407,12 @@ class CompanionControlTunnelRegistry {
     const pending = this.pendingRanges.get(requestId);
     if (!pending) return;
     this.pendingRanges.delete(requestId);
-    this.activeRangeByCompanion.delete(pending.companionId);
     clearTimeout(pending.timeout);
     pending.reject(error);
   }
 
   private rejectForCompanion(companionId: string, error: Error): void {
+    this.awaitingBinaryByCompanion.delete(companionId);
     for (const [requestId, pending] of this.pendingOpens) if (pending.companionId === companionId) this.rejectOpen(requestId, error);
     for (const [requestId, pending] of this.pendingRanges) if (pending.companionId === companionId) this.rejectRange(requestId, error);
   }

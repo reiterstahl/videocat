@@ -301,6 +301,7 @@ export type ProfileSecurityResponse = {
   hasPin: boolean;
   protectedFolderPatterns: string[];
   chromecastEnabled: boolean;
+  remoteStreamBufferMb: number;
 };
 
 export type CastAccessResponse = {

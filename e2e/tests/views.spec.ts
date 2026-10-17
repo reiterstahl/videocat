@@ -67,6 +67,20 @@ test("downloads shows the transfer and random selection panels", async ({ page }
   await expect(page.locator(".vc-queue")).toBeVisible();
 });
 
+test("profile saves the read-ahead for Companion playback on the server", async ({ page }) => {
+  await openView(page, "/perfil");
+  const buffer = page.getByLabel("Lectura anticipada");
+  await expect(buffer).toHaveValue("32");
+  await buffer.selectOption("64");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByText("Perfil actualizado.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Lectura anticipada")).toHaveValue("64");
+  await page.getByLabel("Lectura anticipada").selectOption("32");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByText("Perfil actualizado.")).toBeVisible();
+});
+
 test("profile explains how to install the app and the shell warns when offline", async ({ page, context }) => {
   await openView(page, "/perfil");
   const panel = page.locator("section.vc-panel", { has: page.locator("#profile-install-title") });

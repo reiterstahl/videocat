@@ -40,6 +40,7 @@ const capabilities: CompanionTunnelCapabilities = {
 };
 
 const execFileAsync = promisify(execFile);
+const streamHandleIdleMs = 30_000;
 
 function parseServerMessage(event: MessageEvent): unknown {
   if (typeof event.data === "string") return JSON.parse(event.data);
@@ -54,12 +55,26 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
   let reconnectAttempt = 0;
   let loggedReady = false;
   let credentialRejected = false;
-  const streams = new Map<string, { path: string; sizeBytes: number; mimeType: string; expiresAtMs: number; temporary: boolean }>();
+  // The file stays open while its session lives; the server reads several ranges at once.
+  const streams = new Map<string, { path: string; sizeBytes: number; mimeType: string; expiresAtMs: number; temporary: boolean; handle?: Promise<fs.FileHandle>; lastReadAtMs?: number }>();
 
   async function clearStream(sessionId: string): Promise<void> {
     const stream = streams.get(sessionId);
     streams.delete(sessionId);
+    if (stream?.handle) await stream.handle.then((handle) => handle.close()).catch(() => undefined);
     if (stream?.temporary) await fs.rm(stream.path, { force: true }).catch(() => undefined);
+  }
+
+  function streamHandle(stream: { path: string; handle?: Promise<fs.FileHandle>; lastReadAtMs?: number }): Promise<fs.FileHandle> {
+    stream.lastReadAtMs = Date.now();
+    if (!stream.handle) {
+      stream.handle = fs.open(stream.path, "r");
+      // A failed open is retried on the next range.
+      stream.handle.catch(() => {
+        stream.handle = undefined;
+      });
+    }
+    return stream.handle;
   }
 
   async function remuxToTemporaryMp4(sourcePath: string, sessionId: string): Promise<{ path: string; sizeBytes: number; mimeType: string } | null> {
@@ -134,17 +149,14 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
       }
       const length = Math.min(range.data.length, stream.sizeBytes - range.data.offset);
       try {
-        const handle = await fs.open(stream.path, "r");
-        try {
-          const data = Buffer.allocUnsafe(length);
-          const result = await handle.read(data, 0, length, range.data.offset);
-          if (result.bytesRead <= 0) throw new Error("empty range");
-          const chunk = data.subarray(0, result.bytesRead);
-          send(next, { type: "stream.chunk", requestId: range.data.requestId, sessionId: range.data.sessionId, sequence: 0, bytes: chunk.length, eof: range.data.offset + chunk.length >= stream.sizeBytes });
-          if (next.readyState === WebSocket.OPEN) next.send(chunk);
-        } finally {
-          await handle.close();
-        }
+        const handle = await streamHandle(stream);
+        const data = Buffer.allocUnsafe(length);
+        const result = await handle.read(data, 0, length, range.data.offset);
+        if (result.bytesRead <= 0) throw new Error("empty range");
+        const chunk = data.subarray(0, result.bytesRead);
+        // Header and data go out together: the server pairs each data frame with the header before it.
+        send(next, { type: "stream.chunk", requestId: range.data.requestId, sessionId: range.data.sessionId, sequence: 0, bytes: chunk.length, eof: range.data.offset + chunk.length >= stream.sizeBytes });
+        if (next.readyState === WebSocket.OPEN) next.send(chunk);
       } catch {
         send(next, { type: "stream.error", requestId: range.data.requestId, sessionId: range.data.sessionId, code: "read_failed" });
       }
@@ -231,10 +243,25 @@ export function startCompanionControlTunnel(options: ControlTunnelOptions): Comp
     });
   }
 
+  // An open file keeps Windows from ejecting its drive: paused or abandoned playback lets it go.
+  const idleSweep = setInterval(() => {
+    for (const [sessionId, stream] of streams) {
+      if (stream.expiresAtMs <= Date.now()) {
+        void clearStream(sessionId);
+      } else if (stream.handle && Date.now() - (stream.lastReadAtMs ?? 0) > streamHandleIdleMs) {
+        const handle = stream.handle;
+        stream.handle = undefined;
+        void handle.then((open) => open.close()).catch(() => undefined);
+      }
+    }
+  }, 15_000);
+  idleSweep.unref?.();
+
   connect();
   return {
     stop: () => {
       stopped = true;
+      clearInterval(idleSweep);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = null;
       const active = socket;

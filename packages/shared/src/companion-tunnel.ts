@@ -3,6 +3,13 @@ import { z } from "zod";
 export const companionTunnelProtocolVersion = 1;
 export const companionTunnelMaxMessageBytes = 16 * 1024;
 export const companionStreamMaxRangeBytes = 512 * 1024;
+// Ranges the server may have in flight at once with one Companion (read-ahead of every playback).
+export const companionStreamMaxPendingRanges = 32;
+// Ranges one playback keeps in flight while it reads ahead.
+export const remoteStreamMaxInFlightRanges = 8;
+// Read-ahead the server keeps for each remote playback, chosen by the admin in Profile › Playback.
+export const remoteStreamBufferOptionsMb = [8, 16, 32, 64, 128] as const;
+export const remoteStreamBufferDefaultMb = 32;
 export const companionStreamRequestTimeoutMs = 15_000;
 export const companionStreamSessionLifetimeMs = 15 * 60 * 1000;
 export const companionTunnelHandshakeTimeoutMs = 8_000;

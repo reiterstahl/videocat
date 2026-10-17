@@ -302,6 +302,8 @@ El reproductor comprueba primero si el navegador soporta el contenedor y los cod
 
 VideoCAT no transcodifica H.265, AV1 ni otros codecs, porque consumiría mucha CPU. Cada sesión pertenece al usuario que la creó, tiene límites de duración, inactividad y concurrencia, y se cierra al detener el reproductor o perder el túnel.
 
+**Lectura anticipada.** Mientras reproduces, el servidor pide al Companion varios fragmentos a la vez y guarda por delante la cantidad elegida en **Perfil › Reproducción** (8 a 128 MB, 32 MB por defecto), para que un video 4K no se quede *cargando*. Usa esa memoria en el servidor por cada reproducción. Si entras por un dominio público (por ejemplo, detrás de Cloudflare Tunnel), el video sale y vuelve por tu conexión a internet aunque estés en la misma red: la velocidad de subida de esa conexión pone el techo.
+
 Chromecast está desactivado por defecto: actívalo en **Perfil**. El SDK de Google Cast solo se carga al usar el botón, y el receptor recibe una URL firmada y temporal, nunca tus credenciales. El Chromecast debe poder alcanzar el dominio o la IP de VideoCAT.
 
 ## Despliegue en producción

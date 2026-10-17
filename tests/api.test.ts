@@ -224,6 +224,83 @@ test("a paired Companion opens a control tunnel and revocation closes it", { ski
   }
 });
 
+test("remote playback streams an open range with read-ahead and the admin picks the buffer", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  const diskId = crypto.randomUUID();
+  const fileId = crypto.randomUUID();
+  const size = 1_700_000;
+  const file = Buffer.from(Array.from({ length: size }, (_, index) => index % 253));
+  let tunnel: WebSocket | null = null;
+  try {
+    const cookie = await authenticatedCookie();
+    const invalidBuffer = await app.inject({ method: "PATCH", url: "/api/profile/security", headers: webMutationHeaders(cookie), payload: { protectedFolderPatterns: ["Private"], remoteStreamBufferMb: 7 } });
+    assert.equal(invalidBuffer.statusCode, 400, invalidBuffer.body);
+    const savedBuffer = await app.inject({ method: "PATCH", url: "/api/profile/security", headers: webMutationHeaders(cookie), payload: { protectedFolderPatterns: ["Private", "Protected"], remoteStreamBufferMb: 8 } });
+    assert.equal(savedBuffer.statusCode, 200, savedBuffer.body);
+    assert.equal(savedBuffer.json().remoteStreamBufferMb, 8);
+
+    const codeResponse = await app.inject({ method: "POST", url: "/api/companions/pairing-code", headers: webMutationHeaders(cookie), payload: {} });
+    const pairResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/pair",
+      payload: { code: codeResponse.json().code, companionId, companionName: "Read-ahead CI Companion", version: 15 }
+    });
+    assert.equal(pairResponse.statusCode, 200, pairResponse.body);
+    await prisma.disk.create({ data: { id: diskId, name: "Read-ahead CI Disk", volumeId: `stream-${diskId}` } });
+    await prisma.videoFile.create({
+      data: { id: fileId, diskId, filename: "big.mp4", extension: ".mp4", absolutePath: "X:\\Videos\\big.mp4", relativePath: "Videos/big.mp4", sizeBytes: size }
+    });
+    await prisma.companionAgent.update({ where: { installationId: companionId }, data: { mountedDiskIds: [diskId] } });
+
+    const serverUrl = await websocketServerUrl();
+    tunnel = new WebSocket(`${serverUrl.replace(/^http/, "ws")}/api/agent/tunnel`);
+    await once(tunnel, "open");
+    tunnel.send(JSON.stringify({
+      type: "tunnel.hello", protocolVersion: 1, companionId, credential: pairResponse.json().credential,
+      companionName: "Read-ahead CI Companion", version: 15, capabilities: { control: true, streamRead: true, streamRemux: false }
+    }));
+    await once(tunnel, "message");
+    let inFlight = 0;
+    let peak = 0;
+    tunnel.on("message", (message, isBinary) => {
+      if (isBinary) return;
+      const input = JSON.parse(String(message));
+      if (input.type === "stream.open") {
+        tunnel?.send(JSON.stringify({ type: "stream.ready", requestId: input.requestId, sessionId: input.sessionId, sizeBytes: size, mimeType: "video/mp4" }));
+      }
+      if (input.type === "stream.range") {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        const chunk = file.subarray(input.offset, input.offset + input.length);
+        // Later ranges answer first: the server must keep the order.
+        setTimeout(() => {
+          inFlight -= 1;
+          tunnel?.send(JSON.stringify({ type: "stream.chunk", requestId: input.requestId, sessionId: input.sessionId, sequence: 0, bytes: chunk.length, eof: input.offset + chunk.length >= size }));
+          tunnel?.send(chunk);
+        }, 40 - Math.floor(input.offset / 100_000));
+      }
+    });
+
+    const sessionResponse = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId } });
+    assert.equal(sessionResponse.statusCode, 200, sessionResponse.body);
+    const sessionId = sessionResponse.json().session.id as string;
+    const content = await app.inject({ method: "GET", url: `/api/streams/${sessionId}/content`, headers: { cookie, range: "bytes=100-" } });
+    assert.equal(content.statusCode, 206, content.body);
+    assert.equal(content.headers["content-range"], `bytes 100-${size - 1}/${size}`);
+    assert.equal(Number(content.headers["content-length"]), size - 100);
+    assert.deepEqual(content.rawPayload, file.subarray(100));
+    assert.ok(peak > 1, "ranges are read ahead in parallel");
+  } finally {
+    tunnel?.terminate();
+    await app.inject({ method: "PATCH", url: "/api/profile/security", headers: webMutationHeaders(await authenticatedCookie()), payload: { protectedFolderPatterns: ["Private", "Protected"], remoteStreamBufferMb: 32 } });
+    await prisma.streamSession.deleteMany({ where: { videoFileId: fileId } });
+    await prisma.videoFile.deleteMany({ where: { id: fileId } });
+    await prisma.disk.deleteMany({ where: { id: diskId } });
+    await prisma.companionPairingCode.deleteMany({ where: { claimedById: companionId } });
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+  }
+});
+
 test("a paired streaming Companion serves a bounded HTTP range without exposing a local path", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const companionId = crypto.randomUUID();
   const diskId = crypto.randomUUID();
