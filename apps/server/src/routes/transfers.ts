@@ -1007,7 +1007,7 @@ export async function cancelVanishedTransfers(): Promise<number> {
   return result.count;
 }
 
-async function closeFinishedJob(jobId: string): Promise<void> {
+export async function closeFinishedJob(jobId: string): Promise<void> {
   const open = await prisma.transferItem.count({ where: { jobId, state: { in: unfinishedStates } } });
   if (open > 0) return;
   await prisma.transferJob.updateMany({ where: { id: jobId, status: { in: ["active", "paused"] } }, data: { status: "done" } });

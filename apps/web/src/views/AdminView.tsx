@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Database, HardDrive, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { Check, Copy, Database, HardDrive, HardDriveDownload, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
-import type { AdminDiskOverview, AdminPurgeResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
+import type { AdminDiskOverview, AdminPurgeResponse, AdminRemoveDiskResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
 import type { Disk } from "../types";
 
 type MaintenanceResponse = {
@@ -23,11 +23,18 @@ type AdminViewProps = {
   refreshKey: number;
   mountedDiskIds: string[];
   onDiskPurged: (disk: Disk) => void;
+  onDiskRemoved: (disk: Disk) => void;
 };
 
 const onlineWindowMs = 45_000;
 
-export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, onDiskRenamed }: AdminViewProps) {
+// Server refusals when removing a drive, in Spanish (the page translator turns them into English).
+const removeDiskMessages: Record<string, string> = {
+  "This drive is connected to the Companion; disconnect it before removing it": "Esta unidad está conectada al Companion: desconéctala antes de eliminarla, o el próximo escaneo la vuelve a agregar.",
+  "Files from or to this drive are in the Companion staging folder": "Hay archivos de esta unidad (o hacia ella) en la carpeta temporal del Companion. Espera a que terminen esos traslados antes de eliminarla."
+};
+
+export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, onDiskRemoved, onDiskRenamed }: AdminViewProps) {
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [renameError, setRenameError] = useState("");
   const [disks, setDisks] = useState<AdminDiskOverview[]>([]);
@@ -40,6 +47,8 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
   const [companionBusy, setCompanionBusy] = useState(false);
   const [pendingRevocation, setPendingRevocation] = useState<string | null>(null);
   const [purgeTarget, setPurgeTarget] = useState<string | null>(null);
+  // "purge" empties the catalog and keeps the drive; "remove" forgets the drive entirely.
+  const [purgeKind, setPurgeKind] = useState<"purge" | "remove">("purge");
   const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [purgingDiskId, setPurgingDiskId] = useState<string | null>(null);
   const [pruning, setPruning] = useState(false);
@@ -111,6 +120,28 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
       onDiskPurged(disk);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo limpiar la unidad.");
+    } finally {
+      setPurgingDiskId(null);
+    }
+  }
+
+  async function removeDisk(disk: Disk) {
+    setPurgingDiskId(disk.id);
+    setMessage("");
+    setError("");
+    try {
+      const response = await api<AdminRemoveDiskResponse>(`/api/admin/disks/${disk.id}`, { method: "DELETE" });
+      setPurgeTarget(null);
+      setPurgeConfirmation("");
+      setDisks((current) => current.filter((item) => item.disk.id !== disk.id));
+      setMessage(
+        `Unidad "${disk.name}" eliminada: ${formatCount(response.deleted.files)} videos y ${formatCount(response.deleted.thumbnails)} miniaturas.` +
+        (response.deleted.transfersCancelled > 0 ? ` ${formatCount(response.deleted.transfersCancelled)} traslados pendientes cancelados.` : "")
+      );
+      onDiskRemoved(disk);
+    } catch (reason) {
+      const text = reason instanceof Error ? reason.message : "";
+      setError(removeDiskMessages[text] ?? (text || "No se pudo eliminar la unidad."));
     } finally {
       setPurgingDiskId(null);
     }
@@ -248,6 +279,7 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
             const catalogPercent = totalBytes ? Math.min(100, (item.storage.catalogedBytes / totalBytes) * 100) : 0;
             const connected = mountedDiskIds.includes(disk.id);
             const confirming = purgeTarget === disk.id;
+            const confirmWord = purgeKind === "remove" ? "ELIMINAR" : "BORRAR";
             return (
               <article className="vc-admin-disk" key={disk.id}>
                 <header>
@@ -276,8 +308,8 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                     </form>
                   ) : (
                     <div>
-                      <strong>
-                        {disk.name}
+                      <strong className="vc-admin-disk-name">
+                        <span>{disk.name}</span>
                         <button className="icon-button vc-admin-rename-button" onClick={() => { setRenameError(""); setRenaming({ id: disk.id, name: disk.name }); }} type="button" title="Cambiar el nombre que se ve en VideoCAT" aria-label={`Cambiar el nombre de ${disk.name}`}>
                           <Pencil size={13} />
                         </button>
@@ -332,11 +364,15 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                     className="vc-danger-confirm"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      if (purgeConfirmation === "BORRAR") void purgeDisk(disk);
+                      if (purgeConfirmation !== confirmWord) return;
+                      if (purgeKind === "remove") void removeDisk(disk);
+                      else void purgeDisk(disk);
                     }}
                   >
                     <label htmlFor={`purge-${disk.id}`}>
-                      {`Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "${disk.name}". Escribe BORRAR para confirmar.`}
+                      {purgeKind === "remove"
+                        ? `"${disk.name}" desaparecerá de VideoCAT con sus videos, miniaturas, escaneos, errores y carpetas con estrella o favoritas. Los traslados pendientes hacia o desde ella se cancelan. No toca ningún archivo. Escribe ELIMINAR para confirmar.`
+                        : `Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "${disk.name}". Escribe BORRAR para confirmar.`}
                     </label>
                     <div>
                       <input
@@ -344,19 +380,34 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                         value={purgeConfirmation}
                         onChange={(event) => setPurgeConfirmation(event.target.value)}
                         autoComplete="off"
-                        placeholder="BORRAR"
+                        placeholder={confirmWord}
                       />
-                      <button className="vc-button is-danger" disabled={purgeConfirmation !== "BORRAR" || purgingDiskId === disk.id} type="submit">
-                        {purgingDiskId === disk.id ? "Limpiando..." : "Vaciar catálogo"}
+                      <button className="vc-button is-danger" disabled={purgeConfirmation !== confirmWord || purgingDiskId === disk.id} type="submit">
+                        {purgingDiskId === disk.id
+                          ? (purgeKind === "remove" ? "Eliminando..." : "Limpiando...")
+                          : (purgeKind === "remove" ? "Eliminar unidad" : "Vaciar catálogo")}
                       </button>
                       <button className="vc-button" onClick={() => { setPurgeTarget(null); setPurgeConfirmation(""); }} type="button">Cancelar</button>
                     </div>
                   </form>
                 ) : (
-                  <button className="vc-button is-danger-ghost" onClick={() => { setPurgeTarget(disk.id); setPurgeConfirmation(""); }} type="button">
-                    <Trash2 size={15} />
-                    Vaciar catálogo
-                  </button>
+                  <div className="vc-admin-disk-actions">
+                    <button className="vc-button is-danger-ghost" onClick={() => { setPurgeKind("purge"); setPurgeTarget(disk.id); setPurgeConfirmation(""); }} type="button">
+                      <Trash2 size={15} />
+                      Vaciar catálogo
+                    </button>
+                    {connected ? null : (
+                      <button
+                        className="vc-button is-danger-ghost"
+                        onClick={() => { setPurgeKind("remove"); setPurgeTarget(disk.id); setPurgeConfirmation(""); }}
+                        type="button"
+                        title="Para unidades que ya no existen: la quita de VideoCAT"
+                      >
+                        <HardDriveDownload size={15} />
+                        Eliminar unidad
+                      </button>
+                    )}
+                  </div>
                 )}
               </article>
             );

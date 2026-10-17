@@ -947,6 +947,52 @@ test("transfers move a file through staging to a starred folder without losing i
   }
 });
 
+test("a drive that no longer exists can be removed, but not while files from it are in staging", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const gone = await prisma.disk.create({ data: { name: `Gone ${suffix}`, volumeId: `gone-${suffix}` } });
+  const other = await prisma.disk.create({ data: { name: `Other ${suffix}`, volumeId: `other-${suffix}` } });
+  try {
+    const cookie = await authenticatedCookie();
+    await prisma.videoFile.createMany({
+      data: ["a", "b"].map((name) => ({ diskId: gone.id, filename: `${name}.mp4`, extension: "mp4", absolutePath: `G:/V/${name}.mp4`, relativePath: `V/${name}.mp4`, sizeBytes: 10n }))
+    });
+    const [a, b] = await prisma.videoFile.findMany({ where: { diskId: gone.id }, orderBy: { filename: "asc" } });
+    // A transfer from the gone drive to another one, and a starred folder on the gone drive.
+    const outDestination = await prisma.transferDestination.create({ data: { diskId: other.id, path: `Dest-${suffix}`, nameKey: "dest" } });
+    const outJob = await prisma.transferJob.create({ data: { kind: "group", destinationId: outDestination.id, label: "out" } });
+    const pending = await prisma.transferItem.create({
+      data: { jobId: outJob.id, videoFileId: a.id, filename: "a.mp4", sourceDiskId: gone.id, sourceRelativePath: "V/a.mp4", targetDiskId: other.id, targetFolder: `Dest-${suffix}`, sizeBytes: 10n, state: "pending" }
+    });
+    const staged = await prisma.transferItem.create({
+      data: { jobId: outJob.id, videoFileId: b.id, filename: "b.mp4", sourceDiskId: gone.id, sourceRelativePath: "V/b.mp4", targetDiskId: other.id, targetFolder: `Dest-${suffix}`, sizeBytes: 10n, state: "source_removed" }
+    });
+    await prisma.transferDestination.create({ data: { diskId: gone.id, path: `Starred-${suffix}`, nameKey: "starred" } });
+    await prisma.folderFavorite.create({ data: { diskId: gone.id, path: "V" } });
+
+    const blocked = await app.inject({ method: "DELETE", url: `/api/admin/disks/${gone.id}`, headers: webMutationHeaders(cookie) });
+    assert.equal(blocked.statusCode, 409, blocked.body);
+    assert.equal(blocked.json().inStaging, 1);
+    assert.ok(await prisma.disk.findUnique({ where: { id: gone.id } }), "nothing removed while a copy waits in staging");
+
+    await prisma.transferItem.update({ where: { id: staged.id }, data: { state: "done" } });
+    const removed = await app.inject({ method: "DELETE", url: `/api/admin/disks/${gone.id}`, headers: webMutationHeaders(cookie) });
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.deepEqual(removed.json().deleted, { files: 2, thumbnails: 0, transfersCancelled: 1, transferJobs: 0 });
+    assert.equal(await prisma.disk.findUnique({ where: { id: gone.id } }), null);
+    assert.equal(await prisma.transferDestination.count({ where: { diskId: gone.id } }), 0);
+    assert.equal(await prisma.folderFavorite.count({ where: { diskId: gone.id } }), 0);
+    assert.equal((await prisma.transferItem.findUniqueOrThrow({ where: { id: pending.id } })).state, "cancelled");
+    assert.equal((await prisma.transferJob.findUniqueOrThrow({ where: { id: outJob.id } })).status, "done");
+    const disks = (await app.inject({ method: "GET", url: "/api/disks", headers: { cookie } })).json().disks as Array<{ id: string }>;
+    assert.equal(disks.some((disk) => disk.id === gone.id), false);
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/admin/disks/${gone.id}`, headers: webMutationHeaders(cookie) })).statusCode, 404);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { OR: [{ sourceDiskId: gone.id }, { targetDiskId: other.id }] } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: { in: [gone.id, other.id] } } } });
+    for (const disk of [gone, other]) await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("a scan of the source drive does not hide a file that is waiting in staging", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = Math.random().toString(36).slice(2, 8);
   const disk = await prisma.disk.create({ data: { name: `Scan ${suffix}`, volumeId: `scan-${suffix}`, totalBytes: 10n, freeBytes: 10n } });

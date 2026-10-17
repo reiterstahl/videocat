@@ -12,6 +12,7 @@ import { finalizeDeletion } from "../lib/deletion-history.js";
 import { compareDuplicateCandidates, countPendingDuplicateGroups, findDuplicateGroups, type DuplicateCandidate } from "../lib/duplicate-detection.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
 import { unfinishedStates } from "../lib/transfer-states.js";
+import { closeFinishedJob } from "./transfers.js";
 import { buildFolderGroups, buildFolderSubtree, normalizeFolderName } from "../lib/folder-groups.js";
 import { recommendDuplicateDrives } from "../lib/duplicate-drive-recommendations.js";
 import { protectedFolderPatterns as loadProtectedFolderPatterns } from "../lib/protected-settings.js";
@@ -818,6 +819,58 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       thumbnailFilesRemoved,
       thumbnailFileWarning
     };
+  });
+
+  // Forgets a drive that no longer exists: its catalog, scans, errors, starred and favorite folders.
+  // Deletion history keeps the drive name. Refused while the drive is connected (the next scan
+  // would add it back) or while files from or to it wait in the Companion staging folder.
+  app.delete("/api/admin/disks/:id", { preHandler: requireWebAuth }, async (request, reply) => {
+    const { id } = uuidParamsSchema.parse(request.params);
+    const disk = await prisma.disk.findUnique({ where: { id } });
+    if (!disk) return reply.code(404).send({ message: "Disk not found" });
+    const presence = await companionPresence();
+    if (presence.mountedDiskIds.includes(id)) {
+      return reply.code(409).send({ message: "This drive is connected to the Companion; disconnect it before removing it" });
+    }
+    const driveItems = { OR: [{ sourceDiskId: id }, { targetDiskId: id }] };
+    const inStaging = await prisma.transferItem.count({
+      where: { ...driveItems, state: { in: unfinishedStates.filter((state) => state !== "pending") } }
+    });
+    if (inStaging > 0) {
+      return reply.code(409).send({ message: "Files from or to this drive are in the Companion staging folder", inStaging });
+    }
+
+    const touchedJobs = await prisma.transferItem.findMany({ where: { ...driveItems, state: "pending" }, select: { jobId: true }, distinct: ["jobId"] });
+    const [cancelled, jobs, thumbnails, files] = await prisma.$transaction([
+      prisma.transferItem.updateMany({
+        where: { ...driveItems, state: "pending" },
+        data: { state: "cancelled", claimedBy: null, error: "La unidad se eliminó de VideoCAT" }
+      }),
+      // Every item of these jobs is finished now; the starred folders go with the drive.
+      prisma.transferJob.deleteMany({ where: { destination: { diskId: id } } }),
+      prisma.thumbnail.deleteMany({ where: { videoFile: { is: { diskId: id } } } }),
+      prisma.videoFile.deleteMany({ where: { diskId: id } }),
+      prisma.disk.delete({ where: { id } })
+    ]);
+    for (const { jobId } of touchedJobs) await closeFinishedJob(jobId);
+
+    let thumbnailFilesRemoved = true;
+    try {
+      await fs.rm(path.join(env.THUMBNAILS_DIR, id), { recursive: true, force: true });
+    } catch {
+      thumbnailFilesRemoved = false;
+    }
+    const deleted = { files: files.count, thumbnails: thumbnails.count, transfersCancelled: cancelled.count, transferJobs: jobs.count };
+    await recordAction({
+      action: "disk.remove",
+      actorType: "web",
+      actorId: "admin",
+      requestId: request.id,
+      target: disk.name,
+      metadata: { diskName: disk.name, volumeId: disk.volumeId, driveLetter: disk.driveLetter },
+      result: deleted
+    });
+    return { ok: true, deleted, thumbnailFilesRemoved };
   });
 
   app.get("/api/admin/disks/overview", { preHandler: requireWebAuth }, async () => {

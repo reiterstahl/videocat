@@ -129,6 +129,17 @@ const en: Record<string, string> = {
   "Uno por línea o separados por coma. Se ocultan las carpetas cuyo nombre contenga alguno de estos textos.": "One per line or comma separated. Folders whose name contains any of these texts are hidden.",
   "Uso físico reportado por el Companion y contenido catalogado. Vaciar el catálogo no borra archivos del disco.": "Physical usage reported by the Companion and catalogued content. Emptying the catalog doesn't delete files from the drive.",
   "Vaciar catálogo": "Empty catalog",
+  "Eliminar unidad": "Remove drive",
+  "Buscar en el mapa": "Search the map",
+  "Buscar video": "Search videos",
+  "Atajo: /": "Shortcut: /",
+  "Limpiar búsqueda": "Clear search",
+  "Limpiar (Esc)": "Clear (Esc)",
+  "Eliminando...": "Removing...",
+  "Para unidades que ya no existen: la quita de VideoCAT": "For drives that no longer exist: removes it from VideoCAT",
+  "No se pudo eliminar la unidad.": "Could not remove the drive.",
+  "Esta unidad está conectada al Companion: desconéctala antes de eliminarla, o el próximo escaneo la vuelve a agregar.": "This drive is connected to the Companion: disconnect it before removing it, or the next scan adds it back.",
+  "Hay archivos de esta unidad (o hacia ella) en la carpeta temporal del Companion. Espera a que terminen esos traslados antes de eliminarla.": "Files from (or to) this drive are in the Companion staging folder. Wait for those transfers to finish before removing it.",
   "Ver en el catálogo": "View in catalog",
   "VideoCAT genera enlaces temporales para que un Chromecast pida el video a tu servidor. Google Cast solo se carga cuando usas esta función.": "VideoCAT creates temporary links so a Chromecast can request the video from your server. Google Cast only loads when you use this feature.",
   "VideoCAT pone en cola videos al azar de los discos conectados hasta el tamaño elegido.": "VideoCAT queues random videos from connected drives up to the chosen size.",
@@ -1203,6 +1214,24 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) registros · ([\d.,\s]+) vencidos$/);
   if (match) return `${match[1]} records · ${match[2]} expired`;
+
+  match = text.match(/^([\d.,\s]+) (carpeta coincide|carpetas coinciden|video coincide|videos coinciden) con "(.+)"\. Esc: limpiar\.$/);
+  if (match) {
+    const nouns: Record<string, string> = { "carpeta coincide": "folder matches", "carpetas coinciden": "folders match", "video coincide": "video matches", "videos coinciden": "videos match" };
+    return `${match[1]} ${nouns[match[2]]} "${match[3]}". Esc: clear.`;
+  }
+
+  match = text.match(/^Ninguna carpeta coincide con "(.+)" en este nivel\.$/);
+  if (match) return `No folder matches "${match[1]}" at this level.`;
+
+  match = text.match(/^Ningún video de esta carpeta coincide con "(.+)"\.$/);
+  if (match) return `No video in this folder matches "${match[1]}".`;
+
+  match = text.match(/^"(.+)" desaparecerá de VideoCAT con sus videos, miniaturas, escaneos, errores y carpetas con estrella o favoritas\. Los traslados pendientes hacia o desde ella se cancelan\. No toca ningún archivo\. Escribe ELIMINAR para confirmar\.$/);
+  if (match) return `"${match[1]}" will disappear from VideoCAT with its videos, thumbnails, scans, errors and starred or favorite folders. Pending transfers to or from it are cancelled. No file is touched. Type ELIMINAR to confirm.`;
+
+  match = text.match(/^Unidad "(.+)" eliminada: ([\d.,\s]+) videos y ([\d.,\s]+) miniaturas\.(?: ([\d.,\s]+) traslados pendientes cancelados\.)?$/);
+  if (match) return `Drive "${match[1]}" removed: ${match[2]} videos and ${match[3]} thumbnails.${match[4] ? ` ${match[4]} pending transfers cancelled.` : ""}`;
 
   match = text.match(/^Se eliminarán de VideoCAT los videos, miniaturas, escaneos y errores de "(.+)"\. Escribe BORRAR para confirmar\.$/);
   if (match) return `VideoCAT will remove the videos, thumbnails, scans and errors of "${match[1]}". Type BORRAR to confirm.`;

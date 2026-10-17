@@ -2493,6 +2493,11 @@ export function App() {
           refreshKey={catalogVersion}
           mountedDiskIds={companionMountedDiskIds}
           onDiskPurged={handleDiskPurged}
+          onDiskRemoved={(disk) => {
+            handleDiskPurged(disk);
+            setDisks((current) => current.filter((item) => item.id !== disk.id));
+            setDownloadDiskIds((current) => current.filter((id) => id !== disk.id));
+          }}
           onDiskRenamed={(disk) => {
             setDisks((current) => current.map((item) => (item.id === disk.id ? { ...item, ...disk } : item)));
             setCatalogVersion((value) => value + 1);

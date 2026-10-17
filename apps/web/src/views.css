@@ -2949,12 +2949,37 @@ a.vc-button {
 }
 
 /* Renaming a drive in Administración. */
+.vc-admin-disk header .vc-admin-disk-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vc-admin-disk header .vc-admin-disk-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: inherit;
+}
+
 .vc-admin-rename-button {
   width: 24px;
   height: 24px;
-  margin-left: 6px;
-  vertical-align: middle;
+  flex: 0 0 auto;
   opacity: 0.7;
+}
+
+.vc-admin-disk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vc-admin-disk-actions .vc-button {
+  flex: 1 1 160px;
 }
 
 .vc-admin-rename-button:hover,
@@ -3156,4 +3181,54 @@ a.vc-button {
 .vc-transfers-columns.is-three .vc-tag-rules li > .icon-button {
   grid-row: 1;
   grid-column: 3;
+}
+
+/* Instant search on the folder map. */
+.vc-folders-search.is-map {
+  flex: 0 1 240px;
+  min-width: 160px;
+  margin-left: auto;
+}
+
+.vc-folders-search.is-map input {
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.vc-folders-search-clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vc-muted);
+  cursor: pointer;
+}
+
+.vc-folders-search-clear:hover,
+.vc-folders-search-clear:focus-visible {
+  background: var(--vc-hover);
+  color: var(--vc-text);
+}
+
+/* A folder whose own name matches: brighter, with a neutral frame. */
+.vc-folder-tile.is-match {
+  filter: brightness(1.18) saturate(1.1);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+.vc-folders-no-match {
+  padding: 16px;
+  color: var(--vc-muted);
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .vc-folders-search.is-map {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
 }

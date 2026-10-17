@@ -1,10 +1,11 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowUp, ChevronRight, ExternalLink, EyeOff, FolderInput, FolderSearch, FolderTree, Heart, Image as ImageIcon, Layers, Search, Star, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowUp, ChevronRight, ExternalLink, EyeOff, FolderInput, FolderSearch, FolderTree, Heart, Image as ImageIcon, Layers, Search, Star, Undo2, X } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { transferError } from "../lib/transfers";
 import { formatCount, mainThumbnail } from "../lib/app-helpers";
 import { squarify } from "../lib/treemap";
+import { filterFolderNodes, matchesSearch, searchKey } from "../lib/folder-search";
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import type { CatalogLocationScope, FolderFavorite, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination, VideoFile } from "../types";
@@ -131,6 +132,9 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  // Instant search on the map: blocks that do not match leave and the rest grow to fill.
+  const [mapSearch, setMapSearch] = useState("");
+  const mapSearchRef = useRef<HTMLInputElement | null>(null);
   const [hovered, setHovered] = useState<Tile | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [reloadKey, setReloadKey] = useState(0);
@@ -200,10 +204,13 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
     return () => observer.disconnect();
   }, [map !== null]);
 
+  const mapTerm = searchKey(mapSearch);
   const roots = useMemo(() => {
     if (!map) return [];
-    const kept = map.roots.slice(0, maxRoots);
-    const rest = map.roots.slice(maxRoots);
+    // While searching, every top-level folder takes part (not only the largest ones).
+    const all = mapTerm ? filterFolderNodes(map.roots, mapTerm).nodes : map.roots;
+    const kept = all.slice(0, maxRoots);
+    const rest = all.slice(maxRoots);
     if (rest.length === 0) return kept;
     return [...kept, {
       key: "#rest",
@@ -214,14 +221,18 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
       locations: [],
       children: []
     }];
-  }, [map]);
+  }, [map, mapTerm]);
 
   const focus = trail.at(-1) ?? null;
   const focusTree = focus ? subtrees.get(exploreKey(focus)) ?? null : null;
   // The last level shows videos: a "loose files" block, or a folder without subfolders.
   const showsFiles = Boolean(focus && (focus.kind === "files" || (focusTree && !focusTree.children.some((child) => child.kind !== "files"))));
   const filesView = focus && showsFiles ? folderFiles.get(exploreKey(focus)) ?? null : null;
-  const levelNodes = focus ? (showsFiles ? [] : focusTree?.children ?? []) : roots;
+  const searchView = useMemo(
+    () => filterFolderNodes(focus ? (showsFiles ? [] : focusTree?.children ?? []) : (map?.roots ?? []), mapTerm),
+    [focus, focusTree, map, mapTerm, showsFiles]
+  );
+  const levelNodes = focus ? searchView.nodes : roots;
   const exploring = Boolean(focus && ((focus.kind !== "files" && !focusTree) || (showsFiles && !filesView)));
 
   useEffect(() => {
@@ -257,16 +268,22 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   }, [focus, folderFiles, showsFiles, subtrees]);
 
   const tiles = useMemo(() => (size.width > 0 && size.height > 0 ? layout(levelNodes, size.width, size.height) : []), [levelNodes, size]);
+  const shownFiles = useMemo(
+    () => (filesView ? filesView.files.filter((file) => matchesSearch(file.filename, mapTerm)) : []),
+    [filesView, mapTerm]
+  );
   const fileTiles = useMemo(() => (
     filesView && size.width > 0 && size.height > 0
-      ? squarify(filesView.files, (file) => Math.max(1, file.sizeBytes), size.width, size.height)
+      ? squarify(shownFiles, (file) => Math.max(1, file.sizeBytes), size.width, size.height)
       : []
-  ), [filesView, size]);
+  ), [filesView, shownFiles, size]);
+  const matchCount = filesView ? shownFiles.length : searchView.matches.size;
 
   function enter(tile: Tile) {
     if (tile.node.kind === "rest") return;
     // Entering a nested block goes through its parents, so the trail stays complete.
-    const steps = tile.trail.filter((node) => node.kind !== "rest");
+    // Folders cut down by the search are entered whole.
+    const steps = tile.trail.filter((node) => node.kind !== "rest").map((node) => searchView.originals.get(node) ?? node);
     setHovered(null);
     setTrail((current) => [...current, ...steps]);
   }
@@ -279,6 +296,11 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
+      if (event.key === "/" && !target?.closest("input, textarea, select, [contenteditable]")) {
+        event.preventDefault();
+        mapSearchRef.current?.focus();
+        return;
+      }
       if (event.key !== "Backspace" || !trail.length || target?.closest("input, textarea, select, [contenteditable]")) return;
       event.preventDefault();
       goTo(trail.length - 1);
@@ -436,6 +458,31 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                 ))}
               </ol>
               {focus ? <span className="vc-folders-trail-size">{describe(focus)}</span> : null}
+              <label className="vc-folders-search is-map">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  ref={mapSearchRef}
+                  value={mapSearch}
+                  onChange={(event) => {
+                    setHovered(null);
+                    setMapSearch(event.target.value);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && mapSearch) {
+                      event.stopPropagation();
+                      setMapSearch("");
+                    }
+                  }}
+                  placeholder={filesView ? "Buscar video" : "Buscar en el mapa"}
+                  aria-label="Buscar en el mapa"
+                  title="Atajo: /"
+                />
+                {mapSearch ? (
+                  <button className="vc-folders-search-clear" onClick={() => setMapSearch("")} type="button" aria-label="Limpiar búsqueda" title="Limpiar (Esc)">
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </label>
             </nav>
             <div className={`vc-folders-canvas ${loading || saving || exploring ? "is-loading" : ""}`} ref={canvasRef} onMouseLeave={() => setHovered(null)}>
               {filesView ? fileTiles.map((rect) => {
@@ -475,6 +522,9 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
               }) : null}
               {!filesView && focus && !focusTree && focus.kind !== "files" ? <div className="loading vc-folders-canvas-loading">Abriendo carpeta…</div> : null}
               {showsFiles && !filesView ? <div className="loading vc-folders-canvas-loading">Cargando videos…</div> : null}
+              {mapTerm && !exploring && (filesView ? shownFiles.length === 0 : levelNodes.length === 0) ? (
+                <div className="vc-folders-canvas-loading vc-folders-no-match">{filesView ? `Ningún video de esta carpeta coincide con "${mapSearch.trim()}".` : `Ninguna carpeta coincide con "${mapSearch.trim()}" en este nivel.`}</div>
+              ) : null}
               {!showsFiles ? tiles.map((tile) => {
                 const scope = tile.node.kind === "rest" ? null : scopeFor([...trail, ...tile.trail]);
                 const style = {
@@ -488,7 +538,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                 return (
                   <button
                     key={tile.trail.map((node) => node.key).join(">")}
-                    className={`vc-folder-tile is-depth-${tile.depth} is-${tile.node.kind} ${tile.parent ? "is-parent" : ""} ${hovered === tile ? "is-hovered" : ""}`}
+                    className={`vc-folder-tile is-depth-${tile.depth} is-${tile.node.kind} ${tile.parent ? "is-parent" : ""} ${hovered === tile ? "is-hovered" : ""} ${searchView.matches.has(tile.node) ? "is-match" : ""}`}
                     style={style}
                     disabled={tile.node.kind === "rest"}
                     title={tile.node.kind === "rest" ? "Carpetas pequeñas agrupadas en un solo bloque" : undefined}
@@ -539,7 +589,9 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
                 </>
               ) : (
                 <span>
-                  {filesView
+                  {mapTerm && matchCount > 0
+                    ? `${formatCount(matchCount)} ${filesView ? (matchCount === 1 ? "video coincide" : "videos coinciden") : (matchCount === 1 ? "carpeta coincide" : "carpetas coinciden")} con "${mapSearch.trim()}". Esc: limpiar.`
+                    : filesView
                     ? (filesView.total > filesView.files.length
                       ? `${formatCount(filesView.total)} videos · ${formatBytes(filesView.totalBytes)} · se muestran los ${formatCount(filesView.files.length)} más grandes. Clic: abrir el video.`
                       : `${formatCount(filesView.total)} videos · ${formatBytes(filesView.totalBytes)}. Clic: abrir el video; clic derecho: ir al catálogo.`)

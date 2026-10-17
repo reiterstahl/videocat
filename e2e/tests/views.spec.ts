@@ -13,6 +13,26 @@ test("usage map drills into folders and opens the catalog filtered by folder", a
   await expect(page.locator(".vc-filter-chip", { hasText: folder })).toBeVisible();
 });
 
+test("instant search on the folder map keeps only matching blocks", async ({ page }) => {
+  await openView(page, "/uso-por-carpeta");
+  const tiles = page.locator(".vc-folders-canvas .vc-folder-tile");
+  await expect(tiles.first()).toBeVisible();
+  const before = await tiles.count();
+  const name = ((await page.locator(".vc-folder-tile.is-depth-1 .vc-folder-tile-label strong").first().textContent()) ?? "").trim();
+  const search = page.getByLabel("Buscar en el mapa");
+  await page.keyboard.press("/");
+  await expect(search).toBeFocused();
+  await search.fill(name.toUpperCase());
+  await expect(page.locator(".vc-folder-tile.is-match").first()).toBeVisible();
+  await expect.poll(() => tiles.count()).toBeLessThan(before);
+  await expect(page.locator(".vc-folders-status")).toContainText("coincide");
+  await search.fill("zzz-no-existe");
+  await expect(page.locator(".vc-folders-no-match")).toBeVisible();
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect.poll(() => tiles.count()).toBe(before);
+});
+
 test("audit groups repeated errors, searches, lists actions and exports CSV", async ({ page }) => {
   await openView(page, "/auditoria");
   await expect(page.locator(".vc-audit-count").first()).toBeVisible();
@@ -45,6 +65,22 @@ test("administration requires typing BORRAR before emptying a drive catalog", as
   await card.getByRole("button", { name: "Cancelar" }).click();
   await expect(card.locator(".vc-danger-confirm")).toHaveCount(0);
   await expect(page.locator(".vc-admin-retention dd").first()).toContainText("días");
+});
+
+test("a disconnected drive offers to remove it, behind typing ELIMINAR", async ({ page }) => {
+  await openView(page, "/administracion");
+  const card = page.locator(".vc-admin-disk", { hasText: "Desconectado" }).first();
+  await card.getByRole("button", { name: "Eliminar unidad" }).click();
+  const form = card.locator(".vc-danger-confirm");
+  await expect(form).toContainText("No toca ningún archivo");
+  const confirm = form.locator("button[type=submit]");
+  await expect(confirm).toHaveText("Eliminar unidad");
+  await form.locator("input").fill("BORRAR");
+  await expect(confirm).toBeDisabled();
+  await form.locator("input").fill("ELIMINAR");
+  await expect(confirm).toBeEnabled();
+  await form.getByRole("button", { name: "Cancelar" }).click();
+  await expect(form).toHaveCount(0);
 });
 
 test("profile stores the Companion token and changes the theme in place", async ({ page }) => {
@@ -384,6 +420,11 @@ test("a drive can be renamed for everyone and keeps that name", async ({ page })
   await openView(page, "/administracion");
   const card = page.locator(".vc-admin-disk").first();
   const original = (await card.locator("header strong").textContent())!.trim();
+  // The pencil sits right after the name, on the same line.
+  const nameBox = (await card.locator(".vc-admin-disk-name span").boundingBox())!;
+  const pencilBox = (await card.locator(".vc-admin-rename-button").boundingBox())!;
+  expect(pencilBox.x).toBeGreaterThanOrEqual(nameBox.x + nameBox.width - 1);
+  expect(Math.abs(pencilBox.y + pencilBox.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(8);
   await card.getByRole("button", { name: `Cambiar el nombre de ${original}` }).click();
   await card.getByRole("textbox", { name: "Nombre del disco" }).fill("Disco del cliente");
   await card.getByRole("button", { name: "Guardar" }).click();

@@ -220,6 +220,12 @@ export type DuplicateAssistantSession = {
   totalComparisons: number;
 };
 
+export type AdminRemoveDiskResponse = {
+  ok: boolean;
+  deleted: { files: number; thumbnails: number; transfersCancelled: number; transferJobs: number };
+  thumbnailFilesRemoved: boolean;
+};
+
 export type AdminPurgeResponse = {
   ok: boolean;
   disk: Disk;
