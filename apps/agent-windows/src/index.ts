@@ -1662,6 +1662,26 @@ async function listenCompanion(server: http.Server, port: number, host: string):
   });
 }
 
+// Started by the tray (VIDEOCAT_PARENT_WATCH=1): if the tray is gone (closed by force, an installer,
+// a crash), this agent leaves too instead of running on as an orphan that blocks updates.
+function watchParentTray(): void {
+  if (process.env.VIDEOCAT_PARENT_WATCH !== "1") return;
+  const parent = process.ppid;
+  const leave = (reason: string) => {
+    console.log(`La bandeja del Companion ya no está (${reason}): el agente se cierra.`);
+    process.exit(0);
+  };
+  process.stdin.on("end", () => leave("se cerró su canal"));
+  process.stdin.resume();
+  setInterval(() => {
+    try {
+      process.kill(parent, 0);
+    } catch {
+      leave("su proceso terminó");
+    }
+  }, 5000).unref();
+}
+
 async function runCompanion(): Promise<void> {
   const host = "127.0.0.1";
   const configuredPort = Number(process.env.COMPANION_PORT ?? companionDefaultPort);
@@ -2811,6 +2831,8 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   function markAtRisk(rel: string, filePath: string, phase: string, seconds: number, audit: boolean): string {
     const message = riskyMediaMessage(seconds, riskyRetryDays);
     markRisky(state.risky!, rel, message);
+    // Written at once: if the Companion is closed now, the next start still leaves this file alone.
+    void saveState(statePath, state).catch(() => undefined);
     console.warn(`Archivo en riesgo ${compactFileLabel(filePath)}: no respondió en ${seconds} s con el disco conectado. Se sigue con el siguiente y no se vuelve a leer por ${riskyRetryDays} días.`);
     if (audit) auditErrors.push({ category: "at_risk_file", phase, code: "read_timeout", message, absolutePath: filePath, relativePath: rel });
     return message;
@@ -3051,6 +3073,7 @@ async function main() {
   }
 
   if (args.command === "companion") {
+    watchParentTray();
     await runCompanion();
     return;
   }

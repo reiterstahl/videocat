@@ -1,6 +1,6 @@
 {
   "name": "@videocat/agent-windows",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "description": "VideoCAT Windows agent and tray companion.",
   "author": "VideoCAT contributors",
   "private": true,

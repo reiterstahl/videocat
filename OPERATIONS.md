@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Windows Companion 0.2.17
+
+- **No more orphan agents**: the agent started by the tray now closes on its own when its tray is gone (closed by force, an installer, a crash), instead of running on and blocking the next update.
+- A file found at risk is written to the local scan state at once, so closing the Companion right after never makes the next start read it again.
+- If the installer says *Failed to stop application (Access is denied)* and Task Manager shows several *VideoCAT Companion* processes that `taskkill` cannot end, they are stuck in a read on a damaged drive: Windows cannot end a process until that read returns. **Unplug that drive** (they close within seconds) or restart Windows, then run the installer again.
+- The server stays on 0.2.42; no migrations or configuration changes.
+
 ## Upgrading to 0.2.42 (Companion 0.2.16)
 
 - **Scans no longer stay forever on a file that stops answering** (bad sectors on a connected drive: Windows keeps retrying the read). Every file has a deadline, **Tiempo máximo por archivo** in Companion › Configuración › Avanzado (`COMPANION_FILE_TIMEOUT_SECONDS`, 180 s by default, 30–3600). Past it, the file's FFmpeg/FFprobe processes are stopped and the scan moves on. Each frame extraction also has its own 2-minute limit now.
