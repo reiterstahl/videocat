@@ -38,6 +38,20 @@ Si más adelante Node llegara a molestar, el agente se podría portar a Rust por
 - Comprobar que Velopack (crate de Rust) actualiza una instalación de Electron a la nueva, con el mismo `packId` y el mismo nombre de ejecutable, en un canal de prueba.
 - **Decisión:** seguir solo si el instalador queda por debajo de ~50 MB y la actualización desde Electron funciona.
 
+**Resultado (2026-10-18, runner `windows-2025`, workflow `companion-tauri-poc.yml`): aprobada.**
+
+| | Electron 0.2.17 | Prueba Tauri 0.3.0-poc |
+| --- | --- | --- |
+| Instalador (`Setup.exe`) | 158 MB | **45,2 MB** |
+| Paquete completo de actualización | 150 MB | 38 MB |
+| Instalado | 368 MB | 93 MB (bandeja 3,4 MB + agente 89,8 MB) |
+| Memoria en marcha (todos sus procesos) | 238 MB (4 procesos) | **58 MB** (bandeja 13 MB + agente 45 MB) |
+
+- Velopack actualizó una instalación de Electron a Tauri con el mismo `packId` (`Update.exe apply`, código 0), cambió el contenido de `current`, mantuvo los accesos directos del escritorio y del menú Inicio, y desinstaló limpio.
+- El agente empaquetado como ejecutable único (Node SEA) arranca completo dentro de Tauri: detector de discos, revisiones, latido y API local.
+- Si se termina la bandeja a la fuerza, el agente se cierra solo.
+- Pendiente de confirmar en tu PC, en la fase 5: que el antivirus de Windows no desconfíe del ejecutable del agente (en el runner no hubo avisos).
+
 ### Fase 1 · El agente se vuelve autónomo (todavía en Electron)
 
 - Pasar al agente lo que hoy vive en `tray.ts`:
