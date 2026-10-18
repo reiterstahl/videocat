@@ -20,3 +20,5 @@ companion/*.blockmap
 migration/
 companion/*.sha256
 companion/*.md5
+apps/companion-tauri/target
+apps/companion-tauri/gen

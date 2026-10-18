@@ -1,0 +1,162 @@
+name: Companion Tauri proof of concept
+
+# Phase 0 of COMPANION_TAURI_PLAN.es.md. Builds the Tauri tray with the Node agent packed as one
+# executable, measures the installer, and on this runner installs the current Electron Companion,
+# updates it to the Tauri build with Velopack, runs it and uninstalls it. It never publishes:
+# packages use the "poc" channel and stay as a workflow artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - apps/companion-tauri/**
+      - apps/agent-windows/scripts/build-agent-sea.mjs
+      - .github/workflows/companion-tauri-poc.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-tauri-poc
+  cancel-in-progress: true
+
+env:
+  VELOPACK_VERSION: 1.2.161
+  PACK_ID: VideoCAT-Companion
+  POC_VERSION: 0.3.0-poc.${{ github.run_number }}
+
+jobs:
+  poc:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion-tauri
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk --version $env:VELOPACK_VERSION
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build the agent as one executable (Node SEA)
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm run build -w @videocat/shared
+          if ($LASTEXITCODE -ne 0) { throw "shared build failed" }
+          npm run build -w @videocat/agent-windows
+          if ($LASTEXITCODE -ne 0) { throw "agent build failed" }
+          node apps/agent-windows/scripts/build-agent-sea.mjs poc/agent
+          if ($LASTEXITCODE -ne 0) { throw "agent SEA build failed" }
+          & poc/agent/videocat-agent.exe discover
+          if ($LASTEXITCODE -ne 0) { throw "the agent executable does not run" }
+
+      - name: Build the Tauri tray
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path apps/companion-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+
+      - name: Pack with Velopack (poc channel)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force poc/app | Out-Null
+          Copy-Item apps/companion-tauri/target/release/videocat-companion.exe "poc/app/VideoCAT Companion.exe"
+          Copy-Item poc/agent/videocat-agent.exe poc/app/videocat-agent.exe
+          vpk pack `
+            --packId $env:PACK_ID `
+            --packVersion $env:POC_VERSION `
+            --packDir poc/app `
+            --mainExe "VideoCAT Companion.exe" `
+            --packTitle "VideoCAT Companion" `
+            --packAuthors "VideoCAT" `
+            --icon apps/agent-windows/build/icon.ico `
+            --channel poc `
+            --outputDir poc/out
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack exited with code $LASTEXITCODE." }
+
+      - name: Measure
+        shell: pwsh
+        run: |
+          $mb = { param($bytes) "{0:N1} MB" -f ($bytes / 1MB) }
+          $lines = @("## Companion Tauri ($env:POC_VERSION)", "", "| Archivo | Tamaño |", "| --- | --- |")
+          foreach ($file in Get-ChildItem poc/app -File) { $lines += "| app/$($file.Name) | $(& $mb $file.Length) |" }
+          $installed = (Get-ChildItem poc/app -File | Measure-Object Length -Sum).Sum
+          $lines += "| **Instalado (total)** | **$(& $mb $installed)** |"
+          foreach ($file in Get-ChildItem poc/out -File | Where-Object { $_.Length -gt 1MB }) { $lines += "| out/$($file.Name) | $(& $mb $file.Length) |" }
+          $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          $lines | Write-Host
+
+      - name: Update an Electron install to Tauri, run it and uninstall
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $summary = @("", "## Electron → Tauri en este runner", "")
+          $root = Join-Path $env:LOCALAPPDATA $env:PACK_ID
+
+          gh release download --repo ${{ github.repository }} --pattern "VideoCAT-Companion-win-Setup.exe" --dir poc/electron
+          if ($LASTEXITCODE -ne 0) { throw "could not download the current Electron Setup.exe" }
+          Start-Process poc/electron/VideoCAT-Companion-win-Setup.exe -ArgumentList "--silent" -Wait
+          Start-Sleep -Seconds 15
+          Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          if (-not (Test-Path (Join-Path $root "current\resources\app.asar"))) { throw "the Electron Companion did not install in $root" }
+          $summary += "- Electron instalado en ``$root``."
+
+          $package = Get-ChildItem poc/out -Filter "*-full.nupkg" | Select-Object -First 1
+          & (Join-Path $root "Update.exe") apply --package $package.FullName --norestart --silent
+          if ($LASTEXITCODE -ne 0) { throw "Update.exe apply exited with code $LASTEXITCODE" }
+          $hasAgent = Test-Path (Join-Path $root "current\videocat-agent.exe")
+          $noElectron = -not (Test-Path (Join-Path $root "current\resources\app.asar"))
+          $summary += "- Update.exe apply: agente presente = $hasAgent, Electron retirado = $noElectron."
+          if (-not ($hasAgent -and $noElectron)) { throw "the update did not replace the Electron app" }
+
+          Start-Process (Join-Path $root "current\VideoCAT Companion.exe")
+          Start-Sleep -Seconds 20
+          $tray = Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue
+          $agent = Get-Process "videocat-agent" -ErrorAction SilentlyContinue
+          if (-not $tray) { throw "the Tauri tray is not running" }
+          if (-not $agent) { throw "the tray did not start the agent" }
+          $trayMb = "{0:N0}" -f (($tray | Measure-Object WorkingSet64 -Sum).Sum / 1MB)
+          $agentMb = "{0:N0}" -f (($agent | Measure-Object WorkingSet64 -Sum).Sum / 1MB)
+          $summary += "- En marcha: bandeja Tauri $trayMb MB de memoria, agente $agentMb MB."
+
+          $log = Join-Path $env:LOCALAPPDATA "VideoCAT\companion-tauri.log"
+          if (Test-Path $log) { $summary += "", "Registro del agente (últimas líneas):", "", '```'; $summary += Get-Content $log -Tail 12; $summary += '```' }
+
+          # The agent must leave with its tray, even when the tray is ended by force.
+          $tray | Stop-Process -Force
+          Start-Sleep -Seconds 10
+          $left = Get-Process "videocat-agent" -ErrorAction SilentlyContinue
+          $summary += "", "- Bandeja terminada a la fuerza: el agente se cerró solo = $(-not $left)."
+          if ($left) { $left | Stop-Process -Force; throw "the agent outlived its tray" }
+
+          & (Join-Path $root "Update.exe") uninstall --silent
+          Start-Sleep -Seconds 5
+          $summary += "- Desinstalado: carpeta retirada = $(-not (Test-Path (Join-Path $root 'current')))."
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          $summary | Write-Host
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: companion-tauri-poc
+          path: poc/out
+          retention-days: 7
