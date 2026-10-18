@@ -6,7 +6,10 @@ test("theme panel changes appearance, scheme and density and keeps them", async 
   await page.locator("[data-theme-trigger]").click();
   const panel = page.getByRole("dialog", { name: "Tema e idioma" });
   await panel.getByRole("button", { name: "OLED" }).click();
+  // The accent goes to the server too: the Companion paints its tray icon with it.
+  const sentAccent = page.waitForRequest((request) => request.url().endsWith("/api/profile/appearance") && request.method() === "PUT" && (request.postData() ?? "").includes("cobalto"));
   await panel.getByRole("button", { name: "Cobalto" }).click();
+  await sentAccent;
   await panel.getByRole("button", { name: "Compacta" }).click();
   const root = page.locator("html");
   await expect(root).toHaveAttribute("data-theme", "dark");

@@ -66,3 +66,15 @@ test("the reporter sends whether transfers are waiting", async () => {
   assert.equal(reporter.transfersWaiting(), false);
   assert.equal(reporter.transfersMode(), "stopping");
 });
+
+test("the reporter tells when the Companion starts and stops doing anything", () => {
+  const changes: boolean[] = [];
+  const reporter = new ActivityReporter(async () => undefined, 60_000);
+  reporter.onBusyChange = (busy) => changes.push(busy);
+  reporter.set("transfer", { kind: "transfer", phase: "staging" });
+  reporter.set("download", { kind: "download", phase: "downloading" });
+  reporter.clear("transfer");
+  reporter.clear("download");
+  reporter.clear("download");
+  assert.deepEqual(changes, [true, false]);
+});

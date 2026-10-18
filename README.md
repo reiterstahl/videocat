@@ -133,6 +133,7 @@ flowchart LR
 - Reconciles missing files without losing tags or history, and reactivates them if they come back.
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
 - Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
+- While it works (copying, verifying, downloading, scanning or deleting), the accent chosen in the web travels around the white outline of its tray icon.
 
 <details>
 <summary><strong>More screenshots</strong></summary>

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { isAccentKey, type AccentKey } from "@videocat/shared";
 import {
   clearLoginRateLimit,
   clearProtectedFolderCookie,
@@ -17,6 +18,7 @@ import {
 } from "../lib/auth.js";
 import {
   isRemoteStreamBufferMb,
+  setProfileAccent,
   isValidProtectedFolderPin,
   normalizeProtectedPatterns,
   protectedSecurityProfile,
@@ -75,6 +77,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     clearProtectedPinRateLimit(request);
     setProtectedFolderCookie(reply, signProtectedFolderUnlock());
     return { ok: true, unlocked: true };
+  });
+
+  // The web sends its accent when it changes (and once per visit), for the Companion's tray icon.
+  app.put("/api/profile/appearance", { preHandler: requireWebAuth }, async (request) => {
+    const body = z.object({ accent: z.string().refine(isAccentKey, "Unknown accent") }).parse(request.body);
+    await setProfileAccent(body.accent as AccentKey);
+    return { ok: true, accent: body.accent };
   });
 
   app.get("/api/profile/security", { preHandler: requireWebAuth }, async () => {

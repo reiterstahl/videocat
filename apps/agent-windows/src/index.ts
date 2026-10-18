@@ -33,6 +33,7 @@ import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import { DownloadPriority } from "./work-priority.js";
+import { trayStatusLine } from "./tray-animation.js";
 import { ActivityReporter } from "./activity.js";
 import {
   deletionFingerprintFrameIndexes,
@@ -196,6 +197,8 @@ type ScanIndexResponse = {
 
 type CompanionHeartbeatResponse = {
   ok: boolean;
+  // The accent chosen in the web (Tema), for the tray icon while the Companion works.
+  appearance?: { accent?: string | null };
   commands?: {
     processDeletesRequestedAt?: number;
     processDownloadsRequestedAt?: number;
@@ -619,6 +622,14 @@ async function startCompanionDiskWatcher(): Promise<void> {
     });
   });
   downloadPriority.onWaitingChange = (waiting) => activityReporter?.setTransfersWaiting(waiting);
+  // The tray animates its icon while anything runs, in the accent chosen in the web.
+  let trayBusy = false;
+  let trayAccent: string | null = null;
+  const emitTrayStatus = () => console.log(trayStatusLine({ busy: trayBusy, accent: trayAccent }));
+  activityReporter.onBusyChange = (busy) => {
+    trayBusy = busy;
+    emitTrayStatus();
+  };
   const pollMs = companionDiskPollMs();
   const scanPollMs = companionScanPollMs();
   const deletePollMs = companionDeletePollMs();
@@ -873,6 +884,11 @@ async function startCompanionDiskWatcher(): Promise<void> {
           console.log("Orden web recibida: procesando borrados pendientes ahora.");
           await reviewPendingDeletes();
         }
+      }
+      const accent = response.appearance?.accent ?? null;
+      if (accent !== trayAccent) {
+        trayAccent = accent;
+        emitTrayStatus();
       }
       const stopAt = response.commands?.transfersStopRequestedAt ?? 0;
       const resumeAt = response.commands?.transfersResumeRequestedAt ?? 0;

@@ -18,7 +18,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAgentAuth } from "../lib/auth.js";
 import { env } from "../lib/env.js";
 import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history.js";
-import { protectedFolderPatterns } from "../lib/protected-settings.js";
+import { profileAccentColor, protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
 import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
 import { recordAction } from "../lib/action-audit.js";
@@ -308,13 +308,15 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
     await Promise.all(metrics);
-    const [processDeletesRequestedAt, processDownloadsRequestedAt, orders] = await Promise.all([
+    const [processDeletesRequestedAt, processDownloadsRequestedAt, orders, accent] = await Promise.all([
       appMetricValue("delete_process_requested_at"),
       appMetricValue("download_process_requested_at"),
-      transferOrders()
+      transferOrders(),
+      profileAccentColor()
     ]);
     return {
       ok: true,
+      appearance: { accent },
       commands: { processDeletesRequestedAt, processDownloadsRequestedAt, transfersStopRequestedAt: orders.stopRequestedAt, transfersResumeRequestedAt: orders.resumeRequestedAt }
     };
   });

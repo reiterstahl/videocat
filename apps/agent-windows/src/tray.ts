@@ -2,9 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type NativeImage } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
+import { LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, trayFrames, trayFramesPerTurn, trayTurnMs, type TrayStatus } from "./tray-animation.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
 import { CompanionUpdater, createUpdateClient, runVelopackHooks } from "./updater.js";
@@ -650,6 +651,56 @@ async function refreshMountedDisks(): Promise<void> {
   }
 }
 
+// Tray icon while the Companion works: the web's accent travels around the cat's white outline
+// (tray-animation.ts). Frames are built once per accent and screen scale; idle shows the usual icon.
+const defaultTrayAccent = "#fc6121";
+let trayBaseImage: NativeImage | null = null;
+let trayFrameCache: { key: string; images: NativeImage[] } | null = null;
+let trayAnimationTimer: NodeJS.Timeout | null = null;
+let trayFrameIndex = 0;
+let trayStatus: TrayStatus = { busy: false, accent: null };
+
+function buildTrayFrames(accentHex: string): NativeImage[] {
+  const icon = iconPath();
+  if (!icon) return [];
+  const scale = Math.max(1, screen.getPrimaryDisplay().scaleFactor || 1);
+  const size = Math.min(48, Math.max(16, Math.round(16 * scale)));
+  const source = nativeImage.createFromPath(icon).resize({ width: size, height: size, quality: "best" });
+  if (source.isEmpty()) return [];
+  const accent = parseAccent(accentHex) ?? parseAccent(defaultTrayAccent)!;
+  // Electron bitmaps are BGRA on Windows.
+  const prepared = prepareTrayIcon(source.toBitmap(), size, size, "bgra");
+  return trayFrames(prepared, accent).map((frame) => nativeImage.createFromBitmap(Buffer.from(frame), { width: size, height: size, scaleFactor: size / 16 }));
+}
+
+function applyTrayStatus(status: TrayStatus): void {
+  trayStatus = status;
+  if (!tray) return;
+  if (!status.busy) {
+    if (trayAnimationTimer) clearInterval(trayAnimationTimer);
+    trayAnimationTimer = null;
+    if (trayBaseImage) tray.setImage(trayBaseImage);
+    return;
+  }
+  const accent = parseAccent(status.accent) ? status.accent! : defaultTrayAccent;
+  const key = `${accent}|${screen.getPrimaryDisplay().scaleFactor}`;
+  if (!trayFrameCache || trayFrameCache.key !== key) {
+    try {
+      trayFrameCache = { key, images: buildTrayFrames(accent) };
+    } catch (error) {
+      addLog("warn", "bandeja", `No se pudo animar el ícono: ${error instanceof Error ? error.message : String(error)}`);
+      trayFrameCache = { key, images: [] };
+    }
+  }
+  if (trayFrameCache.images.length === 0 || trayAnimationTimer) return;
+  trayAnimationTimer = setInterval(() => {
+    const images = trayFrameCache?.images ?? [];
+    if (!tray || images.length === 0) return;
+    trayFrameIndex = (trayFrameIndex + 1) % images.length;
+    tray.setImage(images[trayFrameIndex]);
+  }, Math.round(trayTurnMs / trayFramesPerTurn));
+}
+
 function startCompanion(): void {
   if (companion && !companion.killed) return;
 
@@ -662,8 +713,17 @@ function startCompanion(): void {
   const child = spawnAgent(["companion"]);
   const startedAt = Date.now();
   companion = child;
+  const lines = new LineSplitter();
   child.stdout.on("data", (chunk) => {
-    const text = String(chunk);
+    // Status lines drive the tray icon and stay out of the log.
+    const logged: string[] = [];
+    for (const line of lines.push(String(chunk))) {
+      const status = parseTrayStatus(line);
+      if (status) applyTrayStatus(status);
+      else if (line.trim()) logged.push(line);
+    }
+    if (logged.length === 0) return;
+    const text = logged.join("\n");
     console.log(text.trim());
     addLog("info", "companion", text);
   });
@@ -679,6 +739,7 @@ function startCompanion(): void {
     const stoppedIntentionally = child.killed || appQuitting || companion !== child;
     addLog(code === 0 ? "info" : "warn", "companion", `Companion detenido con código ${code ?? "desconocido"}.`);
     if (companion === child) companion = null;
+    applyTrayStatus({ busy: false, accent: trayStatus.accent });
     updateMenu();
 
     if (stoppedIntentionally) return;
@@ -1789,7 +1850,8 @@ async function main(): Promise<void> {
   });
 
   const icon = iconPath();
-  tray = new Tray(icon ? nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }) : nativeImage.createEmpty());
+  trayBaseImage = icon ? nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }) : nativeImage.createEmpty();
+  tray = new Tray(trayBaseImage);
   tray.setToolTip(`VideoCAT Companion v${app.getVersion()}`);
   // Windows sends a click with every double click: one action per gesture.
   tray.on("click", () => onTrayActivated());

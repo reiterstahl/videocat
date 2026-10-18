@@ -460,6 +460,12 @@ export function App() {
     return root ? observeLocalization(root, language) : undefined;
   }, [language, sessionChecked, authenticated, viewMode, catalogVersion, files, downloadSummary, reviewPending, reviewRecent, duplicateGroups]);
 
+  // The Companion paints its tray icon with this accent while it works: the server keeps the last one chosen.
+  useEffect(() => {
+    if (!authenticated) return;
+    void api("/api/profile/appearance", { method: "PUT", body: JSON.stringify({ accent: themePreferences.accent }) }).catch(() => undefined);
+  }, [authenticated, themePreferences.accent]);
+
   useEffect(() => {
     localStorage.setItem("videocat-page-size", String(pageSize));
   }, [pageSize]);

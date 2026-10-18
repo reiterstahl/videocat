@@ -1325,6 +1325,13 @@ test("the Companion reports live activity and the free space of connected drives
     await app.inject({ method: "POST", url: "/api/agent/companion/activity", headers: agent, payload: { companionId, activities: [], transfersWaiting: false } });
     assert.equal((await app.inject({ method: "GET", url: "/api/transfers/summary", headers: { cookie } })).json().waitingForDownloads, false);
 
+    // The accent chosen in the web reaches the Companion, for its tray icon.
+    assert.equal((await app.inject({ method: "PUT", url: "/api/profile/appearance", headers: webMutationHeaders(cookie), payload: { accent: "lila" } })).statusCode, 400);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/profile/appearance", headers: webMutationHeaders(cookie), payload: { accent: "uva" } })).statusCode, 200);
+    const painted = await app.inject({ method: "POST", url: "/api/agent/companion/heartbeat", headers: agent, payload: { companionId, mountedDiskIds: [`live-${suffix}`], activities: [] } });
+    assert.equal(painted.json().appearance.accent, "#8b5cf6");
+    await app.inject({ method: "PUT", url: "/api/profile/appearance", headers: webMutationHeaders(cookie), payload: { accent: "naranja" } });
+
     // "Detener traslados": the order reaches the Companion in its heartbeat; the web shows it pending
     // until the Companion reports stopping (finishing its file) and then stopped.
     const stop = await app.inject({ method: "POST", url: "/api/transfers/companion/stop", headers: webMutationHeaders(cookie), payload: {} });

@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { remoteStreamBufferDefaultMb, remoteStreamBufferOptionsMb } from "@videocat/shared";
+import { accentColors, isAccentKey, remoteStreamBufferDefaultMb, remoteStreamBufferOptionsMb, type AccentKey } from "@videocat/shared";
 import { env } from "./env.js";
 import { constantTimeStringEqual, hashPin, verifyHashedPin } from "./pin-security.js";
 import { prisma } from "./prisma.js";
@@ -8,6 +8,7 @@ const pinHashKey = "protected_folder_pin_hash";
 const patternsKey = "protected_folder_patterns";
 const chromecastEnabledKey = "profile_chromecast_enabled";
 const remoteStreamBufferKey = "remote_stream_buffer_mb";
+const accentKey = "profile_accent";
 
 type SettingRow = {
   value: string;
@@ -108,6 +109,20 @@ export async function remoteStreamBufferMb(): Promise<number> {
   const value = isRemoteStreamBufferMb(stored) ? stored : remoteStreamBufferDefaultMb;
   streamBufferCache = { value, expiresAt: Date.now() + 10_000 };
   return value;
+}
+
+// The accent chosen in the web's Tema panel; the Companion paints its tray icon with it while it works.
+export async function profileAccent(): Promise<AccentKey> {
+  const stored = await getSetting(accentKey);
+  return isAccentKey(stored) ? stored : "naranja";
+}
+
+export async function profileAccentColor(): Promise<string> {
+  return accentColors[await profileAccent()];
+}
+
+export async function setProfileAccent(accent: AccentKey): Promise<void> {
+  await setSetting(accentKey, accent);
 }
 
 type SecurityProfile = {

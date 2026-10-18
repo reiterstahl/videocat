@@ -43,15 +43,19 @@ export class ActivityReporter {
   private dirty = false;
   private waiting = false;
   private mode: TransfersMode = "running";
+  // Told when the Companion starts or stops doing anything (the tray icon animates meanwhile).
+  onBusyChange: ((busy: boolean) => void) | null = null;
 
   constructor(private readonly send: Sender, private readonly intervalMs = 1000, private readonly now = () => Date.now()) {}
 
   // Starts or updates one activity; the key keeps parallel work (a download and a transfer) apart.
   set(key: string, activity: Omit<Activity, "startedAt"> & { startedAt?: number }): void {
     const previous = this.current.get(key);
+    const wasIdle = this.current.size === 0;
     const startedAt = previous && previous.phase === activity.phase ? previous.startedAt : activity.startedAt ?? this.now();
     if (!previous || previous.phase !== activity.phase) this.samples.delete(key);
     this.current.set(key, { ...activity, startedAt });
+    if (wasIdle) this.onBusyChange?.(true);
     if (activity.bytesDone != null) {
       const list = this.samples.get(key) ?? [];
       list.push({ at: this.now(), bytes: activity.bytesDone });
@@ -64,6 +68,7 @@ export class ActivityReporter {
   clear(key: string): void {
     if (!this.current.delete(key)) return;
     this.samples.delete(key);
+    if (this.current.size === 0) this.onBusyChange?.(false);
     this.schedule();
   }
 

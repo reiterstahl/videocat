@@ -133,6 +133,7 @@ flowchart LR
 - Concilia archivos ausentes sin perder etiquetas ni historial, y los reactiva si reaparecen.
 - Antes de borrar, revalida tamaño, fecha y huella visual; si la ruta ya contiene otro archivo, cancela.
 - Mueve los archivos de los **Traslados** a través de una carpeta temporal local, verificando cada copia con SHA-256.
+- Mientras trabaja (copiando, verificando, descargando, escaneando o borrando), el color de acento elegido en la web recorre el borde blanco de su ícono en la bandeja.
 
 <details>
 <summary><strong>Más capturas</strong></summary>

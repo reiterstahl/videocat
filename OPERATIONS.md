@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.41 (Companion 0.2.15)
+
+- **The tray icon shows when the Companion works**: while it copies, verifies, downloads, scans or deletes, the accent chosen in the web (Tema) travels around the cat's white outline, fading back to white behind it (24 frames, a turn every 1.8 s). Idle, or right after it starts, the icon is white and still as before. The frames are built from the icon itself, at the screen's scale.
+- The web sends its accent to the server when it changes and once per visit (`PUT /api/profile/appearance`); the server passes it to the Companion in its heartbeat. Until then the Companion uses Naranja CAT.
+- Companion 0.2.15 updates itself. No migrations or configuration changes.
+
 ## Upgrading to 0.2.40
 
 - The header's transfers control is now an icon only, the size of the theme button: pause while transfers run, play once stopped, pulsing while the Companion confirms. Its name stays in the tooltip and for screen readers.
