@@ -114,8 +114,14 @@ jobs:
           gh release download --repo ${{ github.repository }} --pattern "VideoCAT-Companion-win-Setup.exe" --dir poc/electron
           if ($LASTEXITCODE -ne 0) { throw "could not download the current Electron Setup.exe" }
           Start-Process poc/electron/VideoCAT-Companion-win-Setup.exe -ArgumentList "--silent" -Wait
-          Start-Sleep -Seconds 15
-          Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 20
+          # The same measure as for Tauri below: every process of the app (Electron's tray, its GPU
+          # and utility helpers and the agent all carry the app's name).
+          $electron = Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue
+          $electronMb = "{0:N0}" -f (($electron | Measure-Object WorkingSet64 -Sum).Sum / 1MB)
+          $summary += "- Electron en marcha: $($electron.Count) procesos, $electronMb MB de memoria en total."
+          Write-Host "Electron running: $($electron.Count) processes, $electronMb MB"
+          $electron | Stop-Process -Force
           Start-Sleep -Seconds 3
           if (-not (Test-Path (Join-Path $root "current\resources\app.asar"))) { throw "the Electron Companion did not install in $root" }
           $summary += "- Electron instalado en ``$root``."
