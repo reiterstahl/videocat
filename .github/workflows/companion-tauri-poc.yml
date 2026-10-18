@@ -119,15 +119,21 @@ jobs:
           Start-Sleep -Seconds 3
           if (-not (Test-Path (Join-Path $root "current\resources\app.asar"))) { throw "the Electron Companion did not install in $root" }
           $summary += "- Electron instalado en ``$root``."
+          Write-Host "Electron installed in $root"
 
           $package = Get-ChildItem poc/out -Filter "*-full.nupkg" | Select-Object -First 1
-          & (Join-Path $root "Update.exe") apply --package $package.FullName --norestart --silent
-          if ($LASTEXITCODE -ne 0) { throw "Update.exe apply exited with code $LASTEXITCODE" }
+          $apply = Start-Process (Join-Path $root "Update.exe") -ArgumentList @("apply", "--package", "`"$($package.FullName)`"", "--norestart", "--silent") -Wait -PassThru -NoNewWindow
+          Write-Host "Update.exe apply exit code: $($apply.ExitCode)"
+          $summary += "- Update.exe apply terminó con código $($apply.ExitCode)."
+          # The --veloapp-updated hook starts the new app once; it exits right away (Velopack hooks).
+          Start-Sleep -Seconds 5
+          Get-Process "VideoCAT Companion", "videocat-agent" -ErrorAction SilentlyContinue | Stop-Process -Force
           $hasAgent = Test-Path (Join-Path $root "current\videocat-agent.exe")
           $noElectron = -not (Test-Path (Join-Path $root "current\resources\app.asar"))
           $summary += "- Update.exe apply: agente presente = $hasAgent, Electron retirado = $noElectron."
           if (-not ($hasAgent -and $noElectron)) { throw "the update did not replace the Electron app" }
 
+          Write-Host "Starting the Tauri Companion"
           Start-Process (Join-Path $root "current\VideoCAT Companion.exe")
           Start-Sleep -Seconds 20
           $tray = Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue
