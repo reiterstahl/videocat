@@ -16,6 +16,7 @@ import {
   companionDefaultPort,
   damagedMediaMessage,
   damagedMediaReason,
+  riskyMediaMessage,
   companionPortCandidates,
   encodeVisualFingerprint,
   formatBytes,
@@ -34,6 +35,7 @@ import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
+import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
 import { ActivityReporter } from "./activity.js";
 import {
   deletionFingerprintFrameIndexes,
@@ -99,12 +101,16 @@ type PendingScanFile = {
   filePath: string;
   createThumbnails: boolean;
   createFingerprint: boolean;
+  // What the walk already read, so a file that stops answering can still be catalogued as at risk.
+  stats: { size: number; mtime: Date; birthtime: Date };
 };
 
 type PendingAgentError = AgentErrorInput;
 
 type State = {
   completed: Record<string, number | { modifiedAtMs: number; sizeBytes: number }>;
+  // Files whose reading stopped answering: later scans skip them until the retry time passes.
+  risky?: RiskyFiles;
 };
 
 type CountResult = {
@@ -615,6 +621,7 @@ function companionScanPollMs(): number {
 
 async function startCompanionDiskWatcher(): Promise<void> {
   activityReporter = new ActivityReporter(async (activities, status) => {
+    if (trayBusy) emitTrayStatus(activities);
     if (!companionAgentApiEnabled()) return;
     await companionAgentApi("/api/agent/companion/activity", {
       method: "POST",
@@ -625,7 +632,13 @@ async function startCompanionDiskWatcher(): Promise<void> {
   // The tray animates its icon while anything runs, in the accent chosen in the web.
   let trayBusy = false;
   let trayAccent: string | null = null;
-  const emitTrayStatus = () => console.log(trayStatusLine({ busy: trayBusy, accent: trayAccent }));
+  // The first activity also feeds the tray tooltip (what it does, how far, about how long is left).
+  const emitTrayStatus = (activities = activityReporter?.snapshot() ?? []) => console.log(trayStatusLine({
+    busy: trayBusy,
+    accent: trayAccent,
+    activity: activities[0] ?? null,
+    more: Math.max(0, activities.length - 1)
+  }));
   activityReporter.onBusyChange = (busy) => {
     trayBusy = busy;
     emitTrayStatus();
@@ -2231,13 +2244,14 @@ function parseFps(value?: string): number | null {
   return top / bottom;
 }
 
-async function ffprobe(filePath: string) {
+async function ffprobe(filePath: string, signal?: AbortSignal) {
   const executable = mediaToolPath("FFPROBE_PATH", "ffprobe");
   const maxAttempts = 3;
   let stdout = "";
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
     if (attempt > 1) {
       const delayMs = attempt === 2 ? 750 : 2_000;
       console.log(`Reintentando metadatos ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)} en ${delayMs}ms.`);
@@ -2257,7 +2271,7 @@ async function ffprobe(filePath: string) {
         "-show_format",
         "-show_streams",
         filePath
-      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000 });
+      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000, signal });
       stdout = result.stdout;
       if (attempt > 1) console.log(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)}.`);
       lastError = undefined;
@@ -2295,13 +2309,15 @@ async function extractVisualHash(
   source: string,
   rawDestination: string,
   seconds: number,
-  thumbnailDestination?: string
+  thumbnailDestination?: string,
+  signal?: AbortSignal
 ): Promise<{ hash: string; timestampSeconds: number }> {
   await fs.mkdir(path.dirname(rawDestination), { recursive: true });
   const timestamps = frameExtractionTimestamps(seconds);
   let lastError: unknown;
 
   for (const [attempt, timestampSeconds] of timestamps.entries()) {
+    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
     await fs.rm(rawDestination, { force: true }).catch(() => undefined);
     if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
 
@@ -2320,7 +2336,8 @@ async function extractVisualHash(
     }
 
     try {
-      await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10 });
+      // One frame never takes minutes on a healthy file; a read stuck in the drive is stopped.
+      await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10, timeout: 120_000, signal });
       const pixels = await fs.readFile(rawDestination);
       const hash = perceptualHashFromGray9x8(pixels);
       await fs.rm(rawDestination, { force: true }).catch(() => undefined);
@@ -2330,7 +2347,7 @@ async function extractVisualHash(
       return { hash, timestampSeconds };
     } catch (error) {
       lastError = error;
-      if (!shouldRetryFrameExtraction(error)) break;
+      if (signal?.aborted || !shouldRetryFrameExtraction(error)) break;
     }
   }
 
@@ -2343,10 +2360,11 @@ async function createThumbnail(
   source: string,
   destination: string,
   rawDestination: string,
-  seconds: number
+  seconds: number,
+  signal?: AbortSignal
 ): Promise<{ hash: string; timestampSeconds: number }> {
   await fs.mkdir(path.dirname(destination), { recursive: true });
-  return extractVisualHash(source, rawDestination, seconds, destination);
+  return extractVisualHash(source, rawDestination, seconds, destination, signal);
 }
 
 async function processFile(
@@ -2356,7 +2374,8 @@ async function processFile(
   createThumbnails: boolean,
   createFingerprint: boolean,
   folderSizeCache: Map<string, number | null>,
-  errors: PendingAgentError[]
+  errors: PendingAgentError[],
+  signal?: AbortSignal
 ): Promise<ProcessedFile> {
   const stats = await fs.stat(filePath);
   const rel = relativePath(scanRoot, filePath);
@@ -2374,7 +2393,7 @@ async function processFile(
   };
 
   try {
-    const metadata = await ffprobe(filePath);
+    const metadata = await ffprobe(filePath, signal);
     const thumbs: ThumbResult[] = [];
     const fingerprintFrames: VisualFingerprintFrame[] = [];
     let status: AgentFileInput["status"] = "scanned";
@@ -2384,6 +2403,7 @@ async function processFile(
       let thumbnailFailures = 0;
       let fingerprintFailures = 0;
       for (const [kind, percent] of thumbnailPercents) {
+        if (signal?.aborted) break;
         const timestampSeconds = Math.max(0.1, metadata.durationSeconds * percent);
         const destination = path.join(
           agentStateRoot(),
@@ -2399,8 +2419,8 @@ async function processFile(
         );
         try {
           const extracted = createThumbnails
-            ? await createThumbnail(filePath, destination, rawDestination, timestampSeconds)
-            : await extractVisualHash(filePath, rawDestination, timestampSeconds);
+            ? await createThumbnail(filePath, destination, rawDestination, timestampSeconds, signal)
+            : await extractVisualHash(filePath, rawDestination, timestampSeconds, undefined, signal);
           fingerprintFrames.push({ index: Number(kind.slice(-2)), hash: extracted.hash });
           if (createThumbnails) thumbs.push({ kind, timestampSeconds: extracted.timestampSeconds, filePath: destination });
         } catch (error) {
@@ -2779,6 +2799,60 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   let processedPending = 0;
   const seenRelativePaths = new Set<string>();
 
+  // Every file gets a deadline (COMPANION_FILE_TIMEOUT_SECONDS): past it the scan moves on and the
+  // file is catalogued as at risk; see scan-watchdog.ts.
+  const fileTimeoutMs = fileTimeoutSeconds(process.env.COMPANION_FILE_TIMEOUT_SECONDS) * 1000;
+  const statTimeoutMs = Math.min(fileTimeoutMs, 30_000);
+  state.risky ??= {};
+  let riskySkipped = 0;
+
+  // audit: only when the file is not catalogued (its stat hung); a catalogued one gets its
+  // Auditoría entry from its record.
+  function markAtRisk(rel: string, filePath: string, phase: string, seconds: number, audit: boolean): string {
+    const message = riskyMediaMessage(seconds, riskyRetryDays);
+    markRisky(state.risky!, rel, message);
+    console.warn(`Archivo en riesgo ${compactFileLabel(filePath)}: no respondió en ${seconds} s con el disco conectado. Se sigue con el siguiente y no se vuelve a leer por ${riskyRetryDays} días.`);
+    if (audit) auditErrors.push({ category: "at_risk_file", phase, code: "read_timeout", message, absolutePath: filePath, relativePath: rel });
+    return message;
+  }
+
+  async function processGuarded(item: PendingScanFile): Promise<ProcessedFile> {
+    const result = await withDeadline((signal) => processFile(
+      resolved.diskRoot,
+      item.filePath,
+      scan.id,
+      item.createThumbnails,
+      item.createFingerprint,
+      folderSizeCache,
+      auditErrors,
+      signal
+    ), fileTimeoutMs);
+    const rel = relativePath(resolved.diskRoot, item.filePath);
+    if (result.done) {
+      clearRisky(state.risky, rel);
+      return result.value;
+    }
+    const message = markAtRisk(rel, item.filePath, "metadata", Math.round(fileTimeoutMs / 1000), false);
+    return {
+      record: {
+        filename: path.basename(item.filePath),
+        extension: path.extname(item.filePath).toLowerCase(),
+        absolutePath: item.filePath,
+        relativePath: rel,
+        sizeBytes: item.stats.size,
+        folderSizeBytes: null,
+        createdAt: item.stats.birthtime.toISOString(),
+        modifiedAt: item.stats.mtime.toISOString(),
+        status: "metadata_failed",
+        errorMessage: message,
+        visualFingerprint: item.createFingerprint ? null : undefined,
+        fingerprintVersion: item.createFingerprint ? null : undefined,
+        metadata: null
+      },
+      thumbnails: []
+    };
+  }
+
   async function processGroup(paths: PendingScanFile[]) {
     const processed = await Promise.all(paths.map((item) => {
       processedPending += 1;
@@ -2792,15 +2866,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
         filesDone: processedPending,
         filesTotal: counts.pending
       });
-      return processFile(
-        resolved.diskRoot,
-        item.filePath,
-        scan.id,
-        item.createThumbnails,
-        item.createFingerprint,
-        folderSizeCache,
-        auditErrors
-      );
+      return processGuarded(item);
     }));
     batch.push(...processed);
     failed += processed.filter((item) => item.record.status !== "scanned").length;
@@ -2828,9 +2894,24 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     console.log(`Escaneando ${target.scanPath}`);
     for await (const filePath of walkVideos(target.scanPath, auditErrors, resolved.diskRoot, completeness)) {
       discovered += 1;
+      const riskyRel = relativePath(resolved.diskRoot, filePath);
+      // A file that stopped answering before is not touched again, not even its size, until its
+      // retry time passes; it still counts as present.
+      if (isRiskyNow(state.risky, riskyRel)) {
+        seenRelativePaths.add(riskyRel);
+        skipped += 1;
+        riskySkipped += 1;
+        continue;
+      }
       let stat: Awaited<ReturnType<typeof fs.stat>>;
       try {
-        stat = await fs.stat(filePath);
+        const read = await withDeadline(() => fs.stat(filePath), statTimeoutMs);
+        if (!read.done) {
+          markAtRisk(riskyRel, filePath, "stat", Math.round(statTimeoutMs / 1000), true);
+          seenRelativePaths.add(riskyRel);
+          continue;
+        }
+        stat = read.value;
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
@@ -2852,7 +2933,8 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
       pendingPaths.push({
         filePath,
         createThumbnails: args.thumbnails && (!unchanged || repairPaths.has(rel)),
-        createFingerprint: !unchanged || fingerprintPaths.has(rel) || repairPaths.has(rel)
+        createFingerprint: !unchanged || fingerprintPaths.has(rel) || repairPaths.has(rel),
+        stats: { size: stat.size, mtime: stat.mtime, birthtime: stat.birthtime }
       });
       if (pendingPaths.length >= concurrency) {
         await processGroup(pendingPaths);
@@ -2875,6 +2957,8 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     uploaded += batch.length;
     await saveState(statePath, state);
   }
+  // Keeps the at-risk list even when the last files were skipped or stopped answering.
+  await saveState(statePath, state);
   if (auditErrors.length > 0) {
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
@@ -2893,6 +2977,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
 
   console.log("Escaneo finalizado.");
   console.log(`Detectados: ${discovered}. Omitidos por estado local: ${skipped}. Subidos: ${uploaded}. Fallos: ${failed}.`);
+  if (riskySkipped > 0) console.log(`Archivos en riesgo omitidos sin leerlos: ${riskySkipped}.`);
   if (completeness.complete) {
     console.log(`Conciliacion terminada: ${finished.reconciliation.markedAbsent} ausente(s), ${reactivated} reactivado(s).`);
   } else {

@@ -86,7 +86,22 @@ export function trayFrames(icon: PreparedIcon, accent: [number, number, number],
 // The agent tells the tray what it is doing with one stdout line; the tray reads it and keeps it out of the log.
 export const trayStatusPrefix = "@@videocat-status ";
 
-export type TrayStatus = { busy: boolean; accent: string | null };
+// What the Companion is doing right now, for the tray tooltip (the first of its activities).
+export type TrayActivity = {
+  kind: "transfer" | "download" | "scan" | "delete";
+  phase: string;
+  filename?: string | null;
+  from?: string | null;
+  to?: string | null;
+  bytesDone?: number | null;
+  bytesTotal?: number | null;
+  filesDone?: number | null;
+  filesTotal?: number | null;
+  bytesPerSecond?: number | null;
+  startedAt?: number;
+};
+
+export type TrayStatus = { busy: boolean; accent: string | null; activity?: TrayActivity | null; more?: number };
 
 export function trayStatusLine(status: TrayStatus): string {
   return `${trayStatusPrefix}${JSON.stringify(status)}`;
@@ -96,7 +111,13 @@ export function parseTrayStatus(line: string): TrayStatus | null {
   if (!line.startsWith(trayStatusPrefix)) return null;
   try {
     const value = JSON.parse(line.slice(trayStatusPrefix.length)) as Partial<TrayStatus>;
-    return { busy: value.busy === true, accent: typeof value.accent === "string" ? value.accent : null };
+    const activity = value.activity && typeof value.activity === "object" && typeof value.activity.phase === "string" ? value.activity : null;
+    return {
+      busy: value.busy === true,
+      accent: typeof value.accent === "string" ? value.accent : null,
+      activity,
+      more: typeof value.more === "number" && value.more > 0 ? Math.floor(value.more) : 0
+    };
   } catch {
     return null;
   }
@@ -118,4 +139,81 @@ export class LineSplitter {
     this.rest = "";
     return rest ? [rest] : [];
   }
+}
+
+// The same wording as the web's activity panel.
+const phaseLabels: Record<string, string> = {
+  staging: "Copiando a la carpeta temporal",
+  verifying_staging: "Verificando la copia temporal",
+  delivering: "Copiando al destino",
+  verifying_target: "Verificando en el destino",
+  downloading: "Descargando",
+  scanning: "Escaneando",
+  deleting: "Borrando"
+};
+
+// Windows cuts tray tooltips at 127 characters.
+export const trayTooltipLimit = 127;
+
+function bytesLabel(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = value >= 100 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(digits).replace(".", ",")} ${units[unit]}`;
+}
+
+export function etaLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 60) return `faltan ~${Math.max(1, Math.round(seconds))} s`;
+  if (seconds < 3600) return `faltan ~${Math.round(seconds / 60)} min`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  return `faltan ~${hours} h${minutes ? ` ${minutes} min` : ""}`;
+}
+
+function shorten(text: string, max: number): string {
+  if (text.length <= max) return text;
+  if (max <= 1) return "…";
+  return `${text.slice(0, max - 1)}…`;
+}
+
+// Tray tooltip: the process, the file, how far it got and about how long is left. Idle: the name.
+export function formatTrayTooltip(status: TrayStatus, version: string, now = Date.now()): string {
+  const title = `VideoCAT Companion v${version}`;
+  const activity = status.busy ? status.activity : null;
+  if (!activity) return title;
+  const label = phaseLabels[activity.phase] ?? "Trabajando";
+  const parts: string[] = [];
+  let percent: number | null = null;
+  let eta = "";
+  if (activity.bytesTotal && activity.bytesDone != null) {
+    percent = Math.min(100, Math.round((activity.bytesDone / activity.bytesTotal) * 100));
+    parts.push(`${bytesLabel(activity.bytesDone)} de ${bytesLabel(activity.bytesTotal)}`);
+    if (activity.bytesPerSecond) {
+      parts.push(`${bytesLabel(activity.bytesPerSecond)}/s`);
+      eta = etaLabel((activity.bytesTotal - activity.bytesDone) / activity.bytesPerSecond);
+    }
+  } else if (activity.filesTotal && activity.filesDone != null) {
+    percent = Math.min(100, Math.round((activity.filesDone / activity.filesTotal) * 100));
+    parts.push(`${activity.filesDone} de ${activity.filesTotal} archivos`);
+    // Files per second so far, for a scan that reports counts only.
+    if (activity.startedAt && activity.filesDone > 0 && now > activity.startedAt) {
+      const perFile = (now - activity.startedAt) / 1000 / activity.filesDone;
+      eta = etaLabel(perFile * (activity.filesTotal - activity.filesDone));
+    }
+  }
+  if (eta) parts.push(eta);
+  // While busy the version gives way to the file name: Windows keeps only 127 characters.
+  const head = `VideoCAT · ${label}${percent != null ? ` ${percent} %` : ""}${status.more ? ` (+${status.more})` : ""}`;
+  const detail = parts.join(" · ");
+  const fixed = [head, detail].filter(Boolean).join("\n");
+  const name = activity.filename ?? activity.from ?? "";
+  if (!name) return shorten(fixed, trayTooltipLimit);
+  const room = trayTooltipLimit - fixed.length - 1;
+  return room >= 8 ? [head, shorten(name, room), detail].filter(Boolean).join("\n") : shorten(fixed, trayTooltipLimit);
 }

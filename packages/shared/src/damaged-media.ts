@@ -22,3 +22,15 @@ export function damagedMediaMessage(reason: string): string {
 export function isDamagedMediaMessage(message: string | null | undefined): boolean {
   return Boolean(message?.startsWith(damagedMediaPrefix));
 }
+
+// A file whose reading stopped answering during a scan while its drive stayed connected (bad
+// sectors, a failing disk): the scan moved on and later scans leave it alone for a while.
+export const riskyMediaPrefix = "Archivo en riesgo";
+
+export function riskyMediaMessage(seconds: number, retryDays: number): string {
+  return `${riskyMediaPrefix}: la lectura no respondió en ${seconds} s aunque el disco seguía conectado; puede tener sectores dañados. Los próximos escaneos no lo leen durante ${retryDays} días. Conviene copiarlo o revisar el disco.`;
+}
+
+export function isRiskyMediaMessage(message: string | null | undefined): boolean {
+  return Boolean(message?.startsWith(riskyMediaPrefix));
+}

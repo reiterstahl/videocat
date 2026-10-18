@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, renderTrayFrame, trayFrames, trayStatusLine } from "../../apps/agent-windows/src/tray-animation.ts";
+import { etaLabel, formatTrayTooltip, LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, renderTrayFrame, trayFrames, trayStatusLine, trayTooltipLimit } from "../../apps/agent-windows/src/tray-animation.ts";
 
 // A 9×9 icon: a black cat (center 3×3) inside a white outline ring, transparent around it.
 function sampleIcon(order: "rgba" | "bgra"): Uint8Array {
@@ -48,7 +48,7 @@ test("accent colors, status lines and stdout split across chunks", () => {
   assert.equal(parseAccent("orange"), null);
   assert.equal(parseAccent(undefined), null);
   const line = trayStatusLine({ busy: true, accent: "#3b6ff5" });
-  assert.deepEqual(parseTrayStatus(line), { busy: true, accent: "#3b6ff5" });
+  assert.deepEqual(parseTrayStatus(line), { busy: true, accent: "#3b6ff5", activity: null, more: 0 });
   assert.equal(parseTrayStatus("Escaneando D:\\Videos"), null);
   assert.equal(parseTrayStatus("@@videocat-status {broken"), null);
   const splitter = new LineSplitter();
@@ -56,4 +56,36 @@ test("accent colors, status lines and stdout split across chunks", () => {
   assert.deepEqual(splitter.push(`s\n${line.slice(0, 10)}`), ["dos"]);
   assert.deepEqual(splitter.push(`${line.slice(10)}\n`), [line]);
   assert.deepEqual(splitter.flush(), []);
+});
+
+test("the tray tooltip says what the Companion does, how far it got and about how long is left", () => {
+  const GB = 1024 ** 3;
+  const copying = formatTrayTooltip({
+    busy: true,
+    accent: null,
+    more: 1,
+    activity: { kind: "transfer", phase: "staging", filename: "familia_2019_cumple.mp4", bytesDone: 6.2 * GB, bytesTotal: 9.8 * GB, bytesPerSecond: 180 * 1024 * 1024 }
+  }, "0.2.16");
+  assert.equal(copying, "VideoCAT · Copiando a la carpeta temporal 63 % (+1)\nfamilia_2019_cumple.mp4\n6,2 GB de 9,8 GB · 180 MB/s · faltan ~20 s");
+
+  const now = Date.parse("2026-10-18T10:00:00Z");
+  const scanning = formatTrayTooltip({
+    busy: true,
+    accent: null,
+    activity: { kind: "scan", phase: "scanning", from: "LaCie Rugged", filesDone: 120, filesTotal: 480, startedAt: now - 120_000 }
+  }, "0.2.16", now);
+  assert.equal(scanning, "VideoCAT · Escaneando 25 %\nLaCie Rugged\n120 de 480 archivos · faltan ~6 min");
+
+  const long = formatTrayTooltip({ busy: true, accent: null, activity: { kind: "download", phase: "downloading", filename: "x".repeat(300), bytesDone: 1, bytesTotal: 2 } }, "0.2.16");
+  assert.ok(long.length <= trayTooltipLimit);
+  assert.match(long, /…/);
+
+  assert.equal(formatTrayTooltip({ busy: false, accent: null }, "0.2.16"), "VideoCAT Companion v0.2.16");
+  assert.equal(etaLabel(5400), "faltan ~1 h 30 min");
+});
+
+test("status lines carry the activity for the tooltip", () => {
+  const line = trayStatusLine({ busy: true, accent: "#fc6121", activity: { kind: "scan", phase: "scanning", filesDone: 1, filesTotal: 2 }, more: 0 });
+  assert.equal(parseTrayStatus(line)?.activity?.phase, "scanning");
+  assert.equal(parseTrayStatus('@@videocat-status {"busy":true,"activity":{"oops":1}}')?.activity, null);
 });

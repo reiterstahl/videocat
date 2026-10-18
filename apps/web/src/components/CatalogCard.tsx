@@ -1,6 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, useState } from "react";
 import { Image } from "lucide-react";
-import { formatBytes, formatDuration, isDamagedMediaMessage } from "@videocat/shared";
+import { formatBytes, formatDuration, isDamagedMediaMessage, isRiskyMediaMessage } from "@videocat/shared";
 import { CategoryBadges } from "./CategoryBadges";
 import { thumbnailSrc } from "../lib/api";
 import { folderPath, mainThumbnail, resolutionBadge } from "../lib/app-helpers";
@@ -33,6 +33,8 @@ export function CatalogCard({
   const cover = scrubbing && thumbnails[frameIndex] ? thumbnailSrc(thumbnails[frameIndex].url) : mainThumbnail(file);
   // An incomplete or damaged file (interrupted recording or copy): its reason, first line of the message.
   const damaged = isDamagedMediaMessage(file.errorMessage) ? (file.errorMessage ?? "").split("\n")[0] : null;
+  // Its reading stopped answering during a scan with the drive connected (bad sectors).
+  const atRisk = isRiskyMediaMessage(file.errorMessage) ? file.errorMessage ?? "" : null;
   const badge = resolutionBadge(file);
   const folder = /[\\/]/.test(file.relativePath) ? folderPath(file.relativePath) : "";
 
@@ -62,7 +64,7 @@ export function CatalogCard({
         <span className="vc-card-thumb">
           {cover ? <img src={cover} alt="" loading="lazy" /> : <Image size={26} aria-hidden="true" />}
           {badge ? <span className="vc-card-badge is-top-right">{badge}</span> : null}
-          {availability === "offline" || file.isProbableDuplicate || file.transfer || damaged ? (
+          {availability === "offline" || file.isProbableDuplicate || file.transfer || damaged || atRisk ? (
             <span className="vc-card-flags">
               {file.transfer ? (
                 <span className="vc-card-badge is-transit" title={`${transferStateLabels[file.transfer.state]} · destino: ${file.transfer.targetFolder}`}>
@@ -72,6 +74,7 @@ export function CatalogCard({
               {availability === "offline" ? <span className="vc-card-badge is-light">Desconectado</span> : null}
               {file.isProbableDuplicate ? <span className="vc-card-badge is-warning" title="Duplicado probable">Duplicado</span> : null}
               {damaged ? <span className="vc-card-badge is-danger" title={damaged}>Dañado</span> : null}
+              {atRisk ? <span className="vc-card-badge is-danger" title={atRisk}>En riesgo</span> : null}
             </span>
           ) : null}
           {file.durationSeconds ? <span className="vc-card-badge is-bottom-right is-mono">{formatDuration(file.durationSeconds)}</span> : null}

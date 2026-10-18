@@ -17,6 +17,14 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.42 (Companion 0.2.16)
+
+- **Scans no longer stay forever on a file that stops answering** (bad sectors on a connected drive: Windows keeps retrying the read). Every file has a deadline, **Tiempo máximo por archivo** in Companion › Configuración › Avanzado (`COMPANION_FILE_TIMEOUT_SECONDS`, 180 s by default, 30–3600). Past it, the file's FFmpeg/FFprobe processes are stopped and the scan moves on. Each frame extraction also has its own 2-minute limit now.
+- The file is catalogued **En riesgo** (badge in the catalog, reason in the detail, category `at_risk_file` in Auditoría) and noted in the Companion's local scan state: later scans skip it without touching it, not even its size, for 30 days, and it still counts as present. After that it is read once more, in case the drive recovered. A file whose basic information (size, date) does not come back within 30 s gets the same treatment. Copy what you can from that drive and check it.
+- The agent runs with 16 I/O threads (`UV_THREADPOOL_SIZE`), so one read stuck in the drive never freezes the rest of the Companion.
+- **Tray tooltip**: hovering the Companion icon shows what it is doing, the file, how far it got and about how long is left (the same wording as the web's activity panel), for example *VideoCAT · Copiando a la carpeta temporal 63 %*.
+- Companion 0.2.16 updates itself. No migrations or configuration changes on the server.
+
 ## Upgrading to 0.2.41 (Companion 0.2.15)
 
 - **The tray icon shows when the Companion works**: while it copies, verifies, downloads, scans or deletes, the accent chosen in the web (Tema) travels around the cat's white outline, fading back to white behind it (24 frames, a turn every 1.8 s). Idle, or right after it starts, the icon is white and still as before. The frames are built from the icon itself, at the screen's scale.

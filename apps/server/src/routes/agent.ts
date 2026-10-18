@@ -9,6 +9,8 @@ import {
   damagedMediaReason,
   filesBatchSchema,
   isDamagedMediaMessage,
+  isRiskyMediaMessage,
+  riskyMediaPrefix,
   registerDiskSchema,
   scanStartSchema,
   thumbnailKindSchema,
@@ -140,6 +142,7 @@ function scannedScopeWhere(scanRoots: string[]): Prisma.VideoFileWhereInput {
 }
 
 function errorCategory(status: string, message?: string | null): string {
+  if (isRiskyMediaMessage(message)) return "at_risk_file";
   if (isDamagedMediaMessage(message) || damagedMediaReason(message)) return "damaged_file";
   const text = `${status} ${message ?? ""}`.toLowerCase();
   if (text.includes("eperm") || text.includes("eacces") || text.includes("permission")) return "permission";
@@ -467,7 +470,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     const files = await prisma.videoFile.findMany({
       // A damaged file cannot give thumbnails: it is only read again when it changes (the Companion
       // notices the new size or date), never on every scan.
-      where: { diskId: disk.id, isPresent: true, NOT: { scanStatus: "metadata_failed", errorMessage: { startsWith: damagedMediaPrefix } } },
+      where: {
+        diskId: disk.id,
+        isPresent: true,
+        NOT: [
+          { scanStatus: "metadata_failed", errorMessage: { startsWith: damagedMediaPrefix } },
+          { scanStatus: "metadata_failed", errorMessage: { startsWith: riskyMediaPrefix } }
+        ]
+      },
       select: {
         relativePath: true,
         thumbnails: { select: { kind: true, relativePath: true } }

@@ -19,7 +19,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { formatBytes, formatDuration, isDamagedMediaMessage } from "@videocat/shared";
+import { formatBytes, formatDuration, isDamagedMediaMessage, isRiskyMediaMessage } from "@videocat/shared";
 import { DeleteFileConfirmModal } from "./DeleteFileConfirmModal";
 import { FullscreenGallery } from "./FullscreenGallery";
 import { Info } from "./Info";
@@ -966,7 +966,7 @@ export function FileDetail({
         label="Etiquetas"
         value={categoryKeysForFile(file).map((key) => categoryLabel(key, categories)).join(", ") || "Sin marcar"}
       />
-      <Info label="Estado" value={isDamagedMediaMessage(file.errorMessage) ? (file.errorMessage ?? "").split("\n")[0] : file.scanStatus} />
+      <Info label="Estado" value={isDamagedMediaMessage(file.errorMessage) || isRiskyMediaMessage(file.errorMessage) ? (file.errorMessage ?? "").split("\n")[0] : file.scanStatus} />
     </div>
 
   );

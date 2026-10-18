@@ -133,6 +133,7 @@ const en: Record<string, string> = {
   "Reciben material": "Receiving files",
   "Catálogo de video self-hosted": "Self-hosted video catalog",
   "Dañado": "Damaged",
+  "En riesgo": "At risk",
   "Detener traslados": "Stop transfers",
   "No se pudieron reanudar los traslados.": "Could not resume transfers.",
   "Reanudar traslados": "Resume transfers",
@@ -1318,6 +1319,9 @@ function translateDynamicText(text: string, language: Language): string | null {
     };
     return `Incomplete or damaged video file: ${reasons[match[1]] ?? match[1]} If it is still being copied, it is read again when it changes.`;
   }
+
+  match = text.match(/^Archivo en riesgo: la lectura no respondió en (\d+) s aunque el disco seguía conectado; puede tener sectores dañados\. Los próximos escaneos no lo leen durante (\d+) días\. Conviene copiarlo o revisar el disco\.$/);
+  if (match) return `File at risk: reading did not answer in ${match[1]} s while the drive stayed connected; it may have bad sectors. Later scans leave it unread for ${match[2]} days. Consider copying it or checking the drive.`;
 
   match = text.match(/^Libre · (.+)$/);
   if (match) return `Free · ${match[1]}`;

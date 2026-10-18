@@ -5,7 +5,8 @@ Esta app ejecuta VideoCAT desde la bandeja de Windows. Mantiene el companion loc
 ## Funciones iniciales
 
 - Arranca el companion local en segundo plano.
-- Mientras trabaja, el color de acento elegido en la web (Tema) recorre el borde blanco del ícono de la bandeja; sin tareas, el ícono queda blanco y quieto.
+- Mientras trabaja, el color de acento elegido en la web (Tema) recorre el borde blanco del ícono de la bandeja; sin tareas, el ícono queda blanco y quieto. Al pasar el cursor, el tooltip muestra la tarea, el archivo, el avance y cuánto falta.
+- Si un archivo no termina de leerse en **Tiempo máximo por archivo** (`COMPANION_FILE_TIMEOUT_SECONDS`, 180 s por defecto), el escaneo sigue con el siguiente y lo marca en riesgo; los próximos escaneos no lo tocan durante 30 días.
 - Detecta discos montados con `.videocat-disk.json`.
 - Permite añadir unidades completas y carpetas locales o de red como rutas monitoreadas.
 - Permite quitar rutas manuales y marcar discos VideoCAT detectados como ignorados temporalmente.

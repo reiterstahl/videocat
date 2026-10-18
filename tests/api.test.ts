@@ -1008,15 +1008,16 @@ test("a damaged video is reported as such and not retried on every scan", { skip
         diskId: disk.id,
         files: [
           { filename: "cut.mp4", extension: ".mp4", absolutePath: "D:\\cut.mp4", relativePath: "cut.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: damaged },
-          { filename: "probe.mp4", extension: ".mp4", absolutePath: "D:\\probe.mp4", relativePath: "probe.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: "ffprobe timed out after 60 s" }
+          { filename: "probe.mp4", extension: ".mp4", absolutePath: "D:\\probe.mp4", relativePath: "probe.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: "ffprobe timed out after 60 s" },
+          { filename: "stuck.mp4", extension: ".mp4", absolutePath: "D:\\stuck.mp4", relativePath: "stuck.mp4", sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status: "metadata_failed", errorMessage: "Archivo en riesgo: la lectura no respondió en 180 s aunque el disco seguía conectado; puede tener sectores dañados. Los próximos escaneos no lo leen durante 30 días. Conviene copiarlo o revisar el disco." }
         ]
       }
     });
     assert.equal(batch.statusCode, 200, batch.body);
     const errors = await prisma.agentError.findMany({ where: { diskId: disk.id }, orderBy: { relativePath: "asc" } });
-    assert.deepEqual(errors.map((error) => [error.relativePath, error.category]), [["cut.mp4", "damaged_file"], ["probe.mp4", "metadata"]]);
+    assert.deepEqual(errors.map((error) => [error.relativePath, error.category]), [["cut.mp4", "damaged_file"], ["probe.mp4", "metadata"], ["stuck.mp4", "at_risk_file"]]);
     const queue = (await app.inject({ method: "GET", url: `/api/agent/disks/${disk.id}/thumbnail-repair-queue`, headers: agentHeaders })).json();
-    assert.deepEqual(queue.files.map((file: { relativePath: string }) => file.relativePath), ["probe.mp4"], "a tool failure is retried, a damaged file is not");
+    assert.deepEqual(queue.files.map((file: { relativePath: string }) => file.relativePath), ["probe.mp4"], "a tool failure is retried, a damaged or at-risk file is not");
   } finally {
     await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
   }

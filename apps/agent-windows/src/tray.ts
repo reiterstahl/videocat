@@ -5,7 +5,7 @@ import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type NativeImage } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
-import { LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, trayFrames, trayFramesPerTurn, trayTurnMs, type TrayStatus } from "./tray-animation.js";
+import { formatTrayTooltip, LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, trayFrames, trayFramesPerTurn, trayTurnMs, type TrayStatus } from "./tray-animation.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
 import { CompanionUpdater, createUpdateClient, runVelopackHooks } from "./updater.js";
@@ -71,6 +71,7 @@ const configKeys = [
   "COMPANION_DOWNLOAD_DIR",
   "COMPANION_STAGING_DIR",
   "COMPANION_TRANSFER_POLL_MS",
+  "COMPANION_FILE_TIMEOUT_SECONDS",
   "COMPANION_REMOTE_REMUX_ENABLED",
   "COMPANION_AUTO_DELETE_MARKED",
   "COMPANION_MONITORED_TARGETS",
@@ -105,6 +106,7 @@ const configDefaults: Partial<Record<ConfigKey, string>> = {
   COMPANION_DELETE_POLL_MS: "60000",
   COMPANION_DOWNLOAD_POLL_MS: "60000",
   COMPANION_DOWNLOAD_STALL_MS: "30000",
+  COMPANION_FILE_TIMEOUT_SECONDS: "180",
   COMPANION_REMOTE_REMUX_ENABLED: "false",
   COMPANION_AUTO_DELETE_MARKED: "true",
   TRAY_DISK_POLL_MS: "10000",
@@ -364,6 +366,9 @@ function validateConfig(values: Record<ConfigKey, string>, allowMissingCredentia
     ?? validatePositiveInteger(values.COMPANION_DOWNLOAD_POLL_MS, "COMPANION_DOWNLOAD_POLL_MS")
     ?? validatePositiveInteger(values.COMPANION_DOWNLOAD_STALL_MS, "COMPANION_DOWNLOAD_STALL_MS")
     ?? validatePositiveInteger(values.TRAY_DISK_POLL_MS, "TRAY_DISK_POLL_MS")
+    ?? (values.COMPANION_FILE_TIMEOUT_SECONDS && !(Number(values.COMPANION_FILE_TIMEOUT_SECONDS) >= 30 && Number(values.COMPANION_FILE_TIMEOUT_SECONDS) <= 3600)
+      ? "COMPANION_FILE_TIMEOUT_SECONDS debe estar entre 30 y 3600 segundos."
+      : null)
     ?? (!/^(true|false)$/i.test(values.COMPANION_REMOTE_REMUX_ENABLED)
       ? "COMPANION_REMOTE_REMUX_ENABLED debe ser true o false."
       : null)
@@ -408,6 +413,9 @@ function childEnv(): NodeJS.ProcessEnv {
       VIDEOCAT_AGENT_CREDENTIAL: credential,
       VIDEOCAT_COMPANION_ID: storedCredential.companionId
     } : {}),
+    // A read stuck on a bad sector holds one of Node's I/O threads (4 by default); with more of
+    // them, one stuck file never freezes the rest of the Companion.
+    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "16",
     ELECTRON_RUN_AS_NODE: "1"
   };
 }
@@ -676,6 +684,7 @@ function buildTrayFrames(accentHex: string): NativeImage[] {
 function applyTrayStatus(status: TrayStatus): void {
   trayStatus = status;
   if (!tray) return;
+  tray.setToolTip(formatTrayTooltip(status, app.getVersion()));
   if (!status.busy) {
     if (trayAnimationTimer) clearInterval(trayAnimationTimer);
     trayAnimationTimer = null;
@@ -1073,6 +1082,7 @@ function configHtml(logoDataUrl: string): string {
           <div class="fields three">
             <label><span class="label-row"><span>Clic en el ícono</span><code>TRAY_CLICK_ACTION</code></span><select name="TRAY_CLICK_ACTION"><option value="open">Abrir VideoCAT</option><option value="activity">Mostrar actividad</option><option value="settings">Abrir configuración</option></select></label>
             <label><span class="label-row"><span>Puerto local</span><code>COMPANION_PORT</code></span><input name="COMPANION_PORT" placeholder="29429" /></label>
+            <label title="Si un archivo no termina de leerse en este tiempo con el disco conectado (sectores dañados), el escaneo sigue con el siguiente y lo marca en riesgo."><span class="label-row"><span>Tiempo máximo por archivo (s)</span><code>COMPANION_FILE_TIMEOUT_SECONDS</code></span><input name="COMPANION_FILE_TIMEOUT_SECONDS" placeholder="180" /></label>
             <label><span class="label-row"><span>Remux MP4 temporal</span><code>COMPANION_REMOTE_REMUX_ENABLED</code></span><select name="COMPANION_REMOTE_REMUX_ENABLED"><option value="false">Desactivado</option><option value="true">Activado (solo H.264/AAC)</option></select></label>
             <label><span class="label-row"><span>Borrar los marcados</span><code>COMPANION_AUTO_DELETE_MARKED</code></span><select name="COMPANION_AUTO_DELETE_MARKED"><option value="true">Automáticamente</option><option value="false">Solo a pedido</option></select></label>
             <label class="wide"><span class="label-row"><span>Orígenes permitidos</span><code>COMPANION_ALLOWED_ORIGINS</code></span><input name="COMPANION_ALLOWED_ORIGINS" placeholder="https://cat.example.com,http://localhost:5173" /></label>
