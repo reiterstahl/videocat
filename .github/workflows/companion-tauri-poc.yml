@@ -114,6 +114,9 @@ jobs:
           gh release download --repo ${{ github.repository }} --pattern "VideoCAT-Companion-win-Setup.exe" --dir poc/electron
           if ($LASTEXITCODE -ne 0) { throw "could not download the current Electron Setup.exe" }
           Start-Process poc/electron/VideoCAT-Companion-win-Setup.exe -ArgumentList "--silent" -Wait
+          Start-Sleep -Seconds 5
+          Get-Process "VideoCAT Companion" -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Process (Join-Path $root "current\VideoCAT Companion.exe")
           Start-Sleep -Seconds 20
           # The same measure as for Tauri below: every process of the app (Electron's tray, its GPU
           # and utility helpers and the agent all carry the app's name).
