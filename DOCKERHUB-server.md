@@ -68,7 +68,7 @@ Thumbnails live in `/data/video-catalog/thumbnails`, mounted by Compose as the `
 
 ## Tags and platforms
 
-- `0.2.40`, `0.2.39`, … — versioned, stable tags. Prefer them for predictable deployments.
+- `0.2.41`, `0.2.40`, … — versioned, stable tags. Prefer them for predictable deployments.
 - `latest` — the newest published release.
 
 Images are built for `linux/amd64` and `linux/arm64`.
