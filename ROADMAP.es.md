@@ -169,3 +169,7 @@ Los reportes de seguridad deben seguir [SECURITY.md](SECURITY.md). El trabajo p�
 ## Pendiente: Publicación En community-scripts (Proxmox)
 
 Instalar VideoCAT en un LXC de Proxmox con un comando de [community-scripts.org](https://community-scripts.org). Piden al menos 1.000 estrellas y 6 meses de antigüedad (desde el 2026-12-14), además de una instalación nativa sin Docker y releases propios del stack. Plan y requisitos en [COMMUNITY_SCRIPTS_PLAN.es.md](COMMUNITY_SCRIPTS_PLAN.es.md).
+
+## En plan: Companion más liviano (Electron → Tauri)
+
+Bajar el instalador del Companion de ~158 MB a ~35–45 MB con un envoltorio Tauri (WebView2) y el mismo agente de Node empaquetado como ejecutable único. Fases, riesgos y resultado esperado en [COMPANION_TAURI_PLAN.es.md](COMPANION_TAURI_PLAN.es.md).
