@@ -156,6 +156,7 @@ export function App() {
   const [pinSubmitting, setPinSubmitting] = useState(false);
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(storedPageSize);
   const [q, setQ] = useState("");
@@ -699,6 +700,7 @@ export function App() {
       .then((response) => {
         setFiles(response.files);
         setTotal(response.total);
+        setTotalBytes(response.totalBytes ?? 0);
       })
       .finally(() => setLoading(false));
   }, [
@@ -2005,6 +2007,8 @@ export function App() {
   }
 
   function removeDeletedFile(fileId: string) {
+    const removed = files.find((file) => file.id === fileId);
+    if (removed) setTotalBytes((current) => Math.max(0, current - removed.sizeBytes));
     setSelected((current) => (current?.id === fileId ? null : current));
     setFiles((current) => current.filter((file) => file.id !== fileId));
     setDuplicates((current) => current.filter((file) => file.id !== fileId));
@@ -2303,6 +2307,7 @@ export function App() {
             toggleTag,
             toggleVisibleSelection,
             total,
+            totalBytes,
             visibleFolders,
             visibleSelectedCount
           }}

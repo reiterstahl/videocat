@@ -35,6 +35,8 @@ export type FileResponse = {
   page: number;
   pageSize: number;
   total: number;
+  // Size of every match of the current search and filters, not just this page.
+  totalBytes?: number;
 };
 
 export type ReviewNextResponse = {

@@ -133,6 +133,7 @@ const en: Record<string, string> = {
   "Reciben material": "Receiving files",
   "Catálogo de video self-hosted": "Self-hosted video catalog",
   "Dañado": "Damaged",
+  "Tamaño de todas las coincidencias, no solo de esta página": "Size of every match, not just this page",
   "En riesgo": "At risk",
   "Detener traslados": "Stop transfers",
   "No se pudieron reanudar los traslados.": "Could not resume transfers.",

@@ -247,6 +247,13 @@
   font-weight: 600;
 }
 
+/* What every match adds up to, beside the count. */
+.vc-results-size {
+  margin-left: 8px;
+  color: var(--vc-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .vc-filter-chip {
   max-width: 260px;
   height: 28px;

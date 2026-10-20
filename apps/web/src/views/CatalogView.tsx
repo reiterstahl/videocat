@@ -96,11 +96,12 @@ export type CatalogViewProps = {
   toggleTag: (tag: string) => void;
   toggleVisibleSelection: (checked: boolean) => void;
   total: number;
+  totalBytes: number;
   visibleFolders: VisibleFolder[];
   visibleSelectedCount: number;
 };
 
-export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
+export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, totalBytes, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
   return (
     <section
       className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
@@ -313,6 +314,7 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
         <div className="vc-results-toolbar">
           <span className="vc-results-count">
             <strong>{`${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}</strong>
+            {total > 0 ? <span className="vc-results-size" title="Tamaño de todas las coincidencias, no solo de esta página">{formatBytes(totalBytes)}</span> : null}
           </span>
           {activeCatalogFilters.map((filter) => (
             <button key={filter.key} className="vc-filter-chip" onClick={filter.onRemove} type="button" title="Quitar filtro">

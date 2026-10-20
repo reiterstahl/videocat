@@ -993,6 +993,28 @@ test("a drive that no longer exists can be removed, but not while files from it 
   }
 });
 
+test("a catalog search reports the size of every match, not just the page", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Search ${suffix}`, volumeId: `search-${suffix}` } });
+  try {
+    const cookie = await authenticatedCookie();
+    await prisma.videoFile.createMany({
+      data: [["cumple_mateo_01", 10], ["cumple_mateo_02", 20], ["playa_2020", 30]].map(([name, size]) => ({
+        diskId: disk.id, filename: `${name}.mp4`, extension: "mp4", absolutePath: `S:/V/${name}.mp4`, relativePath: `V/${name}.mp4`, sizeBytes: BigInt(size as number)
+      }))
+    });
+    const page = await app.inject({ method: "GET", url: `/api/files?q=cumple&diskIds=${disk.id}&page=1&pageSize=1`, headers: { cookie } });
+    assert.equal(page.statusCode, 200, page.body);
+    assert.equal(page.json().files.length, 1);
+    assert.equal(page.json().total, 2);
+    assert.equal(page.json().totalBytes, 30, "both matches, even with one per page");
+    const everything = (await app.inject({ method: "GET", url: `/api/files?diskIds=${disk.id}`, headers: { cookie } })).json();
+    assert.equal(everything.totalBytes, 60);
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("a damaged video is reported as such and not retried on every scan", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = Math.random().toString(36).slice(2, 8);
   const disk = await prisma.disk.create({ data: { name: `Damaged ${suffix}`, volumeId: `damaged-${suffix}` } });

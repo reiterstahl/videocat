@@ -77,6 +77,16 @@ test("transfers can be stopped from the header and resumed from Traslados", asyn
   expect(orders).toEqual(["stop", "resume"]);
 });
 
+test("the catalog shows the size of all the videos a search finds", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const size = page.locator(".vc-results-size");
+  await expect(size).toHaveText(/\d.*(GB|TB|MB)/);
+  const before = await size.textContent();
+  await page.getByPlaceholder("Buscar por nombre o ruta").fill("Cumpleanos");
+  await expect(page.locator(".vc-results-count strong")).not.toHaveText(/^75 videos$/);
+  await expect(size).not.toHaveText(before ?? "");
+});
+
 test("connected drives are listed first in the drive strip", async ({ page }) => {
   await openView(page, "/catalogo");
   const disks = (await (await page.request.get("/api/disks")).json()).disks as Array<{ id: string; name: string }>;

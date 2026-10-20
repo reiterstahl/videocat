@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.43
+
+- **Catálogo**: beside the number of videos, the total size of every match of the current search and filters (not just the page shown), for example *12 videos 340 GB*. It follows each change of search, drive, folder, tag or filter.
+- No migrations or configuration changes; the Windows Companion is 0.2.17.
+
 ## Windows Companion 0.2.17
 
 - **No more orphan agents**: the agent started by the tray now closes on its own when its tray is gone (closed by force, an installer, a crash), instead of running on and blocking the next update.

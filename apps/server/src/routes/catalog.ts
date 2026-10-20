@@ -1195,6 +1195,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const skip = (query.page - 1) * query.pageSize;
 
     let total: number;
+    // Size of every match, not just this page: what a search or filter adds up to.
+    let totalBytes: number;
     let files;
 
     if (selectedTags.length > 0) {
@@ -1202,16 +1204,17 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         where,
         select: {
           id: true,
-          filename: true
+          filename: true,
+          sizeBytes: true
         },
         orderBy
       });
-      const matchingIds = candidates
-        .filter((file) => {
-          const fileTags = tagsFromFilename(file.filename);
-          return selectedTags.every((tag) => fileTags.includes(tag));
-        })
-        .map((file) => file.id);
+      const matching = candidates.filter((file) => {
+        const fileTags = tagsFromFilename(file.filename);
+        return selectedTags.every((tag) => fileTags.includes(tag));
+      });
+      const matchingIds = matching.map((file) => file.id);
+      totalBytes = matching.reduce((sum, file) => sum + Number(file.sizeBytes), 0);
       const pageIds = matchingIds.slice(skip, skip + query.pageSize);
       const filesById = await prisma.videoFile.findMany({
         where: { id: { in: pageIds } },
@@ -1222,8 +1225,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       files = filesById.sort((a, b) => (sortIndex.get(a.id) ?? 0) - (sortIndex.get(b.id) ?? 0));
       total = matchingIds.length;
     } else {
-      [total, files] = await Promise.all([
+      let sum;
+      [total, sum, files] = await Promise.all([
         prisma.videoFile.count({ where }),
+        prisma.videoFile.aggregate({ where, _sum: { sizeBytes: true } }),
         prisma.videoFile.findMany({
           where,
           include: fileIncludes(),
@@ -1232,6 +1237,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           take: query.pageSize
         })
       ]);
+      totalBytes = Number(sum._sum.sizeBytes ?? 0n);
     }
 
     const sizes = [...new Set(files.map((file) => file.sizeBytes.toString()))].map((value) => BigInt(value));
@@ -1257,6 +1263,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       ),
       page: query.page,
       pageSize: query.pageSize,
+      totalBytes,
       total
     };
   });
