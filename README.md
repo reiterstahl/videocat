@@ -72,7 +72,7 @@ flowchart LR
 ## Features
 
 ### Catalog
-- Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a detail panel.
+- Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a detail panel; the result count shows the total size of every match.
 - Filters by drive, extension, folder (lazy-loaded tree), tags, categories and duplicates.
 - Drive strip with capacity and usage, plus **Show connected** to work only with what is plugged in; connected drives are always listed first.
 - Drives are identified by `.videocat-disk.json`, so they are recognized even when Windows changes the drive letter.

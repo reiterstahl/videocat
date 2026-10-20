@@ -72,7 +72,7 @@ flowchart LR
 ## Características
 
 ### Catálogo
-- Cuadrícula o lista, búsqueda con `Ctrl K` tolerante a acentos, chips de filtros activos y panel de detalle.
+- Cuadrícula o lista, búsqueda con `Ctrl K` tolerante a acentos, chips de filtros activos y panel de detalle; el conteo de resultados muestra el tamaño total de todas las coincidencias.
 - Filtros por disco, extensión, carpeta (árbol con carga bajo demanda), etiquetas, categorías y duplicados.
 - Tira de discos con capacidad y uso, y **Mostrar conectados** para trabajar solo con lo que está enchufado; los discos conectados aparecen siempre primero.
 - Discos identificados por `.videocat-disk.json`: se reconocen aunque Windows cambie la letra de la unidad.
