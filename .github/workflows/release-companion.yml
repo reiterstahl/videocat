@@ -75,10 +75,15 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          # The SEA embeds this node.exe: never reuse an older 24.x from the runner's tool cache.
-          check-latest: true
+          # The SEA embeds this node.exe, so its version is the Companion's runtime. Pinned:
+          # `24` reused the runner's cached 24.21.0 and `check-latest` waits for the
+          # actions/node-versions manifest, which lags security releases.
+          node-version: 24.22.1
           cache: npm
+
+      - name: Check the Node.js that the Companion embeds
+        shell: bash
+        run: test "$(node --version)" = "v24.22.1"
 
       - uses: actions/setup-dotnet@v6
         with:

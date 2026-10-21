@@ -17,9 +17,9 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
-## Windows Companion 0.2.19
+## Windows Companion 0.2.20
 
-- Built on Node.js 24.22.1: the 0.2.18 build picked up an older Node 24 cached on the build runner, so it did not carry the security release. The release workflow now always resolves the latest Node 24.
+- Built on Node.js 24.22.1. Companions 0.2.18 (Node 24.21.0) and 0.2.19 (Node 24.22.0) did not carry the security release: the build runner resolved an older Node 24. The release workflow now pins 24.22.1 and fails if the embedded Node differs.
 - The server stays on 0.2.44; no migrations or configuration changes.
 
 ## Upgrading to 0.2.44 (Companion 0.2.18)
