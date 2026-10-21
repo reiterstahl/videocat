@@ -76,6 +76,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+          # The SEA embeds this node.exe: never reuse an older 24.x from the runner's tool cache.
+          check-latest: true
           cache: npm
 
       - uses: actions/setup-dotnet@v6
