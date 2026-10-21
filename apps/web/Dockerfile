@@ -1,6 +1,11 @@
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS node-security
+ENV NODE_VERSION=24.22.1
+COPY docker/install-node-security.sh /tmp/install-node-security.sh
+RUN sh /tmp/install-node-security.sh 24.22.1 && rm /tmp/install-node-security.sh
+
 # The build output is static files, the same for every platform: build once on the native
 # platform instead of under emulation (much faster and far less memory for multi-arch images).
-FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS deps
+FROM node-security AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/web/package.json apps/web/package.json

@@ -1,4 +1,9 @@
-FROM node:24-trixie-slim AS base
+FROM node:24-trixie-slim AS node-security
+ENV NODE_VERSION=24.22.1
+COPY docker/install-node-security.sh /tmp/install-node-security.sh
+RUN sh /tmp/install-node-security.sh 24.22.1 && rm /tmp/install-node-security.sh
+
+FROM node-security AS base
 WORKDIR /app
 # Security updates for the base packages on every build.
 RUN apt-get update -y \

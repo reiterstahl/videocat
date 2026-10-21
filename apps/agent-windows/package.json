@@ -26,7 +26,7 @@
     "pretray": "npm run ensure-tray-runtime",
     "tray": "electron dist/tray.js",
     "build:icon": "node scripts/build-icon.mjs",
-    "prepackage:tray": "npm run ensure-tray-runtime && npm run build:icon",
+    "prepackage:tray": "npm run check:node-security && npm run ensure-tray-runtime && npm run build:icon",
     "package:tray": "electron-builder --win dir && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs",
     "preinit-disk": "npm run ensure-runtime",
@@ -39,7 +39,8 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "build:tray": "tsc -p tsconfig.tray.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "typecheck:tray": "tsc -p tsconfig.tray.json --noEmit"
+    "typecheck:tray": "tsc -p tsconfig.tray.json --noEmit",
+    "check:node-security": "node scripts/check-node-security.mjs --electron"
   },
   "dependencies": {
     "@videocat/shared": "0.1.0",
@@ -91,7 +92,7 @@
   "devDependencies": {
     "@electron/asar": "3.4.1",
     "@types/node": "^20.14.12",
-    "electron": "42.11.12",
+    "electron": "43.8.3",
     "electron-builder": "^26.15.3",
     "pngjs": "7.0.0",
     "tsx": "^4.23.15",

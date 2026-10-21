@@ -6,6 +6,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertPatchedNode } from "./check-node-security.mjs";
+
+assertPatchedNode(process.versions.node, "SEA build runtime");
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const output = path.resolve(process.argv[2] ?? path.join(root, "release", "agent-sea"));
