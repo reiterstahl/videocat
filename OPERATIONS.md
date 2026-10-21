@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.44 (Companion 0.2.18)
+
+- **Security release**: the server image runs Node.js 24.22.1 and the Companion carries it too ([October 2026 Node.js security releases](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases): Brotli decoder out-of-bounds write, TLS hostname checks, keep-alive response smuggling). No functional changes.
+- No migrations or configuration changes. Companion 0.2.18 updates itself.
+
 ## Upgrading to 0.2.43
 
 - **Catálogo**: beside the number of videos, the total size of every match of the current search and filters (not just the page shown), for example *12 videos 340 GB*. It follows each change of search, drive, folder, tag or filter.
