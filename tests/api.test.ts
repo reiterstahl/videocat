@@ -1896,16 +1896,18 @@ test("a copy on the same drive never takes the catalog entry of a file that is s
   }
 });
 
-// Against a real S3-compatible service (a throwaway MinIO): S3_TEST_ENDPOINT, S3_TEST_ACCESS_KEY
-// and S3_TEST_SECRET_KEY. The test creates its own buckets and objects.
+// Against a real S3-compatible service (a throwaway MinIO, Garage, RustFS…): S3_TEST_ENDPOINT,
+// S3_TEST_ACCESS_KEY, S3_TEST_SECRET_KEY and S3_TEST_REGION when it is not us-east-1 (Garage signs
+// with "garage"). The test creates its own buckets and objects.
 const s3TestSkip = process.env.RUN_DB_TESTS !== "true" || !process.env.S3_TEST_ENDPOINT;
+const s3TestRegion = process.env.S3_TEST_REGION || "us-east-1";
 
 test("S3 buckets are checked, saved with a sealed secret, edited and removed from Administración", { skip: s3TestSkip }, async () => {
   const { AwsClient } = await import("aws4fetch");
   const endpoint = process.env.S3_TEST_ENDPOINT!;
   const accessKeyId = process.env.S3_TEST_ACCESS_KEY!;
   const secretAccessKey = process.env.S3_TEST_SECRET_KEY!;
-  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "us-east-1" });
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: s3TestRegion });
   const suffix = Math.random().toString(36).slice(2, 8);
   const bucket = `videocat-test-${suffix}`;
   const emptyBucket = `videocat-empty-${suffix}`;
@@ -1916,7 +1918,7 @@ test("S3 buckets are checked, saved with a sealed secret, edited and removed fro
 
   const cookie = await authenticatedCookie();
   const headers = webMutationHeaders(cookie);
-  const form = { name: `MinIO ${suffix}`, endpoint, region: "us-east-1", bucket, prefix: "", forcePathStyle: true, accessKeyId, secretAccessKey };
+  const form = { name: `MinIO ${suffix}`, endpoint, region: s3TestRegion, bucket, prefix: "", forcePathStyle: true, accessKeyId, secretAccessKey };
   const createdIds: string[] = [];
   try {
     const list = await app.inject({ method: "GET", url: "/api/storage/buckets", headers: { cookie } });
@@ -1997,7 +1999,7 @@ test("the S3 scanner catalogs a bucket, plays and downloads it through the serve
   const endpoint = process.env.S3_TEST_ENDPOINT!;
   const accessKeyId = process.env.S3_TEST_ACCESS_KEY!;
   const secretAccessKey = process.env.S3_TEST_SECRET_KEY!;
-  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "us-east-1" });
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: s3TestRegion });
   const suffix = Math.random().toString(36).slice(2, 8);
   const bucketName = `videocat-scan-${suffix}`;
   const work = await fs.mkdtemp(path.join(os.tmpdir(), "videocat-scan-test-"));
@@ -2019,7 +2021,7 @@ test("the S3 scanner catalogs a bucket, plays and downloads it through the serve
       method: "POST",
       url: "/api/storage/buckets",
       headers: webMutationHeaders(cookie),
-      payload: { name: `Scan ${suffix}`, endpoint, region: "us-east-1", bucket: bucketName, prefix: "Videos", forcePathStyle: true, accessKeyId, secretAccessKey }
+      payload: { name: `Scan ${suffix}`, endpoint, region: s3TestRegion, bucket: bucketName, prefix: "Videos", forcePathStyle: true, accessKeyId, secretAccessKey }
     })).json();
     assert.equal(created.saved, true);
     bucketId = created.bucket.id as string;

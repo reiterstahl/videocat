@@ -19,7 +19,7 @@
   </p>
 </div>
 
-VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas. También puedes catalogar videos guardados en buckets compatibles con S3 (MinIO, AWS S3, Cloudflare R2…); en ese caso el servidor lee el bucket ([Buckets S3](#5-buckets-s3-opcional)).
+VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas. También puedes catalogar videos guardados en buckets compatibles con S3 (MinIO, Garage, RustFS, AWS S3, Cloudflare R2…); en ese caso el servidor lee el bucket ([Buckets S3](#5-buckets-s3-opcional)).
 
 > [!TIP]
 > ⭐ Si VideoCAT te sirve, [dale una estrella en GitHub](https://github.com/reiterstahl/videocat/stargazers): ayuda a que más gente con colecciones en discos externos lo encuentre.
@@ -116,7 +116,7 @@ flowchart LR
 - **Nada se borra sin una copia verificada en otro lugar** (detalle en [Traslados seguros](#traslados-seguros)).
 
 ### Buckets S3
-- Agrega buckets compatibles con S3 (MinIO, AWS S3, Cloudflare R2, Backblaze B2…), o un prefijo dentro de ellos, desde **Administración › Almacenamiento S3**: endpoint, región, bucket, prefijo, access key, secret key y estilo de ruta. **Probar conexión** lista y lee antes de guardar, y explica cada falla (dirección, llave o secret equivocados, permiso que falta, región, estilo de ruta necesario con una IP…).
+- Agrega buckets compatibles con S3 (MinIO, Garage, RustFS, AWS S3, Cloudflare R2, Backblaze B2…), o un prefijo dentro de ellos, desde **Administración › Almacenamiento S3**: endpoint, región, bucket, prefijo, access key, secret key y estilo de ruta. **Probar conexión** lista y lee antes de guardar, y explica cada falla (dirección, llave o secret equivocados, permiso que falta, región, estilo de ruta necesario con una IP…).
 - Cada bucket es un disco más: catálogo, búsqueda, Review, duplicados y uso por carpeta. El contenedor opcional `scanner` lee los videos nuevos o cambiados por rangos (nunca los descarga enteros), conserva la ficha de un objeto copiado a otra clave y vuelve a escanear cada 24 horas o con **Escanear ahora**.
 - Puedes reproducirlos en cualquier navegador o en Chromecast a través del servidor, marcarlos para borrar y procesar los pendientes, y descargarlos a la PC con el Companion (0.2.21 o posterior). Los traslados todavía no incluyen buckets.
 - La secret key se guarda cifrada con `STORAGE_SECRET_KEY` y no se vuelve a mostrar.
@@ -284,6 +284,8 @@ La app guarda en el dispositivo solo su propio código (interfaz, estilos e íco
 1. Revisa que `.env` tenga `STORAGE_SECRET_KEY` (64 caracteres hexadecimales). Los instaladores la generan desde la 0.2.47; en instalaciones anteriores agrega una creada con `openssl rand -hex 32` y guárdala con tus respaldos.
 2. Arranca el escáner: `docker compose -f docker-compose.hub.yml --profile s3 up -d`. En Portainer, agrega la variable `COMPOSE_PROFILES=s3` al stack y vuelve a desplegarlo.
 3. En **Administración › Almacenamiento S3**, agrega el bucket y prueba la conexión. El primer escaneo empieza en unos segundos.
+
+Probado con MinIO, Garage y RustFS. Con Garage, la región es el `s3_region` de su configuración (`garage` por defecto), no `us-east-1`; si el endpoint es una dirección IP o `localhost`, deja activado el estilo de ruta.
 
 > [!TIP]
 > Dale a VideoCAT una access key solo para ese bucket o prefijo: listar y leer, y borrar solo si vas a borrar desde Review. Más en [Seguridad y privacidad](#seguridad-y-privacidad).

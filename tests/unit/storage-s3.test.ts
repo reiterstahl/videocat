@@ -60,8 +60,10 @@ test("ListObjectsV2 with URL-encoded keys is read back to the real keys", () => 
 test("an answer that is not an S3 listing is reported as such", () => {
   assert.throws(() => parseListObjects("<html><body>Login</body></html>"), (error: unknown) =>
     error instanceof S3RequestError && error.failure.code === "not_s3");
-  assert.deepEqual(parseS3Error("<Error><Code>AuthorizationHeaderMalformed</Code><Region>eu-west-1</Region></Error>"), { code: "AuthorizationHeaderMalformed", region: "eu-west-1" });
-  assert.deepEqual(parseS3Error("<html></html>"), { code: null, region: null });
+  assert.deepEqual(parseS3Error("<Error><Code>AuthorizationHeaderMalformed</Code><Region>eu-west-1</Region></Error>"), { code: "AuthorizationHeaderMalformed", region: "eu-west-1", message: null });
+  // Garage tells a wrong secret from an unknown key only in the message.
+  assert.deepEqual(parseS3Error("<Error><Code>AccessDenied</Code><Message>Forbidden: Invalid signature</Message><Region>garage</Region></Error>"), { code: "AccessDenied", region: "garage", message: "Forbidden: Invalid signature" });
+  assert.deepEqual(parseS3Error("<html></html>"), { code: null, region: null, message: null });
 });
 
 test("a sealed secret opens only with its key and its bucket", () => {

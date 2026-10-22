@@ -124,13 +124,13 @@ export function parseListObjects(xml: string): S3ListPage {
   };
 }
 
-export function parseS3Error(xml: string): { code: string | null; region: string | null } {
-  if (!/<Error[\s>]/.test(xml)) return { code: null, region: null };
-  return { code: xmlValue(xml, "Code"), region: xmlValue(xml, "Region") };
+export function parseS3Error(xml: string): { code: string | null; region: string | null; message: string | null } {
+  if (!/<Error[\s>]/.test(xml)) return { code: null, region: null, message: null };
+  return { code: xmlValue(xml, "Code"), region: xmlValue(xml, "Region"), message: xmlValue(xml, "Message") };
 }
 
 function failureFromResponse(status: number, body: string, location: S3Location): S3Failure {
-  const { code, region } = parseS3Error(body);
+  const { code, region, message } = parseS3Error(body);
   if (!code) {
     // A redirect or an HTML page: not an S3 service at this address (or a proxy in front).
     if (status === 301 || status === 307) return { code: "wrong_region", region: null };
@@ -138,6 +138,9 @@ function failureFromResponse(status: number, body: string, location: S3Location)
   }
   if (code === "InvalidAccessKeyId") return { code: "invalid_access_key" };
   if (code === "SignatureDoesNotMatch") return { code: "signature_mismatch" };
+  // Garage answers a wrong secret or an unknown key with AccessDenied; only its message tells them apart.
+  if (code === "AccessDenied" && /invalid signature/i.test(message ?? "")) return { code: "signature_mismatch" };
+  if (code === "AccessDenied" && /no such key/i.test(message ?? "")) return { code: "invalid_access_key" };
   if (code === "AccessDenied") return { code: "access_denied" };
   if (code === "NoSuchBucket") return { code: "no_such_bucket", bucket: location.bucket };
   if (code === "PermanentRedirect" || code === "AuthorizationHeaderMalformed" || code === "IllegalLocationConstraintException") {

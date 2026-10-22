@@ -19,7 +19,7 @@
   </p>
 </div>
 
-VideoCAT indexes the videos on your external drives — even ones that are rarely plugged in — and lets you search, review, find duplicates, play remotely and free up space from a browser or your phone. **Your videos never leave your drives:** the server only stores metadata, relative paths and thumbnails. Videos kept in S3-compatible buckets (MinIO, AWS S3, Cloudflare R2…) can be catalogued too; for those, the server itself reads the bucket ([S3 buckets](#5-s3-buckets-optional)).
+VideoCAT indexes the videos on your external drives — even ones that are rarely plugged in — and lets you search, review, find duplicates, play remotely and free up space from a browser or your phone. **Your videos never leave your drives:** the server only stores metadata, relative paths and thumbnails. Videos kept in S3-compatible buckets (MinIO, Garage, RustFS, AWS S3, Cloudflare R2…) can be catalogued too; for those, the server itself reads the bucket ([S3 buckets](#5-s3-buckets-optional)).
 
 > [!TIP]
 > ⭐ If VideoCAT is useful to you, [star it on GitHub](https://github.com/reiterstahl/videocat/stargazers): it helps more people with collections on external drives find it.
@@ -116,7 +116,7 @@ flowchart LR
 - **Nothing is removed without a verified copy somewhere else** (details in [Safe transfers](#safe-transfers)).
 
 ### S3 buckets
-- Add S3-compatible buckets (MinIO, AWS S3, Cloudflare R2, Backblaze B2…), or a prefix inside them, from **Administration › S3 storage**: endpoint, region, bucket, prefix, access key, secret key and path-style addressing. **Test connection** lists and reads before saving, and explains each failure (wrong address, key or secret, missing permission, region, path-style needed for an IP…).
+- Add S3-compatible buckets (MinIO, Garage, RustFS, AWS S3, Cloudflare R2, Backblaze B2…), or a prefix inside them, from **Administration › S3 storage**: endpoint, region, bucket, prefix, access key, secret key and path-style addressing. **Test connection** lists and reads before saving, and explains each failure (wrong address, key or secret, missing permission, region, path-style needed for an IP…).
 - Each bucket becomes one more drive: catalog, search, Review, duplicates and folder usage. The optional `scanner` container reads new or changed videos by ranges (never downloading them whole), keeps the entry of an object copied to another key, and rescans every 24 hours or with **Scan now**.
 - Play them from any browser or Chromecast through the server, mark them for deletion and process the pending ones, and download them to the PC with the Companion (0.2.21 or later). Transfers do not include buckets yet.
 - The secret key is stored encrypted with `STORAGE_SECRET_KEY` and never shown again.
@@ -286,6 +286,8 @@ The app only stores its own code (interface, styles and icons) on the device so 
 1. Check that `.env` has `STORAGE_SECRET_KEY` (64 hexadecimal characters). The installers generate it from 0.2.47; on older installations add one made with `openssl rand -hex 32`, and keep it with your backups.
 2. Start the scanner: `docker compose -f docker-compose.hub.yml --profile s3 up -d`. In Portainer, add the variable `COMPOSE_PROFILES=s3` to the stack and redeploy it.
 3. In **Administración › Almacenamiento S3**, add the bucket and test the connection. The first scan starts within seconds.
+
+Tested against MinIO, Garage and RustFS. With Garage, the region is the `s3_region` of its configuration (`garage` by default), not `us-east-1`; with an IP address or `localhost` as the endpoint, keep path-style addressing on.
 
 > [!TIP]
 > Give VideoCAT an access key just for that bucket or prefix: list and read, plus delete only if you want to delete from Review. See [Security and privacy](#security-and-privacy).

@@ -1,6 +1,6 @@
 # VideoCAT Scanner
 
-Optional S3 scanner for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives and, with this image, S3-compatible buckets (MinIO, AWS S3, Cloudflare R2, Backblaze B2…).
+Optional S3 scanner for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives and, with this image, S3-compatible buckets (MinIO, Garage, RustFS, AWS S3, Cloudflare R2, Backblaze B2…).
 
 - Website: https://videocat.centeran.com
 - Source code and docs: https://github.com/reiterstahl/videocat
