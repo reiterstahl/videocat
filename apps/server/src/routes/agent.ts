@@ -259,6 +259,20 @@ async function updateMeasuredDisks(measured: Array<{ diskId: string; freeBytes: 
   }
 }
 
+// Names chosen in the web for the drives a Companion has connected, keyed by the identifier the
+// Companion uses, so it can write them into each drive's .videocat-disk.json.
+async function chosenDiskNames(mountedDiskIds: string[]): Promise<Array<{ diskId: string; name: string }>> {
+  if (mountedDiskIds.length === 0) return [];
+  const disks = await prisma.disk.findMany({
+    where: { AND: [disksByAgentIdentifiers(mountedDiskIds), { nameLocked: true }] },
+    select: { id: true, volumeId: true, name: true }
+  });
+  return disks.flatMap((disk) => {
+    const diskId = mountedDiskIds.find((id) => id === disk.volumeId || id === disk.id);
+    return diskId ? [{ diskId, name: disk.name }] : [];
+  });
+}
+
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
   // Live activity (copying, verifying, downloading, scanning, deleting), sent about once a second while busy.
   app.post("/api/agent/companion/activity", { preHandler: requireAgentAuth }, async (request, reply) => {
@@ -311,15 +325,17 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       }));
     }
     await Promise.all(metrics);
-    const [processDeletesRequestedAt, processDownloadsRequestedAt, orders, accent] = await Promise.all([
+    const [processDeletesRequestedAt, processDownloadsRequestedAt, orders, accent, diskNames] = await Promise.all([
       appMetricValue("delete_process_requested_at"),
       appMetricValue("download_process_requested_at"),
       transferOrders(),
-      profileAccentColor()
+      profileAccentColor(),
+      chosenDiskNames(mountedDiskIds)
     ]);
     return {
       ok: true,
       appearance: { accent },
+      diskNames,
       commands: { processDeletesRequestedAt, processDownloadsRequestedAt, transfersStopRequestedAt: orders.stopRequestedAt, transfersResumeRequestedAt: orders.resumeRequestedAt }
     };
   });
@@ -558,14 +574,17 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         continue;
       }
 
-      const movedCandidates = data.modifiedAt
+      // Older Companions do not report moves: guess them by name, size and time. A file this scan
+      // already saw at its own path is still there, so a copy never takes its entry.
+      const movedCandidates = data.modifiedAt && !body.movesReported
         ? await prisma.videoFile.findMany({
             where: {
               diskId: body.diskId,
               filename: file.filename,
               sizeBytes: file.sizeBytes,
               modifiedAt: data.modifiedAt,
-              NOT: { relativePath: file.relativePath }
+              NOT: { relativePath: file.relativePath },
+              OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }]
             },
             select: { id: true },
             take: 2
@@ -633,6 +652,90 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, seen: seen.count, reactivated: reactivated.count };
   });
 
+  // A folder renamed or a file moved on the same drive: the catalog entry follows it to the new
+  // path and keeps everything (tags, review, thumbnails, fingerprint) instead of being scanned
+  // again as a new video. Anything that does not match exactly is rejected and scanned as usual.
+  app.post("/api/agent/scans/:id/relocate", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = z.object({
+      moves: z.array(z.object({
+        from: z.string().trim().min(1).max(2000),
+        to: z.string().trim().min(1).max(2000),
+        absolutePath: z.string().trim().min(1).max(4000),
+        sizeBytes: z.number().int().nonnegative(),
+        modifiedAt: z.string().datetime(),
+        folderSizeBytes: z.number().int().nonnegative().nullable().optional()
+      })).min(1).max(200)
+    }).parse(request.body);
+    const scan = await prisma.scan.findUnique({ where: { id }, select: { diskId: true, status: true, leaseOwner: true } });
+    if (!scan) return reply.code(404).send({ message: "Scan not found" });
+    if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
+    if (!await renewScanLease(id, scan.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
+
+    const relocated: Array<{ from: string; to: string }> = [];
+    const rejected: Array<{ to: string; reason: "not_found" | "changed" | "occupied" | "in_transfer" }> = [];
+    for (const move of body.moves) {
+      const from = normalizedScanRoot(move.from);
+      const to = normalizedScanRoot(move.to);
+      const [source, occupant] = await Promise.all([
+        prisma.videoFile.findUnique({
+          where: { diskId_relativePath: { diskId: scan.diskId, relativePath: from } },
+          select: { id: true, sizeBytes: true, modifiedAt: true, _count: { select: { transferItems: { where: { state: { in: unfinishedStates } } } } } }
+        }),
+        prisma.videoFile.findUnique({ where: { diskId_relativePath: { diskId: scan.diskId, relativePath: to } }, select: { id: true } })
+      ]);
+      if (!source) {
+        rejected.push({ to, reason: "not_found" });
+        continue;
+      }
+      if (catalogFileIdentityChanged(source, { sizeBytes: move.sizeBytes, modifiedAt: new Date(move.modifiedAt) })) {
+        rejected.push({ to, reason: "changed" });
+        continue;
+      }
+      if (occupant) {
+        rejected.push({ to, reason: "occupied" });
+        continue;
+      }
+      // A transfer knows the file by its old path; it finishes first.
+      if (source._count.transferItems > 0) {
+        rejected.push({ to, reason: "in_transfer" });
+        continue;
+      }
+      try {
+        await prisma.videoFile.update({
+          where: { id: source.id },
+          data: {
+            relativePath: to,
+            absolutePath: move.absolutePath,
+            filename: path.posix.basename(to),
+            extension: path.posix.extname(to).toLowerCase(),
+            ...(move.folderSizeBytes !== undefined ? { folderSizeBytes: move.folderSizeBytes === null ? null : BigInt(move.folderSizeBytes) } : {}),
+            isPresent: true,
+            missingSince: null,
+            lastSeenScanId: id
+          }
+        });
+        relocated.push({ from, to });
+      } catch (error) {
+        // Another scan took the new path at the same moment.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") rejected.push({ to, reason: "occupied" });
+        else throw error;
+      }
+    }
+
+    if (relocated.length > 0) {
+      await recordAction({
+        action: "scan.relocate",
+        actorType: "companion",
+        actorId: scan.leaseOwner,
+        diskId: scan.diskId,
+        target: `${relocated.length} archivo(s) movidos o en carpetas renombradas`,
+        result: { sample: relocated.slice(0, 5) }
+      });
+    }
+    return { ok: true, relocated: relocated.map((move) => move.to), rejected };
+  });
+
   app.post("/api/agent/errors/batch", { preHandler: requireAgentAuth }, async (request, reply) => {
     const body = agentErrorsBatchSchema.parse(request.body);
     const scan = await prisma.scan.findUnique({
@@ -692,6 +795,39 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         ...file,
         sizeBytes: Number(file.sizeBytes)
       }))
+    };
+  });
+
+  // A random sample of the files the catalog keeps for a disk, so the Companion can tell whether
+  // the drive in front of it is that disk before writing its marker. Unknown disks have no files.
+  app.get("/api/agent/disks/:id/identity-sample", { preHandler: requireAgentAuth }, async (request) => {
+    const { id } = z.object({ id: agentDiskIdentifierSchema }).parse(request.params);
+    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
+    const disk = await diskByAgentIdentifier(id);
+    if (!disk) return { disk: null, totalFiles: 0, files: [] };
+
+    // Files on their way through a transfer are not where the catalog says.
+    const notInTransit = Prisma.sql`NOT EXISTS (
+      SELECT 1 FROM "TransferItem" ti
+      WHERE ti."videoFileId" = vf."id" AND ti."state" IN (${Prisma.join(inTransitStates)})
+    )`;
+    const [countRows, files] = await Promise.all([
+      prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+        SELECT COUNT(*) AS "count" FROM "VideoFile" vf
+        WHERE vf."diskId" = ${disk.id}::uuid AND ${notInTransit}
+      `),
+      prisma.$queryRaw<Array<{ relativePath: string; sizeBytes: bigint }>>(Prisma.sql`
+        SELECT vf."relativePath", vf."sizeBytes" FROM "VideoFile" vf
+        WHERE vf."diskId" = ${disk.id}::uuid AND ${notInTransit}
+        ORDER BY random()
+        LIMIT ${limit}
+      `)
+    ]);
+
+    return {
+      disk: serializeDisk(disk),
+      totalFiles: Number(countRows[0]?.count ?? 0),
+      files: files.map((file) => ({ relativePath: file.relativePath, sizeBytes: Number(file.sizeBytes) }))
     };
   });
 

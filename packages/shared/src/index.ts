@@ -84,6 +84,9 @@ export const agentFileSchema = z.object({
 export const filesBatchSchema = z.object({
   scanId: z.string().uuid(),
   diskId: z.string().uuid(),
+  // Set by Companions that detect moves themselves (they can see whether the old path is gone);
+  // without it the server guesses moves by name, size and time.
+  movesReported: z.boolean().optional(),
   files: z.array(agentFileSchema).min(1).max(200)
 });
 

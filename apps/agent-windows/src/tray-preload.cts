@@ -14,7 +14,15 @@ type TrayDrive = {
   root: string;
   diskId?: string;
   diskName?: string;
+  totalBytes?: number;
+  freeBytes?: number;
 };
+type TrayMarkerResult =
+  | { ok: true; root: string; diskId: string; diskName: string; removedTargetId: string | null; pausedTargetIds: string[] }
+  | { ok: false; message: string };
+type TrayIdentityCheck =
+  | { ok: true; root: string; diskName: string | null; check: { verdict: "empty" | "match" | "mixed" | "mismatch"; checked: number; matched: number; totalFiles: number } }
+  | { ok: false; message: string };
 type TrayUpdateStatus = {
   installed: boolean;
   currentVersion: string;
@@ -33,6 +41,12 @@ contextBridge.exposeInMainWorld("videocatConfig", {
   load: (): Promise<TrayConfig> => ipcRenderer.invoke("config:load") as Promise<TrayConfig>,
   chooseFolder: (): Promise<string | null> => ipcRenderer.invoke("config:choose-folder") as Promise<string | null>,
   listDrives: (): Promise<TrayDrive[]> => ipcRenderer.invoke("config:list-drives") as Promise<TrayDrive[]>,
+  convertDrive: (input: { root: string; name: string }): Promise<TrayMarkerResult> =>
+    ipcRenderer.invoke("config:convert-drive", input) as Promise<TrayMarkerResult>,
+  checkIdentity: (targetId: string, root: string): Promise<TrayIdentityCheck> =>
+    ipcRenderer.invoke("config:check-identity", targetId, root) as Promise<TrayIdentityCheck>,
+  pinIdentity: (input: { targetId: string; root: string; name: string; acceptMixed?: boolean }): Promise<TrayMarkerResult> =>
+    ipcRenderer.invoke("config:pin-identity", input) as Promise<TrayMarkerResult>,
   save: (values: TrayConfig): Promise<TrayConfigSaveResult> =>
     ipcRenderer.invoke("config:save", values) as Promise<TrayConfigSaveResult>,
   pairingStatus: (): Promise<TrayPairingStatus> =>

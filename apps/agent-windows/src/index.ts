@@ -37,6 +37,8 @@ import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
 import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
 import { ActivityReporter } from "./activity.js";
+import { renameDiskMarker } from "./disk-marker.js";
+import { MoveCandidates, resolveMoves } from "./move-detection.js";
 import {
   deletionFingerprintFrameIndexes,
   validateDeletionFingerprint,
@@ -205,6 +207,8 @@ type CompanionHeartbeatResponse = {
   ok: boolean;
   // The accent chosen in the web (Tema), for the tray icon while the Companion works.
   appearance?: { accent?: string | null };
+  // Names chosen in the web for the connected drives, to keep in their .videocat-disk.json.
+  diskNames?: Array<{ diskId: string; name: string }>;
   commands?: {
     processDeletesRequestedAt?: number;
     processDownloadsRequestedAt?: number;
@@ -869,6 +873,26 @@ async function startCompanionDiskWatcher(): Promise<void> {
     return [...disks.values()].slice(0, 100);
   }
 
+  // A drive renamed in the web gets the new name in its marker. A drive that refuses the write
+  // (read-only) is reported once per name, not on every heartbeat.
+  const markerRenameFailures = new Map<string, string>();
+  async function applyChosenDiskNames(names: Array<{ diskId: string; name: string }>): Promise<void> {
+    if (names.length === 0) return;
+    // Only drives with a real marker file: folders added by hand have nothing to write.
+    for (const { root, marker } of await discoverMountedMarkers()) {
+      const chosen = names.find((entry) => entry.diskId === marker.diskId);
+      if (!chosen || chosen.name === marker.diskName || markerRenameFailures.get(marker.diskId) === chosen.name) continue;
+      try {
+        const result = await renameDiskMarker(root, marker.diskId, chosen.name);
+        markerRenameFailures.delete(marker.diskId);
+        if (result.changed) console.log(`Nombre del disco elegido en la web: ${root} «${result.previous}» -> «${result.next}» (guardado en el marcador).`);
+      } catch (error) {
+        markerRenameFailures.set(marker.diskId, chosen.name);
+        console.warn(`No pude guardar el nombre «${chosen.name}» en el marcador de ${root}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
   async function sendHeartbeat(): Promise<void> {
     if (heartbeatRunning || !companionAgentApiEnabled()) return;
     heartbeatRunning = true;
@@ -898,6 +922,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
           await reviewPendingDeletes();
         }
       }
+      await applyChosenDiskNames(response.diskNames ?? []);
       const accent = response.appearance?.accent ?? null;
       if (accent !== trayAccent) {
         trayAccent = accent;
@@ -2507,6 +2532,8 @@ async function uploadBatch(
     body: JSON.stringify({
       scanId,
       diskId,
+      // Moves were already decided by this scan (move-detection.ts): the server must not guess.
+      movesReported: true,
       files: batch.map((item) => ({
         ...item.record,
         errorMessage: item.record.errorMessage == null
@@ -2818,6 +2845,12 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   let failed = 0;
   let processedPending = 0;
   const seenRelativePaths = new Set<string>();
+  // Folders renamed or files moved on this drive: their catalog entries follow them (see
+  // move-detection.ts). Built after the state was rebuilt from the server, so it knows every file.
+  const moveCandidates = new MoveCandidates(state.completed);
+  const moveProposals: Array<{ to: string; gone: string[]; item: PendingScanFile }> = [];
+  let relocatedCount = 0;
+  let relocateAvailable = true;
 
   // Every file gets a deadline (COMPANION_FILE_TIMEOUT_SECONDS): past it the scan moves on and the
   // file is catalogued as at risk; see scan-watchdog.ts.
@@ -2912,6 +2945,84 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     }
   }
 
+  // Old paths with the same size, time and extension as the file at rel that are gone from the
+  // drive (a rename or a move, not a copy). An old path that does not answer counts as present.
+  async function gonePaths(rel: string, size: number, modifiedAtMs: number): Promise<string[]> {
+    const gone: string[] = [];
+    for (const candidate of moveCandidates.candidates(rel, size, modifiedAtMs)) {
+      const oldPath = safePathInsideRoot(resolved.diskRoot, candidate);
+      if (!oldPath) continue;
+      try {
+        const read = await withDeadline(() => fs.stat(oldPath), statTimeoutMs);
+        if (!read.done) continue;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") gone.push(candidate);
+      }
+    }
+    return gone;
+  }
+
+  // Decided once the whole drive was walked (see resolveMoves), so a copy found first never takes
+  // the catalog entry of the file that was really moved.
+  async function applyMoves(): Promise<void> {
+    if (moveProposals.length === 0) return;
+    const decided = resolveMoves(moveProposals);
+    const moves = moveProposals.flatMap(({ to, item }) => {
+      const from = decided.get(to);
+      return from ? [{ from, to, item }] : [];
+    });
+    const relocated = new Set<string>();
+    const deferred = new Set<string>();
+    for (let index = 0; index < moves.length && relocateAvailable; index += 100) {
+      const chunk = moves.slice(index, index + 100);
+      try {
+        const body = await Promise.all(chunk.map(async ({ from, to, item }) => ({
+          from,
+          to,
+          absolutePath: item.filePath,
+          sizeBytes: item.stats.size,
+          modifiedAt: item.stats.mtime.toISOString(),
+          folderSizeBytes: await folderSizeBytes(path.dirname(item.filePath), folderSizeCache, auditErrors, resolved.diskRoot)
+        })));
+        const response = await api<{ relocated: string[] }>(`/api/agent/scans/${scan.id}/relocate`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ moves: body })
+        });
+        for (const to of response.relocated) relocated.add(to);
+      } catch (error) {
+        if (error instanceof AgentRequestError && error.statusCode === 404 && error.message.includes("Route")) {
+          relocateAvailable = false;
+          console.log("El servidor actual no reconoce carpetas renombradas: esos videos se procesan como nuevos. Actualiza el contenedor server a la 0.2.45 o posterior.");
+        } else {
+          // Left for the next scan: the old path is still gone then and the move is tried again.
+          for (const { to } of chunk) deferred.add(to);
+          console.warn(`No se pudieron mover en el catálogo ${chunk.length} archivo(s); se intentará en el próximo escaneo: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+    for (const { from, to, item } of moves) {
+      if (!relocated.has(to)) continue;
+      delete state.completed[from];
+      setCompletedState(state, to, item.stats.mtime.getTime(), item.stats.size);
+    }
+    relocatedCount = relocated.size;
+    counts.pending = Math.max(counts.pending - relocated.size - deferred.size, 0);
+    if (relocated.size > 0) {
+      await saveState(statePath, state);
+      console.log(`Movidos en el catálogo sin volver a procesarlos: ${relocated.size} archivo(s).`);
+    }
+    // Everything else (ambiguous, rejected, old server): read as a new file, as before.
+    for (const { to, item } of moveProposals) {
+      if (relocated.has(to) || deferred.has(to)) continue;
+      pendingPaths.push(item);
+      if (pendingPaths.length >= concurrency) {
+        await processGroup(pendingPaths);
+        pendingPaths = [];
+      }
+    }
+  }
+
   for (const target of scanTargets) {
     console.log(`Escaneando ${target.scanPath}`);
     for await (const filePath of walkVideos(target.scanPath, auditErrors, resolved.diskRoot, completeness)) {
@@ -2952,12 +3063,21 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
         continue;
       }
 
-      pendingPaths.push({
+      const item: PendingScanFile = {
         filePath,
         createThumbnails: args.thumbnails && (!unchanged || repairPaths.has(rel)),
         createFingerprint: !unchanged || fingerprintPaths.has(rel) || repairPaths.has(rel),
         stats: { size: stat.size, mtime: stat.mtime, birthtime: stat.birthtime }
-      });
+      };
+      // A path this drive never had may be a file that only changed folder.
+      if (state.completed[rel] === undefined) {
+        const gone = await gonePaths(rel, stat.size, stat.mtime.getTime());
+        if (gone.length > 0) {
+          moveProposals.push({ to: rel, gone, item });
+          continue;
+        }
+      }
+      pendingPaths.push(item);
       if (pendingPaths.length >= concurrency) {
         await processGroup(pendingPaths);
         pendingPaths = [];
@@ -2965,6 +3085,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     }
   }
 
+  await applyMoves();
   if (pendingPaths.length > 0) await processGroup(pendingPaths);
   if (batch.length > 0) {
     failed += await uploadBatch(scan.id, disk.id, batch, auditErrors);
@@ -2999,6 +3120,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
 
   console.log("Escaneo finalizado.");
   console.log(`Detectados: ${discovered}. Omitidos por estado local: ${skipped}. Subidos: ${uploaded}. Fallos: ${failed}.`);
+  if (relocatedCount > 0) console.log(`Movidos o en carpetas renombradas (sin volver a procesarlos): ${relocatedCount}.`);
   if (riskySkipped > 0) console.log(`Archivos en riesgo omitidos sin leerlos: ${riskySkipped}.`);
   if (completeness.complete) {
     console.log(`Conciliacion terminada: ${finished.reconciliation.markedAbsent} ausente(s), ${reactivated} reactivado(s).`);

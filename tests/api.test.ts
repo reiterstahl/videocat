@@ -1712,3 +1712,184 @@ test("audit errors filter, group and export safely; folder tree and maintenance 
     if (diskId) await prisma.disk.deleteMany({ where: { id: diskId } });
   }
 });
+
+test("the identity sample lists catalog files of a disk, leaving out files on their way through a transfer", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const legacyId = crypto.randomUUID();
+  const disk = await prisma.disk.create({ data: { name: `Letter ${suffix}`, volumeId: legacyId } });
+  try {
+    await prisma.videoFile.createMany({
+      data: ["a", "b", "moving"].map((name) => ({ diskId: disk.id, filename: `${name}.mp4`, extension: "mp4", absolutePath: `H:/V/${name}.mp4`, relativePath: `V/${name}.mp4`, sizeBytes: 1000n, isPresent: name !== "b" }))
+    });
+    const moving = await prisma.videoFile.findFirstOrThrow({ where: { diskId: disk.id, filename: "moving.mp4" } });
+    const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Destino-${suffix}`, nameKey: "destino" } });
+    const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "test" } });
+    await prisma.transferItem.create({
+      data: { jobId: job.id, videoFileId: moving.id, filename: "moving.mp4", sourceDiskId: disk.id, sourceRelativePath: "V/moving.mp4", targetDiskId: disk.id, targetFolder: `Destino-${suffix}`, sizeBytes: 1000n, state: "staged" }
+    });
+
+    const response = await app.inject({ method: "GET", url: `/api/agent/disks/${legacyId}/identity-sample?limit=10`, headers: agentHeaders });
+    assert.equal(response.statusCode, 200);
+    const body = response.json();
+    assert.equal(body.disk.name, `Letter ${suffix}`);
+    assert.equal(body.totalFiles, 2, "present and missing files count, files in transit do not");
+    assert.deepEqual(body.files.map((file: { relativePath: string }) => file.relativePath).sort(), ["V/a.mp4", "V/b.mp4"]);
+    assert.deepEqual(body.files[0].sizeBytes, 1000);
+
+    const limited = (await app.inject({ method: "GET", url: `/api/agent/disks/${legacyId}/identity-sample?limit=1`, headers: agentHeaders })).json();
+    assert.equal(limited.files.length, 1);
+    const unknown = await app.inject({ method: "GET", url: `/api/agent/disks/${crypto.randomUUID()}/identity-sample`, headers: agentHeaders });
+    assert.deepEqual(unknown.json(), { disk: null, totalFiles: 0, files: [] });
+    const unauthenticated = await app.inject({ method: "GET", url: `/api/agent/disks/${legacyId}/identity-sample` });
+    assert.equal(unauthenticated.statusCode, 401);
+  } finally {
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: disk.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: disk.id } } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
+test("the heartbeat hands the Companion the names chosen in the web for its connected drives", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const companionId = crypto.randomUUID();
+  const renamedId = crypto.randomUUID();
+  const detectedId = crypto.randomUUID();
+  const renamed = await prisma.disk.create({ data: { name: "Detected name", volumeId: renamedId } });
+  const detected = await prisma.disk.create({ data: { name: "WD 6TB", volumeId: detectedId } });
+  try {
+    const cookie = await authenticatedCookie();
+    const rename = await app.inject({ method: "PATCH", url: `/api/disks/${renamed.id}`, headers: webMutationHeaders(cookie), payload: { name: "RQR-04N-UCM" } });
+    assert.equal(rename.statusCode, 200);
+
+    const heartbeat = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { version: 21, companionId, mountedDiskIds: [renamedId, detectedId, crypto.randomUUID()] }
+    });
+    assert.equal(heartbeat.statusCode, 200);
+    assert.deepEqual(heartbeat.json().diskNames, [{ diskId: renamedId, name: "RQR-04N-UCM" }]);
+
+    // Back to the detected name: the marker keeps whatever it has.
+    await app.inject({ method: "PATCH", url: `/api/disks/${renamed.id}`, headers: webMutationHeaders(cookie), payload: { name: null } });
+    const after = await app.inject({
+      method: "POST",
+      url: "/api/agent/companion/heartbeat",
+      headers: { ...agentHeaders, "x-videocat-companion-id": companionId },
+      payload: { version: 21, companionId, mountedDiskIds: [renamedId] }
+    });
+    assert.deepEqual(after.json().diskNames, []);
+  } finally {
+    await prisma.companionAgent.deleteMany({ where: { installationId: companionId } });
+    await prisma.disk.deleteMany({ where: { id: { in: [renamed.id, detected.id] } } });
+  }
+});
+
+test("a renamed folder moves catalog entries with their tags and thumbnails, and rejects anything that does not match", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Moves ${suffix}`, volumeId: `moves-${suffix}` } });
+  const categoryKey = `fav-${suffix}`;
+  try {
+    const modifiedAt = "2025-03-04T05:06:07.890Z";
+    await prisma.videoFile.createMany({
+      data: ["clip", "changed", "taken", "moving"].map((name) => ({
+        diskId: disk.id, filename: `${name}.mp4`, extension: ".mp4", absolutePath: `H:\\Testing\\${name}.mp4`, relativePath: `Testing/${name}.mp4`,
+        sizeBytes: 1000n, modifiedAt: new Date(modifiedAt), visualFingerprint: "v1:01=0123456789abcdef", curationStatus: name === "clip" ? "keep" : "none"
+      }))
+    });
+    await prisma.videoFile.create({ data: { diskId: disk.id, filename: "taken.mp4", extension: ".mp4", absolutePath: "H:\\Testing 2024\\taken.mp4", relativePath: "Testing 2024/taken.mp4", sizeBytes: 5n } });
+    const clip = await prisma.videoFile.findFirstOrThrow({ where: { diskId: disk.id, relativePath: "Testing/clip.mp4" } });
+    await prisma.curationCategory.create({ data: { key: categoryKey, label: `Fav ${suffix}`, color: "#ff0000" } });
+    await prisma.videoFileCategory.create({ data: { videoFileId: clip.id, categoryKey } });
+    await prisma.thumbnail.create({ data: { videoFileId: clip.id, kind: "frame_01", relativePath: `${disk.id}/${clip.id}/frame_01.jpg` } });
+    const moving = await prisma.videoFile.findFirstOrThrow({ where: { diskId: disk.id, relativePath: "Testing/moving.mp4" } });
+    const destination = await prisma.transferDestination.create({ data: { diskId: disk.id, path: `Destino-${suffix}`, nameKey: "destino" } });
+    const job = await prisma.transferJob.create({ data: { kind: "group", destinationId: destination.id, label: "test" } });
+    await prisma.transferItem.create({
+      data: { jobId: job.id, videoFileId: moving.id, filename: "moving.mp4", sourceDiskId: disk.id, sourceRelativePath: "Testing/moving.mp4", targetDiskId: disk.id, targetFolder: `Destino-${suffix}`, sizeBytes: 1000n, state: "pending" }
+    });
+
+    const scanId = (await app.inject({ method: "POST", url: "/api/agent/scan/start", headers: agentHeaders, payload: { diskId: disk.id, rootPath: "H:\\" } })).json().scan.id;
+    const move = (name: string, overrides: Record<string, unknown> = {}) => ({
+      from: `Testing/${name}.mp4`, to: `Testing 2024/${name}.mp4`, absolutePath: `H:\\Testing 2024\\${name}.mp4`, sizeBytes: 1000, modifiedAt, folderSizeBytes: 4000, ...overrides
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/agent/scans/${scanId}/relocate`,
+      headers: agentHeaders,
+      payload: { moves: [move("clip"), move("changed", { sizeBytes: 999 }), move("taken"), move("moving"), move("ghost")] }
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json().relocated, ["Testing 2024/clip.mp4"]);
+    assert.deepEqual(response.json().rejected, [
+      { to: "Testing 2024/changed.mp4", reason: "changed" },
+      { to: "Testing 2024/taken.mp4", reason: "occupied" },
+      { to: "Testing 2024/moving.mp4", reason: "in_transfer" },
+      { to: "Testing 2024/ghost.mp4", reason: "not_found" }
+    ]);
+
+    const relocated = await prisma.videoFile.findUniqueOrThrow({ where: { id: clip.id }, include: { categories: true, thumbnails: true } });
+    assert.equal(relocated.relativePath, "Testing 2024/clip.mp4");
+    assert.equal(relocated.absolutePath, "H:\\Testing 2024\\clip.mp4");
+    assert.equal(relocated.filename, "clip.mp4");
+    assert.equal(relocated.folderSizeBytes, 4000n);
+    assert.equal(relocated.curationStatus, "keep");
+    assert.equal(relocated.visualFingerprint, "v1:01=0123456789abcdef");
+    assert.deepEqual(relocated.categories.map((category) => category.categoryKey), [categoryKey]);
+    assert.equal(relocated.thumbnails.length, 1);
+
+    await app.inject({ method: "POST", url: `/api/agent/scans/${scanId}/seen`, headers: agentHeaders, payload: { paths: ["Testing 2024/clip.mp4", "Testing 2024/taken.mp4", "Testing/moving.mp4"] } });
+    const finish = await app.inject({ method: "POST", url: "/api/agent/scan/finish", headers: agentHeaders, payload: { scanId, reconcile: true, scanRoots: ["."] } });
+    assert.equal(finish.statusCode, 200);
+    const present = await prisma.videoFile.findUniqueOrThrow({ where: { id: clip.id } });
+    assert.equal(present.isPresent, true, "the moved entry is not marked absent at the end of the scan");
+
+    const audit = await prisma.actionAudit.findFirst({ where: { action: "scan.relocate", diskId: disk.id } });
+    assert.ok(audit);
+    assert.deepEqual((audit.result as { sample: unknown[] }).sample, [{ from: "Testing/clip.mp4", to: "Testing 2024/clip.mp4" }]);
+
+    const closed = await app.inject({ method: "POST", url: `/api/agent/scans/${scanId}/relocate`, headers: agentHeaders, payload: { moves: [move("changed")] } });
+    assert.equal(closed.statusCode, 409, "a finished scan cannot move entries");
+  } finally {
+    await prisma.actionAudit.deleteMany({ where: { diskId: disk.id } });
+    await prisma.transferItem.deleteMany({ where: { sourceDiskId: disk.id } });
+    await prisma.transferJob.deleteMany({ where: { destination: { diskId: disk.id } } });
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+    await prisma.curationCategory.deleteMany({ where: { key: categoryKey } });
+  }
+});
+
+test("a copy on the same drive never takes the catalog entry of a file that is still there", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Copies ${suffix}`, volumeId: `copies-${suffix}` } });
+  try {
+    const modifiedAt = "2025-03-04T05:06:07.890Z";
+    const record = (relativePath: string) => ({ filename: "clip.mp4", extension: ".mp4", absolutePath: `H:\\${relativePath}`, relativePath, sizeBytes: 1000, modifiedAt, status: "scanned" });
+    await prisma.videoFile.create({ data: { diskId: disk.id, filename: "clip.mp4", extension: ".mp4", absolutePath: "H:\\Old\\clip.mp4", relativePath: "Old/clip.mp4", sizeBytes: 1000n, modifiedAt: new Date(modifiedAt) } });
+    const original = await prisma.videoFile.findFirstOrThrow({ where: { diskId: disk.id } });
+    const start = async () => (await app.inject({ method: "POST", url: "/api/agent/scan/start", headers: agentHeaders, payload: { diskId: disk.id, rootPath: "H:\\" } })).json().scan.id as string;
+    const finish = (scanId: string) => app.inject({ method: "POST", url: "/api/agent/scan/finish", headers: agentHeaders, payload: { scanId, reconcile: false, scanRoots: ["."] } });
+
+    // A current Companion decides moves itself: a new path is always a new entry.
+    let scanId = await start();
+    await app.inject({ method: "POST", url: "/api/agent/files/batch", headers: agentHeaders, payload: { scanId, diskId: disk.id, movesReported: true, files: [record("Copy A/clip.mp4")] } });
+    await finish(scanId);
+    assert.equal((await prisma.videoFile.findUniqueOrThrow({ where: { id: original.id } })).relativePath, "Old/clip.mp4");
+
+    // An older Companion still gets the guess, but not over an entry this scan already saw in place.
+    scanId = await start();
+    await app.inject({ method: "POST", url: `/api/agent/scans/${scanId}/seen`, headers: agentHeaders, payload: { paths: ["Old/clip.mp4", "Copy A/clip.mp4"] } });
+    await app.inject({ method: "POST", url: "/api/agent/files/batch", headers: agentHeaders, payload: { scanId, diskId: disk.id, files: [record("Copy B/clip.mp4")] } });
+    await finish(scanId);
+    const paths = (await prisma.videoFile.findMany({ where: { diskId: disk.id }, select: { relativePath: true }, orderBy: { relativePath: "asc" } })).map((file) => file.relativePath);
+    assert.deepEqual(paths, ["Copy A/clip.mp4", "Copy B/clip.mp4", "Old/clip.mp4"]);
+
+    // And it still follows a real move from an older Companion, as before.
+    const solo = await prisma.videoFile.create({ data: { diskId: disk.id, filename: "solo.mp4", extension: ".mp4", absolutePath: "H:\\Old\\solo.mp4", relativePath: "Old/solo.mp4", sizeBytes: 1000n, modifiedAt: new Date(modifiedAt) } });
+    scanId = await start();
+    await app.inject({ method: "POST", url: "/api/agent/files/batch", headers: agentHeaders, payload: { scanId, diskId: disk.id, files: [{ ...record("Renamed/solo.mp4"), filename: "solo.mp4" }] } });
+    await finish(scanId);
+    assert.equal((await prisma.videoFile.findUniqueOrThrow({ where: { id: solo.id } })).relativePath, "Renamed/solo.mp4");
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});

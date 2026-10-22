@@ -2,9 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type NativeImage } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { companionRestartDelayMs, companionRunWasStable } from "./companion-supervisor.js";
+import { checkIdentitySample, cleanDiskName, createDiskMarker, identitySampleSize, isDriveRoot, markerFileName, type IdentityCheck, type IdentitySampleFile } from "./disk-marker.js";
 import { formatTrayTooltip, LineSplitter, parseAccent, parseTrayStatus, prepareTrayIcon, trayFrames, trayFramesPerTurn, trayTurnMs, type TrayStatus } from "./tray-animation.js";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
@@ -38,6 +40,8 @@ type AvailableDrive = {
   root: string;
   diskId?: string;
   diskName?: string;
+  totalBytes?: number;
+  freeBytes?: number;
 };
 
 type LogLevel = "info" | "warn" | "error";
@@ -49,7 +53,6 @@ type LogEntry = {
   message: string;
 };
 
-const markerFileName = ".videocat-disk.json";
 const loadedEnvFiles: string[] = [];
 const configKeys = [
   "SERVER_URL",
@@ -82,6 +85,12 @@ const configKeys = [
 type ConfigKey = typeof configKeys[number];
 type ConfigSaveResult = { ok: true; path: string } | { ok: false; message: string };
 type PairingResult = { ok: true; companionId: string; issuedAt: string } | { ok: false; message: string };
+type IdentityCheckResult = { ok: true; root: string; diskName: string | null; check: IdentityCheck } | { ok: false; message: string };
+// removedTargetId: the route by letter that became this marker; pausedTargetIds: other routes by
+// letter that pointed at the same drive, so the window can show the same state without reloading.
+type MarkerResult =
+  | { ok: true; root: string; diskId: string; diskName: string; removedTargetId: string | null; pausedTargetIds: string[] }
+  | { ok: false; message: string };
 type StoredCompanionCredential = {
   schemaVersion: 1;
   companionId: string;
@@ -632,7 +641,14 @@ async function discoverAccessibleDrives(): Promise<AvailableDrive[]> {
     try {
       await fs.access(root);
       const marker = await readMarkerAtRoot(root);
-      drives.push({ root, diskId: marker?.diskId, diskName: marker?.diskName });
+      const space = await fs.statfs(root).catch(() => null);
+      drives.push({
+        root,
+        diskId: marker?.diskId,
+        diskName: marker?.diskName,
+        totalBytes: space ? space.blocks * space.bsize : undefined,
+        freeBytes: space ? space.bavail * space.bsize : undefined
+      });
     } catch {
       // Drive is not mounted.
     }
@@ -658,6 +674,121 @@ async function refreshMountedDisks(): Promise<void> {
     if (!previous.has(disk.marker.diskId)) {
       addLog("info", "discos", `Detectado ${disk.marker.diskName} en ${disk.root}`);
     }
+  }
+}
+
+// Drives are followed by their marker. Routes added by hand for a whole drive (older builds)
+// follow a letter instead; these helpers turn them into markers.
+function sameRoot(a: string, b: string): boolean {
+  return normalizeTargetPath(a).toLowerCase() === normalizeTargetPath(b).toLowerCase();
+}
+
+function manualDriveTarget(targetId: string): CompanionTarget | null {
+  const target = parseTargets(process.env.COMPANION_MONITORED_TARGETS).find((item) => item.id === targetId);
+  return target && isDriveRoot(target.path) ? target : null;
+}
+
+// The drive must be connected and still without a marker: a marker is another disk's identity.
+async function unmarkedDrive(root: string): Promise<{ root: string } | { message: string }> {
+  if (!isDriveRoot(root)) return { message: "Elige una unidad completa (por ejemplo H:\\)." };
+  const drive = (await discoverAccessibleDrives()).find((item) => sameRoot(item.root, root));
+  if (!drive) return { message: `No hay ninguna unidad conectada en ${root}. Conéctala y vuelve a intentarlo.` };
+  if (drive.diskId) return { message: `${drive.root} ya es el disco VideoCAT «${drive.diskName}».` };
+  return { root: drive.root };
+}
+
+async function fetchIdentitySample(diskId: string): Promise<{ diskName: string | null; totalFiles: number; files: IdentitySampleFile[] }> {
+  const serverUrl = process.env.SERVER_URL?.trim();
+  if (!serverUrl) throw new Error("Configura la URL del servidor en Conexión para poder comprobar el disco.");
+  const paired = hasPairedCredentialFor(serverUrl) && pairedCredential && storedCredential ? storedCredential : null;
+  const credential = paired ? pairedCredential : process.env.AGENT_TOKEN?.trim();
+  if (!credential) throw new Error("Empareja el Companion en Conexión para poder comprobar el disco.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${credential}` };
+  if (paired) headers["X-VideoCat-Companion-Id"] = paired.companionId;
+
+  const response = await fetch(
+    `${normalizeServerUrl(serverUrl)}/api/agent/disks/${encodeURIComponent(diskId)}/identity-sample?limit=${identitySampleSize}`,
+    { headers, signal: AbortSignal.timeout(20_000) }
+  );
+  if (response.status === 404) {
+    throw new Error("El servidor todavía no sabe comprobar discos. Actualiza VideoCAT en el servidor a la 0.2.45 o posterior.");
+  }
+  if (!response.ok) throw new Error(`El servidor respondió ${response.status} al pedir la muestra del catálogo.`);
+  const body = await response.json() as { disk?: { name?: string } | null; totalFiles?: number; files?: unknown };
+  const files = Array.isArray(body.files)
+    ? body.files.filter((file): file is IdentitySampleFile =>
+      typeof file?.relativePath === "string" && typeof file?.sizeBytes === "number")
+    : [];
+  return { diskName: body.disk?.name ?? null, totalFiles: Number(body.totalFiles) || 0, files };
+}
+
+async function checkDriveIdentity(targetId: string, root: string): Promise<IdentityCheckResult> {
+  const target = manualDriveTarget(targetId);
+  if (!target) return { ok: false, message: "Esa ruta ya no está guardada como unidad. Guarda los cambios y vuelve a intentarlo." };
+  const drive = await unmarkedDrive(root);
+  if ("message" in drive) return { ok: false, message: drive.message };
+  try {
+    const sample = await fetchIdentitySample(target.id);
+    const check = await checkIdentitySample(drive.root, sample.files, sample.totalFiles);
+    return { ok: true, root: drive.root, diskName: sample.diskName, check };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// After a marker is written at a root, no route by letter may point there: the one that became
+// the marker is removed and any other is paused, so the drive is never scanned under two disks.
+async function retireLetterRoutes(root: string, becameMarker: string | null): Promise<string[]> {
+  const targets = parseTargets(process.env.COMPANION_MONITORED_TARGETS);
+  const paused: string[] = [];
+  const next = targets.flatMap((target) => {
+    if (target.id === becameMarker) return [];
+    if (isDriveRoot(target.path) && sameRoot(target.path, root) && target.enabled !== false) {
+      paused.push(target.id);
+      return [{ ...target, enabled: false }];
+    }
+    return [target];
+  });
+  if (next.length !== targets.length || paused.length > 0) {
+    await saveConfig(normalizeConfig({ ...currentConfig(), COMPANION_MONITORED_TARGETS: serializeTargets(next) }));
+    restartCompanion();
+  }
+  await refreshMountedDisks();
+  updateMenu();
+  return paused;
+}
+
+async function pinDriveIdentity(input: { targetId: string; root: string; name: string; acceptMixed?: boolean }): Promise<MarkerResult> {
+  const name = cleanDiskName(input.name);
+  if (!name) return { ok: false, message: "Escribe un nombre para el disco (hasta 80 caracteres)." };
+  // Checked again here: the window's answer may be old, and the drive may have changed since.
+  const result = await checkDriveIdentity(String(input.targetId), String(input.root));
+  if (!result.ok) return result;
+  const { verdict } = result.check;
+  if (verdict === "mismatch") return { ok: false, message: "Esta unidad no tiene los archivos de ese catálogo. Créale un disco nuevo." };
+  if (verdict === "mixed" && !input.acceptMixed) return { ok: false, message: "El catálogo está mezclado: confirma que esta es la unidad original." };
+  try {
+    const marker = await createDiskMarker(result.root, { diskId: String(input.targetId), diskName: name });
+    addLog("info", "discos", `${result.root} ahora es el disco VideoCAT «${marker.diskName}» y conserva su catálogo (${result.check.matched} de ${result.check.checked} archivos de la muestra presentes).`);
+    const paused = await retireLetterRoutes(result.root, marker.diskId);
+    return { ok: true, root: result.root, diskId: marker.diskId, diskName: marker.diskName, removedTargetId: marker.diskId, pausedTargetIds: paused };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function convertDrive(input: { root: string; name: string }): Promise<MarkerResult> {
+  const name = cleanDiskName(input.name);
+  if (!name) return { ok: false, message: "Escribe un nombre para el disco (hasta 80 caracteres)." };
+  const drive = await unmarkedDrive(String(input.root));
+  if ("message" in drive) return { ok: false, message: drive.message };
+  try {
+    const marker = await createDiskMarker(drive.root, { diskId: randomUUID(), diskName: name });
+    addLog("info", "discos", `${drive.root} ahora es el disco VideoCAT «${marker.diskName}» (${marker.diskId}).`);
+    const paused = await retireLetterRoutes(drive.root, null);
+    return { ok: true, root: drive.root, diskId: marker.diskId, diskName: marker.diskName, removedTargetId: null, pausedTargetIds: paused };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -927,6 +1058,18 @@ function configHtml(logoDataUrl: string): string {
     .monitor-row small { display: inline-block; margin-top: 4px; border-radius: 999px; background: var(--hover); color: var(--text-soft); padding: 1px 8px; font-size: 10.5px; font-weight: 600; }
     .monitor-row button { height: 30px; font-size: 12px; }
     .monitor-empty { border: 1px dashed var(--border-strong); border-radius: 10px; color: var(--muted); padding: 10px; font-size: 12px; }
+    .monitor-row small.is-warn { background: var(--danger-soft); color: var(--danger); white-space: nowrap; }
+    .row-actions { display: flex; gap: 6px; }
+    .monitor-panel { grid-column: 1 / -1; min-width: 0; display: grid; gap: 8px; border-radius: 8px; background: var(--sunken); padding: 10px; }
+    .monitor-panel p, .monitor-panel .verdict { font-size: 12px; }
+    .monitor-panel .verdict { color: var(--text-soft); font-weight: 500; }
+    .monitor-panel .verdict.is-ok { color: var(--success); }
+    .monitor-panel .verdict.is-warn { color: var(--danger); }
+    .panel-line { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .panel-line > select { flex: 1 1 260px; min-width: 0; height: 30px; }
+    .monitor-panel input { height: 30px; }
+    .panel-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    option { background: var(--surface); color: var(--text); }
     .token-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); background: var(--surface); padding: 10px 18px; }
     #status { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--success); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -1263,6 +1406,247 @@ function configHtml(logoDataUrl: string): string {
       return true;
     }
 
+    // Whole drives are followed by their .videocat-disk.json, never by their letter.
+    function isDriveRoot(value) {
+      return /^[A-Za-z]:[\\\\/]?$/.test(String(value).trim());
+    }
+
+    function sameRoot(a, b) {
+      return String(a).replace(/[\\\\/]+$/, "").toLowerCase() === String(b).replace(/[\\\\/]+$/, "").toLowerCase();
+    }
+
+    // A route saved by older builds for a whole drive, still scanning whatever drive has that letter.
+    function letterTargetAt(root) {
+      return targets.find((target) => target.enabled !== false && isDriveRoot(target.path) && sameRoot(target.path, root));
+    }
+
+    function formatBytes(bytes) {
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let value = Number(bytes) || 0;
+      let unit = 0;
+      // Base 1024, like the Windows Explorer, so the size reads the same as there.
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+      }
+      return value.toLocaleString("es", { maximumFractionDigits: value < 10 ? 2 : 1 }) + " " + units[unit];
+    }
+
+    function driveLabel(drive) {
+      return drive.totalBytes ? drive.root + " · " + formatBytes(drive.totalBytes) + " (" + formatBytes(drive.freeBytes) + " libres)" : drive.root;
+    }
+
+    // One panel open at a time, under its row: { kind: "convert", root } or
+    // { kind: "pin", targetId, root, result }.
+    let drivePanel = null;
+    let panelBusy = false;
+
+    function panelElement(className, text) {
+      const element = document.createElement(className === "p" ? "p" : "div");
+      if (className !== "p") element.className = className;
+      if (text) element.textContent = text;
+      return element;
+    }
+
+    function panelButton(label, className, onClick) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = className;
+      button.textContent = label;
+      button.disabled = panelBusy;
+      button.addEventListener("click", onClick);
+      return button;
+    }
+
+    // The panel lives inside the settings form: Enter must run its own action, not save the form.
+    function nameInput(value, onEnter) {
+      const input = document.createElement("input");
+      input.maxLength = 80;
+      input.placeholder = "Ej.: WD 6TB Video 01";
+      input.setAttribute("aria-label", "Nombre del disco");
+      input.value = value || "";
+      input.disabled = panelBusy;
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        onEnter();
+      });
+      return input;
+    }
+
+    function applyMarkerResult(result) {
+      targets = targets
+        .filter((target) => target.id !== result.removedTargetId)
+        .map((target) => result.pausedTargetIds.includes(target.id) ? { ...target, enabled: false } : target);
+      drivePanel = null;
+      const paused = result.pausedTargetIds.length > 0 ? " La ruta por letra que apuntaba ahí quedó en pausa." : "";
+      setStatus(result.root + " ahora es el disco VideoCAT «" + result.diskName + "». Se reconoce aunque cambie la letra." + paused, "success");
+    }
+
+    async function runPanelAction(action) {
+      panelBusy = true;
+      renderMonitors();
+      try {
+        await action();
+      } catch (error) {
+        setStatus(error?.message || "No se pudo completar la acción.", "error");
+      } finally {
+        panelBusy = false;
+        await refreshAvailableDrives();
+      }
+    }
+
+    function convertDrive(root, name) {
+      if (!String(name || "").trim()) {
+        setStatus("Escribe un nombre para el disco.", "error");
+        return;
+      }
+      void runPanelAction(async () => {
+        setStatus("Creando el marcador en " + root + "...", "info");
+        const result = await window.videocatConfig.convertDrive({ root, name });
+        if (!result.ok) {
+          setStatus(result.message, "error");
+          return;
+        }
+        applyMarkerResult(result);
+      });
+    }
+
+    function convertPanel(drive) {
+      const panel = panelElement("monitor-panel");
+      panel.append(panelElement("p", "Se escribirá .videocat-disk.json en la raíz de " + drive.root + ". Desde ahí el Companion la reconoce en cualquier letra y la revisa sola."));
+      const input = nameInput("", () => convertDrive(drive.root, input.value));
+      const actions = panelElement("panel-actions");
+      actions.append(
+        panelButton("Cancelar", "ghost", () => {
+          drivePanel = null;
+          renderMonitors();
+        }),
+        panelButton("Crear marcador", "primary", () => convertDrive(drive.root, input.value))
+      );
+      panel.append(input, actions);
+      setTimeout(() => input.focus(), 0);
+      return panel;
+    }
+
+    function openPinPanel(target, root) {
+      const candidates = availableDrives.filter((drive) => !drive.diskId);
+      const preferred = candidates.find((drive) => sameRoot(drive.root, root || target.path)) || candidates[0];
+      drivePanel = { kind: "pin", targetId: target.id, root: preferred ? preferred.root : "", result: null };
+      drivePicker.hidden = true;
+      renderMonitors();
+    }
+
+    function checkIdentity(target) {
+      void runPanelAction(async () => {
+        setStatus("Comparando " + drivePanel.root + " con el catálogo de «" + target.name + "»...", "info");
+        const result = await window.videocatConfig.checkIdentity(target.id, drivePanel.root);
+        if (!result.ok) {
+          setStatus(result.message, "error");
+          return;
+        }
+        drivePanel.result = result;
+        setStatus("");
+      });
+    }
+
+    function pinIdentity(target, name, acceptMixed) {
+      if (!String(name || "").trim()) {
+        setStatus("Escribe un nombre para el disco.", "error");
+        return;
+      }
+      void runPanelAction(async () => {
+        setStatus("Fijando la identidad de " + drivePanel.root + "...", "info");
+        const result = await window.videocatConfig.pinIdentity({ targetId: target.id, root: drivePanel.root, name, acceptMixed });
+        if (!result.ok) {
+          setStatus(result.message, "error");
+          return;
+        }
+        applyMarkerResult(result);
+      });
+    }
+
+    function verdictText(target, result) {
+      const check = result.check;
+      const sample = check.matched + " de " + check.checked + " archivos de una muestra del catálogo";
+      const total = " (" + check.totalFiles.toLocaleString("es") + " en total)";
+      if (check.verdict === "empty") return "El catálogo todavía no tiene archivos de este disco. Puedes fijar su identidad sin riesgo.";
+      if (check.verdict === "match") return sample + total + " están en " + result.root + ", con el mismo tamaño. Es el mismo disco.";
+      if (check.verdict === "mixed") {
+        return "Solo " + sample + " están en " + result.root + ". El catálogo mezcla archivos de otra unidad que tuvo la misma letra. "
+          + "Si esta es la unidad original, fija su identidad; si no, créale un disco nuevo.";
+      }
+      return "Solo " + sample + " están en " + result.root + ": esta unidad no es el disco de ese catálogo. Créale un disco nuevo; el catálogo de «"
+        + target.name + "» espera a su unidad original.";
+    }
+
+    function pinPanel(target) {
+      const panel = panelElement("monitor-panel");
+      const candidates = availableDrives.filter((drive) => !drive.diskId);
+      if (candidates.length === 0) {
+        panel.append(panelElement("p", "No hay unidades sin marcador conectadas. Conecta el disco de «" + target.name + "» y búscalo de nuevo."));
+        const actions = panelElement("panel-actions");
+        actions.append(
+          panelButton("Cancelar", "ghost", () => {
+            drivePanel = null;
+            renderMonitors();
+          }),
+          panelButton("Buscar de nuevo", "primary", () => void refreshAvailableDrives())
+        );
+        panel.append(actions);
+        return panel;
+      }
+
+      panel.append(panelElement("p", "¿En qué unidad está hoy el disco «" + target.name + "»? La letra pudo cambiar. Se compara una muestra de su catálogo con los archivos de la unidad."));
+      if (!candidates.some((drive) => sameRoot(drive.root, drivePanel.root))) drivePanel.root = candidates[0].root;
+      const line = panelElement("panel-line");
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", "Unidad");
+      select.disabled = panelBusy;
+      for (const drive of candidates) {
+        const option = document.createElement("option");
+        option.value = drive.root;
+        option.textContent = driveLabel(drive);
+        option.selected = sameRoot(drive.root, drivePanel.root);
+        select.append(option);
+      }
+      select.addEventListener("change", () => {
+        drivePanel.root = select.value;
+        drivePanel.result = null;
+        renderMonitors();
+      });
+      line.append(select, panelButton("Comprobar", drivePanel.result ? "ghost" : "primary", () => checkIdentity(target)));
+      panel.append(line);
+
+      const result = drivePanel.result;
+      const actions = panelElement("panel-actions");
+      actions.append(panelButton("Cancelar", "ghost", () => {
+        drivePanel = null;
+        renderMonitors();
+      }));
+      if (result) {
+        const verdict = result.check.verdict;
+        panel.append(panelElement("verdict " + (verdict === "match" || verdict === "empty" ? "is-ok" : "is-warn"), verdictText(target, result)));
+        const keep = verdict === "match" || verdict === "empty";
+        const input = nameInput(verdict === "mismatch" ? "" : result.diskName || target.name, () => keep
+          ? pinIdentity(target, input.value, false)
+          : convertDrive(result.root, input.value));
+        panel.append(input);
+        if (keep) {
+          actions.append(panelButton("Fijar identidad", "primary", () => pinIdentity(target, input.value, false)));
+        } else if (verdict === "mixed") {
+          actions.append(
+            panelButton("Crear disco nuevo", "ghost", () => convertDrive(result.root, input.value)),
+            panelButton("Es la original: fijar identidad", "danger", () => pinIdentity(target, input.value, true))
+          );
+        } else {
+          actions.append(panelButton("Crear disco nuevo", "primary", () => convertDrive(result.root, input.value)));
+        }
+      }
+      panel.append(actions);
+      return panel;
+    }
+
     function renderDrivePicker() {
       drivePicker.textContent = "";
       if (availableDrives.length === 0) {
@@ -1280,16 +1664,19 @@ function configHtml(logoDataUrl: string): string {
         const name = document.createElement("strong");
         name.textContent = drive.diskName || drive.root;
         const location = document.createElement("span");
-        location.textContent = drive.diskId ? drive.root + " · Disco VideoCAT" : drive.root + " · Unidad disponible";
+        const letterTarget = drive.diskId ? null : letterTargetAt(drive.root);
+        location.textContent = driveLabel(drive) + (drive.diskId
+          ? " · Disco VideoCAT"
+          : letterTarget ? " · Seguida por letra como «" + letterTarget.name + "»" : " · Sin marcador");
         main.append(name, location);
 
         const action = document.createElement("button");
         action.type = "button";
-        const alreadyManual = hasManualTarget(drive.root);
         const ignored = drive.diskId && disabledDiskIds.has(drive.diskId);
         if (drive.diskId && !ignored) {
           action.textContent = "Automático";
           action.disabled = true;
+          action.title = "Ya tiene su marcador: el Companion la reconoce sola.";
           action.className = "ghost";
         } else if (drive.diskId && ignored) {
           action.textContent = "Monitorear";
@@ -1299,15 +1686,25 @@ function configHtml(logoDataUrl: string): string {
             renderMonitors();
             setStatus("Disco VideoCAT activado. Guarda los cambios para aplicar.", "success");
           });
+        } else if (letterTarget) {
+          // Converting it as a new disk would lose the catalog it already has: pin it instead.
+          action.textContent = "Fijar identidad…";
+          action.className = "primary";
+          action.addEventListener("click", () => openPinPanel(letterTarget, drive.root));
         } else {
-          action.textContent = alreadyManual ? "Añadida" : "Añadir";
-          action.className = alreadyManual ? "ghost" : "primary";
-          action.disabled = alreadyManual;
+          const open = drivePanel?.kind === "convert" && sameRoot(drivePanel.root, drive.root);
+          action.textContent = "Convertir…";
+          action.className = open ? "ghost" : "primary";
+          action.disabled = open || panelBusy;
           action.addEventListener("click", () => {
-            if (addManualTarget(drive.root, drive.root.replace(/\\$/, ""))) drivePicker.hidden = true;
+            drivePanel = { kind: "convert", root: drive.root };
+            renderMonitors();
           });
         }
         row.append(main, action);
+        if (drivePanel?.kind === "convert" && sameRoot(drivePanel.root, drive.root) && !drive.diskId && !letterTarget) {
+          row.append(convertPanel(drive));
+        }
         drivePicker.appendChild(row);
       }
     }
@@ -1319,7 +1716,7 @@ function configHtml(logoDataUrl: string): string {
       if (targets.length === 0) {
         const empty = document.createElement("div");
         empty.className = "monitor-empty";
-        empty.textContent = "No hay rutas manuales. Los discos con .videocat-disk.json se siguen detectando automáticamente.";
+        empty.textContent = "No hay rutas manuales. Los discos con .videocat-disk.json se detectan solos, en cualquier letra.";
         targetList.appendChild(empty);
       } else {
         for (const target of targets) {
@@ -1331,17 +1728,41 @@ function configHtml(logoDataUrl: string): string {
           const location = document.createElement("span");
           location.textContent = target.path;
           const type = document.createElement("small");
-          type.textContent = /^[A-Za-z]:/.test(target.path) && target.path.length <= 3 ? "unidad manual" : "carpeta manual";
+          const wholeDrive = isDriveRoot(target.path);
+          const paused = target.enabled === false;
+          type.textContent = wholeDrive ? (paused ? "en pausa · sigue la letra" : "sigue la letra") : "carpeta manual";
+          if (wholeDrive) {
+            type.className = "is-warn";
+            type.title = paused
+              ? "La unidad que hoy tiene esa letra ya tiene su marcador. Fija la identidad cuando conectes el disco original."
+              : "Windows puede darle esta letra a otro disco y el Companion lo tomaría por este. Fija su identidad.";
+          }
           main.append(name, location, type);
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "danger";
           remove.textContent = "Quitar";
+          remove.disabled = panelBusy;
           remove.addEventListener("click", () => {
             targets = targets.filter((item) => item.id !== target.id);
+            if (drivePanel?.targetId === target.id) drivePanel = null;
             renderMonitors();
           });
-          row.append(main, remove);
+          const actions = document.createElement("div");
+          actions.className = "row-actions";
+          if (wholeDrive) {
+            const pin = document.createElement("button");
+            pin.type = "button";
+            const open = drivePanel?.kind === "pin" && drivePanel.targetId === target.id;
+            pin.className = open ? "ghost" : "primary";
+            pin.textContent = "Fijar identidad…";
+            pin.disabled = open || panelBusy;
+            pin.addEventListener("click", () => openPinPanel(target, target.path));
+            actions.append(pin);
+          }
+          actions.append(remove);
+          row.append(main, actions);
+          if (drivePanel?.kind === "pin" && drivePanel.targetId === target.id) row.append(pinPanel(target));
           targetList.appendChild(row);
         }
       }
@@ -1475,6 +1896,12 @@ function configHtml(logoDataUrl: string): string {
       }
       const folder = await window.videocatConfig.chooseFolder();
       if (!folder) return;
+      if (isDriveRoot(folder)) {
+        drivePicker.hidden = false;
+        await refreshAvailableDrives();
+        setStatus("Para una unidad completa usa Convertir: le crea su marcador y la reconoce aunque cambie la letra.", "info");
+        return;
+      }
       const defaultName = folder.split(/[\\\\/]/).filter(Boolean).pop() || folder;
       addManualTarget(folder, defaultName);
     });
@@ -1483,7 +1910,7 @@ function configHtml(logoDataUrl: string): string {
       setStatus("Buscando unidades conectadas...", "info");
       await refreshAvailableDrives();
       setStatus(
-        availableDrives.length > 0 ? "Elige una unidad de la lista." : "No se detectaron unidades accesibles.",
+        availableDrives.length > 0 ? "Elige una unidad. Convertir le crea su marcador para reconocerla aunque cambie la letra." : "No se detectaron unidades accesibles.",
         availableDrives.length > 0 ? "info" : "error"
       );
     });
@@ -1830,11 +2257,21 @@ async function main(): Promise<void> {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle("config:list-drives", async () => discoverAccessibleDrives());
+  ipcMain.handle("config:convert-drive", async (_event, input: { root: string; name: string }) => convertDrive(input));
+  ipcMain.handle("config:check-identity", async (_event, targetId: string, root: string) => checkDriveIdentity(String(targetId), String(root)));
+  ipcMain.handle("config:pin-identity", async (_event, input: { targetId: string; root: string; name: string; acceptMixed?: boolean }) =>
+    pinDriveIdentity(input));
   ipcMain.handle("config:save", async (_event, values: Record<string, string>): Promise<ConfigSaveResult> => {
     try {
       const normalized = normalizeConfig(values);
       const validationError = validateConfig(normalized);
       if (validationError) return { ok: false, message: validationError };
+      // Whole drives get a marker from Añadir unidad; a new route by letter would follow whatever
+      // drive Windows puts there. Routes saved by older builds stay until their identity is pinned.
+      const saved = new Set(parseTargets(process.env.COMPANION_MONITORED_TARGETS).map((target) => target.id));
+      if (parseTargets(normalized.COMPANION_MONITORED_TARGETS).some((target) => isDriveRoot(target.path) && !saved.has(target.id))) {
+        return { ok: false, message: "Una unidad completa se añade con Añadir unidad, que le crea su marcador. Por letra, Windows podría dársela a otro disco." };
+      }
 
       const target = await saveConfig(normalized);
       restartCompanion();
