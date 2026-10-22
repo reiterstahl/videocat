@@ -17,6 +17,17 @@ COPY apps/server/package.json apps/server/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci
 
+# Only what runs: no TypeScript, test or build tools. Prisma's CLI stays: the server applies
+# migrations on start.
+FROM base AS prod-deps
+COPY package.json package-lock.json* ./
+COPY apps/server/package.json apps/server/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY apps/server/prisma apps/server/prisma
+RUN npm ci --omit=dev \
+  && npm exec -w @videocat/server -- prisma generate \
+  && mkdir -p apps/server/node_modules
+
 FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
@@ -32,8 +43,8 @@ ENV NODE_ENV=production
 # (and the advisories that come with their own dependencies).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
   /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
-COPY --chown=node:node --from=build /app/node_modules ./node_modules
-COPY --chown=node:node --from=build /app/apps/server/node_modules ./apps/server/node_modules
+COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=prod-deps /app/apps/server/node_modules ./apps/server/node_modules
 COPY --chown=node:node --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --chown=node:node --from=build /app/packages/shared/package.json ./packages/shared/package.json
 COPY --chown=node:node --from=build /app/apps/server/dist ./apps/server/dist

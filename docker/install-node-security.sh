@@ -9,6 +9,13 @@ case "$node_security_version" in
   *) echo "Unsupported Node.js security release: $node_security_version" >&2; exit 1 ;;
 esac
 
+# Base images that already carry this exact release skip the download: installing it again
+# only adds a second copy of Node to the image (about 80 MB).
+if command -v node >/dev/null 2>&1 && [ "$(node --version)" = "v${node_security_version}" ]; then
+  echo "Node.js ${node_security_version} is already installed."
+  exit 0
+fi
+
 case "$(uname -m)" in
   x86_64) node_security_arch=x64 ;;
   aarch64|arm64) node_security_arch=arm64 ;;
