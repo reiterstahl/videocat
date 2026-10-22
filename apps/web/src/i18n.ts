@@ -706,6 +706,7 @@ const en: Record<string, string> = {
   "Almacenamiento S3": "S3 storage",
   "Buckets compatibles con S3 (MinIO, AWS, Cloudflare R2, Backblaze…) que el servidor cataloga como un disco más. Las credenciales se guardan cifradas en el servidor.": "S3-compatible buckets (MinIO, AWS, Cloudflare R2, Backblaze…) that the server catalogs like any other drive. Credentials are stored encrypted on the server.",
   "Añadir bucket": "Add bucket",
+  "Mejor una llave solo para este bucket o prefijo: listar y leer, y borrar solo si vas a borrar desde Review.": "Better a key just for this bucket or prefix: list and read, and delete only if you will delete from Review.",
   "No hay borrados pendientes": "There are no pending deletions",
   "Hace falta el Companion con los discos conectados": "The Companion with its drives connected is needed",
   "Para borrarlo del bucket, márcalo para borrar (J en Review) y procesa los pendientes en Últimos borrados.": "To delete it from the bucket, mark it for deletion (J in Review) and process the pending ones in Latest deletions.",

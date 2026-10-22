@@ -404,6 +404,7 @@ export function StorageBucketsSection({ locale, refreshKey }: { locale: string; 
               <label className="vc-field">
                 <span>Access key</span>
                 <input value={form.accessKeyId} onChange={(event) => update("accessKeyId", event.target.value)} autoComplete="off" spellCheck={false} required />
+                <small>Mejor una llave solo para este bucket o prefijo: listar y leer, y borrar solo si vas a borrar desde Review.</small>
               </label>
               <label className="vc-field">
                 <span>Secret key</span>

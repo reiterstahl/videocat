@@ -15,8 +15,8 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - GitHub Sponsors: <https://github.com/sponsors/reiterstahl>
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
-- Stack Docker actual: `0.2.46`
-- Companion Windows actual: `0.2.20` (instalador con actualización automática)
+- Stack Docker actual: `0.2.47` (imágenes `videocat-server`, `videocat-web` y, opcional para buckets S3, `videocat-scanner`)
+- Companion Windows actual: `0.2.20` (instalador con actualización automática); `0.2.21-beta.2` en prueba
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 
@@ -259,6 +259,13 @@ El servidor nunca borra directamente archivos de Windows.
 
 La marca del usuario funciona como confirmación del borrado diferido. Esta función debe presentarse con claridad: el borrado físico es irreversible salvo que exista un respaldo externo.
 
+## Buckets S3
+
+- Desde 0.2.47, buckets compatibles con S3 (MinIO, AWS S3, Cloudflare R2, Backblaze B2…) o un prefijo dentro de ellos se catalogan como un disco más, desde Administración › Almacenamiento S3.
+- Los lee el contenedor opcional `videocat-scanner` (perfil `s3` de Compose): metadatos, 15 fotogramas y huella, por rangos, sin descargar los videos enteros. Un objeto copiado a otra clave conserva su ficha.
+- Se reproducen a través del servidor en cualquier navegador o Chromecast; se borran desde Review cuando se procesan los pendientes, comprobando antes que el objeto no cambió; se descargan a la PC con el Companion (0.2.21+). Los traslados todavía no incluyen buckets.
+- La secret key se guarda cifrada (`STORAGE_SECRET_KEY`) y no se vuelve a mostrar.
+
 ## Seguridad
 
 - Login obligatorio y cookie de sesión segura.
@@ -444,6 +451,8 @@ Antes de publicar capturas, ocultar nombres de archivo privados, rutas personale
 - No afirmar que VideoCAT reconoce contenido mediante IA; usa metadatos y huellas perceptuales deterministas.
 - No afirmar que garantiza duplicados exactos; presenta candidatos y confianza para decisión humana.
 - No afirmar que los videos nunca pasan por el servidor: en reproducción remota los bytes se retransmiten temporalmente, aunque no se almacenan.
+- No afirmar que el servidor nunca accede a los videos: con buckets S3 el servidor guarda una llave cifrada del bucket y lee su contenido para escanear, reproducir, descargar y borrar.
+- No afirmar que los buckets se pueden trasladar a discos o al revés: los traslados todavía no incluyen buckets.
 - No afirmar que reproduce todos los codecs; depende del navegador y ofrece remux limitado, no transcodificación universal.
 - No afirmar que reproduce desde un disco desconectado.
 - No afirmar que el Companion funciona en macOS o Linux; actualmente es para Windows.

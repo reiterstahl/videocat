@@ -16,7 +16,7 @@ services:
 
   # One-shot: volumes created by root-run releases (< 0.2.0) are handed to the non-root server user.
   thumbnails-init:
-    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.46}}
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.47}}
     user: "0:0"
     restart: "no"
     read_only: true
@@ -33,7 +33,7 @@ services:
       - thumbnails_data:/data/video-catalog/thumbnails
 
   server:
-    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.46}}
+    image: ${VIDEOCAT_SERVER_IMAGE:-reiterstahl/videocat-server:${VIDEOCAT_VERSION:-0.2.47}}
     restart: unless-stopped
     init: true
     read_only: true
@@ -81,7 +81,7 @@ services:
   # Optional: reads S3 buckets added in Administración › Almacenamiento S3. Starts only with the
   # "s3" profile: docker compose --profile s3 up -d (or COMPOSE_PROFILES=s3 in the stack).
   scanner:
-    image: ${VIDEOCAT_SCANNER_IMAGE:-reiterstahl/videocat-scanner:${VIDEOCAT_VERSION:-0.2.46}}
+    image: ${VIDEOCAT_SCANNER_IMAGE:-reiterstahl/videocat-scanner:${VIDEOCAT_VERSION:-0.2.47}}
     profiles: ["s3"]
     restart: unless-stopped
     init: true
@@ -105,7 +105,7 @@ services:
       - thumbnails_data:/data/video-catalog/thumbnails
 
   web:
-    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.2.46}}
+    image: ${VIDEOCAT_WEB_IMAGE:-reiterstahl/videocat-web:${VIDEOCAT_VERSION:-0.2.47}}
     restart: unless-stopped
     depends_on:
       server:

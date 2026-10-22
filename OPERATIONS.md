@@ -17,6 +17,15 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.47
+
+- **S3 buckets** (Administration › S3 storage): S3-compatible buckets, or a prefix inside them, are catalogued like drives. The optional `videocat-scanner` image (the server's code plus FFmpeg) scans them, serves nothing over HTTP and starts only with the `s3` profile: `docker compose -f docker-compose.hub.yml --profile s3 up -d`, or `COMPOSE_PROFILES=s3` in a Portainer stack. The server plays bucket videos by ranges, the scanner deletes marked ones when *Procesar pendientes* asks for it (after checking size and ETag), and Companion 0.2.21 or later downloads them through the server.
+- **New setting `STORAGE_SECRET_KEY`** (64 hexadecimal characters, `openssl rand -hex 32`): it encrypts the buckets' secret keys. New installations get it from the installers; add it to existing ones before adding a bucket, and keep it with your backups (the backup scripts already save `.env`). Missing or malformed, the server starts normally and only S3 is disabled.
+- **Privacy:** for buckets the server holds an encrypted key and reads the videos (temporary frames are deleted at once). Use a key limited to that bucket or prefix, with delete permission only if you delete from Review.
+- Migrations `0027_storage_buckets`, `0028_storage_scans` and `0029_stream_sessions_from_buckets` run on start; they only add tables and columns.
+- Lighter images: the server image no longer carries a second copy of Node.js or the development tools (768 → 633 MB).
+- Companion 0.2.20 keeps working; bucket downloads need 0.2.21 (published as 0.2.21-beta.2 for testing while no Electron release carries the October 2026 Node.js fixes).
+
 ## Upgrading to 0.2.46
 
 - **Duplicados** says when the drive selection hides groups: with only some drives selected, a group shows only when every copy is on them, so the list could be empty while the *Duplicados probables* card counts every drive. The empty list now reads *No hay duplicados dentro de los discos seleccionados (1 de 22). Hay 562 grupos en todos los discos.* with **Ver todos**.

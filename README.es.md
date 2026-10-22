@@ -19,7 +19,7 @@
   </p>
 </div>
 
-VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas.
+VideoCAT indexa los videos de tus discos externos —aunque casi nunca estén conectados— y te deja buscarlos, revisarlos, encontrar duplicados, reproducirlos a distancia y liberar espacio desde el navegador o el móvil. **Los videos nunca salen de tus discos:** el servidor guarda solo metadatos, rutas relativas y miniaturas. También puedes catalogar videos guardados en buckets compatibles con S3 (MinIO, AWS S3, Cloudflare R2…); en ese caso el servidor lee el bucket ([Buckets S3](#5-buckets-s3-opcional)).
 
 > [!TIP]
 > ⭐ Si VideoCAT te sirve, [dale una estrella en GitHub](https://github.com/reiterstahl/videocat/stargazers): ayuda a que más gente con colecciones en discos externos lo encuentre.
@@ -54,7 +54,11 @@ flowchart LR
     web["web<br/>Nginx + React"] --> api["server<br/>API Fastify"]
     api --> db[("PostgreSQL")]
     api --> thumbs[("Miniaturas")]
+    scanner["scanner (opcional)<br/>FFmpeg"] --> db
+    scanner --> thumbs
   end
+  api -. "API S3" .-> buckets[("Buckets S3")]
+  scanner -. "API S3" .-> buckets
   subgraph windows["PC con Windows"]
     companion["VideoCAT Companion<br/>app de bandeja"] --> disks[("Discos externos")]
   end
@@ -67,6 +71,7 @@ flowchart LR
 | **web** | Sirve la interfaz React y hace de proxy hacia la API y las miniaturas. Es lo único que publicas en tu reverse proxy. |
 | **server** | API con login, catálogo, review, duplicados, auditoría y el túnel con los Companions. Aplica las migraciones al arrancar. |
 | **postgres** | Base de datos del catálogo. Solo es accesible en la red interna de Docker. |
+| **scanner** | Opcional (`--profile s3`): el código del servidor más FFmpeg. Escanea los buckets S3 y borra sus videos marcados cuando se lo pides. |
 | **Companion** | App de bandeja en Windows: detecta discos, escanea con FFmpeg, sube metadatos y miniaturas, procesa borrados y copias, y sirve reproducción remota por un túnel **saliente** (no abre puertos). |
 
 ## Características
@@ -109,6 +114,12 @@ flowchart LR
 - **Mover por etiqueta**: una regla "etiqueta → carpeta con estrella" lleva ahí todos los videos con esa etiqueta, también los que la reciban después, a medida que se conectan sus discos.
 - Los discos no necesitan estar conectados a la vez: cada archivo pasa por una **carpeta temporal del Companion**. En **Traslados › Para continuar**, los discos se separan en los que **reciben material** y los que **copian a la carpeta temporal**, con el que más datos debe recibir primero, y se avisa dónde liberar espacio.
 - **Nada se borra sin una copia verificada en otro lugar** (detalle en [Traslados seguros](#traslados-seguros)).
+
+### Buckets S3
+- Agrega buckets compatibles con S3 (MinIO, AWS S3, Cloudflare R2, Backblaze B2…), o un prefijo dentro de ellos, desde **Administración › Almacenamiento S3**: endpoint, región, bucket, prefijo, access key, secret key y estilo de ruta. **Probar conexión** lista y lee antes de guardar, y explica cada falla (dirección, llave o secret equivocados, permiso que falta, región, estilo de ruta necesario con una IP…).
+- Cada bucket es un disco más: catálogo, búsqueda, Review, duplicados y uso por carpeta. El contenedor opcional `scanner` lee los videos nuevos o cambiados por rangos (nunca los descarga enteros), conserva la ficha de un objeto copiado a otra clave y vuelve a escanear cada 24 horas o con **Escanear ahora**.
+- Puedes reproducirlos en cualquier navegador o en Chromecast a través del servidor, marcarlos para borrar y procesar los pendientes, y descargarlos a la PC con el Companion (0.2.21 o posterior). Los traslados todavía no incluyen buckets.
+- La secret key se guarda cifrada con `STORAGE_SECRET_KEY` y no se vuelve a mostrar.
 
 ### Organización, administración y auditoría
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
@@ -210,7 +221,7 @@ Edita `.env` y reemplaza todos los valores `replace-with-…`. Genera cada secre
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.46`) y `latest`.
+Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.47`) y `latest`.
 </details>
 
 ### 2. Companion en Windows
@@ -267,6 +278,15 @@ VideoCAT se puede instalar como app desde el navegador. En **Perfil › App de V
 > Los navegadores solo instalan apps desde **HTTPS** (o `localhost`). Si abres VideoCAT por `http://` con una IP de tu red, primero publícalo con HTTPS detrás de tu reverse proxy.
 
 La app guarda en el dispositivo solo su propio código (interfaz, estilos e íconos) para abrir rápido. Las respuestas de la API, las miniaturas y los videos siempre se piden al servidor, así que no queda información del catálogo en el equipo. Cuando publicas una versión nueva del stack, la app muestra **Hay una nueva versión de VideoCAT · Actualizar**.
+
+### 5. Buckets S3 (opcional)
+
+1. Revisa que `.env` tenga `STORAGE_SECRET_KEY` (64 caracteres hexadecimales). Los instaladores la generan desde la 0.2.47; en instalaciones anteriores agrega una creada con `openssl rand -hex 32` y guárdala con tus respaldos.
+2. Arranca el escáner: `docker compose -f docker-compose.hub.yml --profile s3 up -d`. En Portainer, agrega la variable `COMPOSE_PROFILES=s3` al stack y vuelve a desplegarlo.
+3. En **Administración › Almacenamiento S3**, agrega el bucket y prueba la conexión. El primer escaneo empieza en unos segundos.
+
+> [!TIP]
+> Dale a VideoCAT una access key solo para ese bucket o prefijo: listar y leer, y borrar solo si vas a borrar desde Review. Más en [Seguridad y privacidad](#seguridad-y-privacidad).
 
 ## Uso diario
 
@@ -347,8 +367,10 @@ Las principales de `.env` (la lista completa, con comentarios, está en [`.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Confianza en el reverse proxy; mejor limitarla a sus CIDR. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Dónde publica el contenedor `web` (por defecto `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN y fragmentos de nombre de carpeta protegidos (por ejemplo `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.46` o `latest`). |
+| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.47` o `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Remux opcional y límites de la reproducción remota. |
+| `STORAGE_SECRET_KEY` | Cifra las secret keys de los buckets S3 (64 caracteres hexadecimales). Si cambia, hay que volver a escribir la secret key de cada bucket. |
+| `S3_SCAN_INTERVAL_HOURS`, `S3_SCAN_CONCURRENCY` | Cada cuánto el escáner vuelve a leer cada bucket (24) y cuántos videos lee a la vez (2). |
 | `*_RETENTION_DAYS` | Retención de errores, acciones y escaneos al ejecutar la limpieza desde Administración. |
 
 ### Reverse proxy
@@ -384,6 +406,7 @@ Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRU
 ### Actualizar
 
 - **Servidor:** fija `VIDEOCAT_VERSION` (o usa `latest`) y ejecuta `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up -d`. Las migraciones se aplican solas al arrancar, y el servicio `thumbnails-init` corrige los permisos del volumen de miniaturas. Desde Portainer: *Pull and redeploy*.
+- **Escáner** (solo con buckets S3): llega con el mismo `pull` si el perfil `s3` está activo (`--profile s3`, o `COMPOSE_PROFILES=s3` en Portainer).
 - **Companion:** se actualiza solo. Busca versiones nuevas al minuto de arrancar y luego cada 6 horas, las descarga en segundo plano y las aplica al reiniciar. También puedes aplicarlas con **Reiniciar para actualizar** en la bandeja o forzar la búsqueda con **Buscar actualizaciones**.
 - La web muestra un aviso junto al logo cuando hay una versión nueva del stack en Docker Hub.
 
@@ -402,6 +425,7 @@ VideoCAT funciona detrás de un acceso previo como Cloudflare Access. Cuando la 
 **Tus datos**
 - Los videos originales no salen de tus discos. Se suben metadatos, rutas relativas, miniaturas JPEG validadas y errores de auditoría.
 - El servidor no necesita acceso a tus discos. El borrado físico solo ocurre en Windows, por el Companion, con el disco correcto conectado.
+- **La excepción: los buckets S3.** Para escanear, reproducir, descargar y borrar sus videos, el servidor y su escáner guardan una llave del bucket (cifrada) y leen su contenido. Los fotogramas se sacan a archivos temporales que se borran enseguida; aparte de las miniaturas, nada de los videos queda en el servidor. Quien tomara el control del servidor podría usar esa llave: dale una limitada a ese bucket o prefijo, con permiso de borrar solo si lo necesitas.
 - Las carpetas cuyo nombre coincide con `PROTECTED_FOLDER_PATTERNS` piden PIN en cada sesión y quedan fuera de los duplicados.
 
 **Companion**
@@ -475,7 +499,7 @@ Monorepo TypeScript con npm workspaces (Node.js 22 o superior):
 
 | Carpeta | Contenido |
 | --- | --- |
-| `apps/server` | API Fastify + Prisma + PostgreSQL. |
+| `apps/server` | API Fastify + Prisma + PostgreSQL, y el escáner de buckets S3 (`src/scanner.ts`). |
 | `apps/web` | Interfaz React 18 + Vite, servida por Nginx en producción. |
 | `apps/agent-windows` | Agente de escaneo y Companion Electron, con el actualizador Velopack. |
 | `packages/shared` | Tipos y utilidades compartidos. |
@@ -517,8 +541,9 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Imágenes Docker** (amd64 y arm64; actualiza también `VIDEOCAT_VERSION` en `docker-compose.hub.yml` y en los instaladores):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.46 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.46 -t reiterstahl/videocat-web:0.2.46 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.47 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.47 -t reiterstahl/videocat-scanner:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.47 -t reiterstahl/videocat-web:0.2.47 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Verificación del instalador del Companion:

@@ -1,6 +1,6 @@
 # VideoCAT Server
 
-API server for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. It indexes metadata, relative paths, thumbnails, tags, duplicates and review decisions — **original videos never leave your drives**.
+API server for **VideoCAT**, a private, self-hosted catalog for videos spread across external drives that are rarely all connected at once. It indexes metadata, relative paths, thumbnails, tags, duplicates and review decisions — **original videos never leave your drives**. S3-compatible buckets can be catalogued too, with the optional [`reiterstahl/videocat-scanner`](https://hub.docker.com/r/reiterstahl/videocat-scanner); for those, the server reads the bucket.
 
 ![VideoCAT catalog](https://raw.githubusercontent.com/reiterstahl/videocat/main/docs/screenshots/en/catalog.webp)
 
@@ -68,7 +68,7 @@ Thumbnails live in `/data/video-catalog/thumbnails`, mounted by Compose as the `
 
 ## Tags and platforms
 
-- `0.2.46`, `0.2.45`, … — versioned, stable tags. Prefer them for predictable deployments.
+- `0.2.47`, `0.2.46`, … — versioned, stable tags. Prefer them for predictable deployments.
 - `latest` — the newest published release.
 
 Images are built for `linux/amd64` and `linux/arm64`.
