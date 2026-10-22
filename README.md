@@ -431,6 +431,14 @@ VideoCAT works behind an access gateway such as Cloudflare Access. When that gat
 - Folders whose name matches `PROTECTED_FOLDER_PATTERNS` require a PIN in each session and are left out of duplicate detection.
 
 **Companion**
+
+> [!IMPORTANT]
+> **Pending Node.js security fix in Electron (October 2026).** Node.js 24.22.1 fixes four high-severity issues, among them TLS certificate checks and the Brotli decoder. Every Electron release so far still embeds Node 24.22.0. Until one with the fix is out:
+> - **Companion 0.2.21** runs the agent (scans, playback tunnel, uploads, downloads, deletions, transfers and the local listener) as its own executable on Node 24.22.1. Only the tray and its windows stay on Electron's Node 24.22.0, and their only network calls are pairing and the drive identity check against your own server.
+> - **Companion 0.2.20 and earlier** run everything, agent included, on an unpatched Node (24.19.0 in 0.2.20). Update to 0.2.21: installed Companions do it on their own when restarted.
+>
+> The next Companion moves to the first Electron with the fix, and this note goes away. The release workflow refuses this exception as soon as that Electron exists.
+
 - Each installation uses an individual credential, paired with a one-time code, encrypted with the Windows user's protection and revocable from Administration. The server only stores its hash.
 - The tunnel is outbound and authenticated, and only serves reads through HTTP Range: it accepts no remote writes.
 - The local listener only answers `/health` without authentication. Opening, copying, deleting and processing queues require `COMPANION_TOKEN`.

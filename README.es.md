@@ -429,6 +429,14 @@ VideoCAT funciona detrás de un acceso previo como Cloudflare Access. Cuando la 
 - Las carpetas cuyo nombre coincide con `PROTECTED_FOLDER_PATTERNS` piden PIN en cada sesión y quedan fuera de los duplicados.
 
 **Companion**
+
+> [!IMPORTANT]
+> **Corrección de seguridad de Node.js pendiente en Electron (octubre de 2026).** Node.js 24.22.1 corrige cuatro fallos de severidad alta, entre ellos la validación de certificados TLS y el decodificador Brotli. Todas las versiones de Electron publicadas hasta ahora siguen trayendo Node 24.22.0. Mientras no salga una con la corrección:
+> - **Companion 0.2.21** ejecuta el agente (escaneos, túnel de reproducción, subidas, descargas, borrados, traslados y listener local) como un ejecutable propio con Node 24.22.1. Solo la bandeja y sus ventanas siguen en el Node 24.22.0 de Electron, y lo único que hacen en red es el emparejamiento y la verificación de identidad de discos contra tu propio servidor.
+> - **Companion 0.2.20 y anteriores** ejecutan todo, agente incluido, sobre un Node sin la corrección (24.19.0 en la 0.2.20). Actualiza a la 0.2.21: los Companions instalados lo hacen solos al reiniciarse.
+>
+> El siguiente Companion pasará al primer Electron con la corrección y esta nota desaparecerá. El flujo de publicación rechaza esta excepción en cuanto ese Electron exista.
+
 - Cada instalación usa una credencial individual, emparejada con un código de un solo uso, cifrada con la protección del usuario de Windows y revocable desde Administración. El servidor guarda solo su hash.
 - El túnel es saliente y autenticado, y solo sirve lectura con HTTP Range: no acepta escrituras remotas.
 - El listener local solo responde `/health` sin autenticación. Abrir, copiar, borrar y procesar colas exige `COMPANION_TOKEN`.
