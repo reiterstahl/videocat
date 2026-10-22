@@ -12,7 +12,23 @@ export function assertPatchedNode(version, label) {
   }
 }
 
-if (process.argv[2] === "--electron") {
+// The agent executable (Node SEA) that installed Companions run: scans, tunnel, uploads, deletions
+// and the local listener all run on its Node, so it must always be patched.
+export function agentNodeVersion(executable) {
+  const result = spawnSync(executable, ["runtime"], { encoding: "utf8", windowsHide: true });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Cannot run the agent executable ${executable}: ${result.error?.message ?? result.stderr.trim()}`);
+  }
+  return JSON.parse(result.stdout.trim()).node;
+}
+
+if (process.argv[2] === "--agent") {
+  const executable = process.argv[3];
+  if (!executable) throw new Error("Usage: check-node-security.mjs --agent <videocat-agent executable>");
+  const version = agentNodeVersion(executable);
+  assertPatchedNode(`v${version}`, "The agent executable");
+  console.log(`The agent executable runs Node ${version}, which contains the October 2026 fixes.`);
+} else if (process.argv[2] === "--electron") {
   const require = createRequire(import.meta.url);
   const executable = require("electron");
   const result = spawnSync(executable, ["-p", "process.versions.node"], {
@@ -23,8 +39,20 @@ if (process.argv[2] === "--electron") {
   if (result.error || result.status !== 0) {
     throw new Error(`Cannot verify Electron's embedded Node runtime: ${result.error?.message ?? result.stderr.trim()}`);
   }
-  assertPatchedNode(result.stdout.trim(), "Electron");
-  console.log(`Electron's embedded Node ${result.stdout.trim()} contains the October 2026 fixes.`);
+  const electronNode = result.stdout.trim();
+  try {
+    assertPatchedNode(electronNode, "Electron");
+    console.log(`Electron's embedded Node ${electronNode} contains the October 2026 fixes.`);
+  } catch (error) {
+    // Beta builds only (release-companion.yml, input "beta"), while no Electron release carries
+    // the fix: Electron keeps only the tray and its windows (pairing and the drive identity check
+    // talk to the user's own server), and the agent must run on a patched Node.
+    const agent = process.env.VIDEOCAT_BETA_AGENT_EXECUTABLE;
+    if (!agent) throw error;
+    const version = agentNodeVersion(agent);
+    assertPatchedNode(`v${version}`, "The agent executable");
+    console.warn(`::warning::Beta build: Electron embeds Node ${electronNode} (tray and windows only); the agent runs Node ${version}.`);
+  }
 } else if (process.argv[2] === "--host") {
   assertPatchedNode(process.versions.node, "SEA build runtime");
   console.log(`Node ${process.versions.node} contains the October 2026 fixes.`);

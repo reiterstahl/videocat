@@ -250,7 +250,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 20;
+const companionVersion = 21;
 let downloadProcessingRunning = false;
 // Downloads come before transfers; see work-priority.ts.
 const downloadPriority = new DownloadPriority();
@@ -3130,6 +3130,11 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
 }
 
 async function main() {
+  // The Node.js runtime this agent runs on, for the packaging check (scripts/check-node-security.mjs).
+  if (process.argv[2] === "runtime") {
+    console.log(JSON.stringify({ node: process.versions.node, executable: path.basename(process.execPath) }));
+    return;
+  }
   await loadEnvFile();
   await ensureCompanionIdentity();
   const args = parseArgs(process.argv.slice(2));
@@ -3195,6 +3200,7 @@ async function main() {
   }
 
   if (args.command === "companion") {
+    console.log(`Agente con Node ${process.versions.node} (${path.basename(process.execPath)}).`);
     watchParentTray();
     await runCompanion();
     return;

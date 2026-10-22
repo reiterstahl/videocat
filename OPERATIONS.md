@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Windows Companion 0.2.21-beta.1
+
+- **The agent runs as its own executable on Node.js 24.22.1** (`resources/videocat-agent.exe`, Node SEA): scans, the playback tunnel, uploads, deletions, transfers and the local listener no longer run on Electron's Node. Electron (still Node 24.22.0) keeps only the tray and its windows, whose only network calls are pairing and the drive identity check against your own server; updates are downloaded by Velopack.
+- Published as a **GitHub prerelease** for testing: installed Companions do not update to it. Install it with its Setup.exe over the current one (settings, pairing and drives are kept); it updates to 0.2.21 when that is published.
+- The agent's log starts with `Agente con Node 24.22.1 (videocat-agent.exe)`.
+
 ## Upgrading to 0.2.45 (Companion 0.2.21)
 
 - **Renamed folders are not scanned again**: Companion 0.2.21 recognizes a folder renamed or a file moved on the same drive (same size, modification time and extension, and the old path is gone) and moves its catalog entry with `POST /api/agent/scans/:id/relocate`, keeping tags, review, thumbnails and fingerprint. Ambiguous cases (a folder renamed and also copied, two files that fit equally) are scanned as new, as before. Each scan that moves entries leaves a `scan.relocate` action in Auditoría.

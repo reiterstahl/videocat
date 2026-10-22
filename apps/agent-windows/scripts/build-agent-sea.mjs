@@ -1,5 +1,6 @@
 // Packs the Companion agent (dist/index.js) as one executable: Node's single executable
-// application (SEA). The Tauri tray starts it instead of Electron running in Node mode.
+// application (SEA). The tray (Electron today) starts it instead of running Electron in Node
+// mode, so the agent always runs on the patched Node.js this script is run with.
 //   node scripts/build-agent-sea.mjs [outputDir]
 // Needs the agent built first (npm run build -w @videocat/agent-windows).
 import { execFileSync } from "node:child_process";

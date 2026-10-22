@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { listPackage } from "@electron/asar";
+import { agentNodeVersion, assertPatchedNode } from "./check-node-security.mjs";
 
 const agentRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(agentRoot, "../..");
@@ -66,4 +67,12 @@ if (!fs.existsSync(unpackedNative)) {
   throw new Error(`Velopack native module missing from app.asar.unpacked: ${unpackedNative}`);
 }
 
-console.log(`Verified ${checked.size} runtime modules inside app.asar and the Velopack updater.`);
+// The tray starts this executable; without it the agent would fall back to Electron's Node.
+const packagedAgent = path.join(agentRoot, "release", "win-unpacked", "resources", "videocat-agent.exe");
+if (!fs.existsSync(packagedAgent)) {
+  throw new Error(`Agent executable missing from packaged resources: ${packagedAgent}`);
+}
+const agentNode = agentNodeVersion(packagedAgent);
+assertPatchedNode(`v${agentNode}`, "The packaged agent executable");
+
+console.log(`Verified ${checked.size} runtime modules inside app.asar, the Velopack updater and the agent executable (Node ${agentNode}).`);

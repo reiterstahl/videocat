@@ -5,6 +5,10 @@ name: Release Companion
 # Windows Companion with Velopack, creates the tag and publishes the GitHub Release.
 # Installed Companions check these releases, download new versions in the background and
 # apply them on restart. Manual runs build an artifact, and publish only when asked to.
+# A manual run with "beta" publishes X.Y.Z-beta.N as a GitHub prerelease for testing: installed
+# Companions never update to it (they skip prereleases), and its Setup.exe updates to the next
+# stable release on its own. While no Electron release carries the October 2026 Node.js fixes,
+# only beta builds may package, because their agent runs on its own patched Node (Node SEA).
 on:
   push:
     branches: [main]
@@ -16,6 +20,10 @@ on:
         description: "Publish the release if the version's tag does not exist yet"
         type: boolean
         default: false
+      beta:
+        description: "Beta number: builds X.Y.Z-beta.N as a prerelease for testing (empty for a stable release)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -35,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
+      pack_version: ${{ steps.version.outputs.pack_version }}
+      beta: ${{ steps.version.outputs.beta }}
       publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
@@ -43,20 +53,33 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PUBLISH_INPUT: ${{ inputs.publish }}
+          BETA_INPUT: ${{ inputs.beta }}
         run: |
           version=$(jq -r .version apps/agent-windows/package.json)
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid Companion version: $version" >&2
             exit 1
           fi
+          beta=false
+          pack_version="$version"
+          if [ -n "$BETA_INPUT" ]; then
+            if ! [[ "$BETA_INPUT" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Invalid beta number: $BETA_INPUT" >&2
+              exit 1
+            fi
+            beta=true
+            pack_version="$version-beta.$BETA_INPUT"
+          fi
           publish=false
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-            echo "::notice::v$version is already tagged; building without publishing."
+          if git ls-remote --exit-code --tags origin "refs/tags/v$pack_version" >/dev/null; then
+            echo "::notice::v$pack_version is already tagged; building without publishing."
           elif [ "$EVENT_NAME" = "push" ] || [ "$PUBLISH_INPUT" = "true" ]; then
             publish=true
-            echo "::notice::Publishing Companion v$version."
+            echo "::notice::Publishing Companion v$pack_version."
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "pack_version=$pack_version" >> "$GITHUB_OUTPUT"
+          echo "beta=$beta" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
   companion:
@@ -69,6 +92,8 @@ jobs:
       attestations: write
     env:
       VERSION: ${{ needs.detect.outputs.version }}
+      PACK_VERSION: ${{ needs.detect.outputs.pack_version }}
+      BETA: ${{ needs.detect.outputs.beta }}
       PUBLISH: ${{ needs.detect.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
@@ -104,6 +129,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Companion typecheck failed" }
           npm run typecheck:tray -w @videocat/agent-windows
           if ($LASTEXITCODE -ne 0) { throw "tray typecheck failed" }
+          if ($env:BETA -eq 'true') {
+            # Lets the packaging check accept Electron's Node for the tray, only if this agent
+            # executable (built by prepackage:tray) runs a patched Node.
+            $env:VIDEOCAT_BETA_AGENT_EXECUTABLE = Join-Path $PWD "apps/agent-windows/release/agent-sea/videocat-agent.exe"
+          }
           npm run package:tray -w @videocat/agent-windows
           if ($LASTEXITCODE -ne 0) { throw "Electron packaging failed" }
 
@@ -126,7 +156,7 @@ jobs:
         run: |
           vpk pack `
             --packId $env:PACK_ID `
-            --packVersion $env:VERSION `
+            --packVersion $env:PACK_VERSION `
             --packDir "apps/agent-windows/release/win-unpacked" `
             --mainExe "VideoCAT Companion.exe" `
             --packTitle "VideoCAT Companion" `
@@ -146,7 +176,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: videocat-companion-${{ env.VERSION }}
+          name: videocat-companion-${{ env.PACK_VERSION }}
           path: ${{ env.RELEASE_DIR }}
           if-no-files-found: error
 
@@ -158,17 +188,26 @@ jobs:
           VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          $env:TAG = "v$env:VERSION"
+          $env:TAG = "v$env:PACK_VERSION"
+          $beta = $env:BETA -eq 'true'
           # Velopack creates the tag on this commit inside a draft release, so Companions never
-          # see a release without its update feed.
+          # see a release without its update feed. A beta is a prerelease, which they skip.
+          $preFlag = @()
+          if ($beta) { $preFlag = @("--pre") }
           vpk upload github --repoUrl $env:REPO_URL --outputDir $env:RELEASE_DIR --tag $env:TAG `
-            --targetCommitish $env:GITHUB_SHA --releaseName "VideoCAT v$env:VERSION" --merge
+            --targetCommitish $env:GITHUB_SHA --releaseName "VideoCAT v$env:PACK_VERSION" --merge @preFlag
           if ($LASTEXITCODE -ne 0) { throw "vpk upload exited with code $LASTEXITCODE." }
           gh release upload $env:TAG "$env:RELEASE_DIR/$env:PACK_ID-win-Setup.exe.sha256" --clobber
           if ($LASTEXITCODE -ne 0) { throw "Uploading the checksum failed." }
           gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name=$env:TAG --jq .body > release-notes.md
           if ($LASTEXITCODE -ne 0) { throw "Generating release notes failed." }
-          gh release edit $env:TAG --notes-file release-notes.md --draft=false --latest
+          if ($beta) {
+            $warning = "> [!WARNING]`n> Beta for testing. Installed Companions do not update to it; install it with its Setup.exe. It updates to the next stable release on its own.`n`n"
+            [IO.File]::WriteAllText("release-notes.md", $warning + [IO.File]::ReadAllText("release-notes.md"))
+            gh release edit $env:TAG --notes-file release-notes.md --draft=false --prerelease --latest=false
+          } else {
+            gh release edit $env:TAG --notes-file release-notes.md --draft=false --latest
+          }
           if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
 
   sbom:
@@ -190,7 +229,7 @@ jobs:
       - name: Attach SBOM to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: v${{ needs.detect.outputs.version }}
+          TAG: v${{ needs.detect.outputs.pack_version }}
         run: gh release upload "$TAG" videocat.spdx.json --clobber
       - uses: actions/attest-build-provenance@v4
         with:

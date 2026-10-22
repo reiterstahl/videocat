@@ -508,6 +508,8 @@ API tests that write to PostgreSQL run with `RUN_DB_TESTS=true`. `E2E_SEED=1` lo
 
 **Companion:** bump `version` in `apps/agent-windows/package.json` and push to `main`. The [`release-companion.yml`](.github/workflows/release-companion.yml) workflow builds on Windows, packs with Velopack (Setup.exe, full package and deltas), creates the `vX.Y.Z` tag and publishes the release with notes, SHA-256, attestation and SBOM. A version that is already tagged is never published again. To start it by hand: `gh workflow run release-companion.yml -f publish=true`.
 
+**Companion beta:** `gh workflow run release-companion.yml -f publish=true -f beta=1` publishes `X.Y.Z-beta.1` as a GitHub prerelease. Installed Companions do not update to it: install it with its Setup.exe, and it moves to the next stable release on its own. Installed Companions run the agent as its own executable on a patched Node.js (Node SEA); while no Electron release carries the October 2026 Node.js fixes, only betas package.
+
 Local build without publishing (with `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
 
 ```powershell

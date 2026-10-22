@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
@@ -576,7 +577,21 @@ function clearLogs(): void {
   logWindow?.webContents.send("log:cleared");
 }
 
+// Installed builds carry the agent as its own executable on a patched Node.js (Node SEA,
+// scripts/build-agent-sea.mjs); Electron then only hosts the tray and its windows. Without it
+// (development, older packages) Electron runs the agent in Node mode.
+function agentExecutablePath(): string | null {
+  if (!app.isPackaged) return null;
+  const executable = path.join(resourcesPath(), "videocat-agent.exe");
+  return existsSync(executable) ? executable : null;
+}
+
 function spawnAgent(args: string[]): ChildProcessWithoutNullStreams {
+  const executable = agentExecutablePath();
+  if (executable) {
+    const { ELECTRON_RUN_AS_NODE: _electronOnly, ...env } = childEnv();
+    return spawn(executable, args, { env, windowsHide: true });
+  }
   return spawn(process.execPath, [agentScriptPath(), ...args], {
     env: childEnv(),
     windowsHide: true
