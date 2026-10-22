@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Windows Companion 0.2.21
+
+- Includes everything from 0.2.21-beta.1 and beta.2: drives pinned by marker, renamed folders that are not scanned again, names chosen in the web written to the marker, and downloads of S3 bucket videos through the server (stack 0.2.47).
+- **The agent runs as its own executable on a patched Node.js** (`resources/videocat-agent.exe`, Node SEA, 24.22.1): scans, the playback tunnel, uploads, downloads, deletions, transfers and the local listener. **The tray and its windows still run on Electron's Node 24.22.0**, because no Electron release carries the October 2026 Node.js fixes yet; their only network calls are pairing and the drive identity check against your own server. It is published anyway because 0.2.20 runs everything, agent included, on Node 24.19.0.
+- Built with the release workflow's `tray_node_exception` input. The packaging check accepts it only while the agent runs a patched Node and no stable Electron release has the fixes; once one does, packaging fails until the Companion moves to it, and the next release drops the exception.
+- Installed Companions update on their own, betas included.
+
 ## Upgrading to 0.2.47
 
 - **S3 buckets** (Administration › S3 storage): S3-compatible buckets, or a prefix inside them, are catalogued like drives. The optional `videocat-scanner` image (the server's code plus FFmpeg) scans them, serves nothing over HTTP and starts only with the `s3` profile: `docker compose -f docker-compose.hub.yml --profile s3 up -d`, or `COMPOSE_PROFILES=s3` in a Portainer stack. The server plays bucket videos by ranges, the scanner deletes marked ones when *Procesar pendientes* asks for it (after checking size and ETag), and Companion 0.2.21 or later downloads them through the server.
@@ -24,7 +31,7 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - **Privacy:** for buckets the server holds an encrypted key and reads the videos (temporary frames are deleted at once). Use a key limited to that bucket or prefix, with delete permission only if you delete from Review.
 - Migrations `0027_storage_buckets`, `0028_storage_scans` and `0029_stream_sessions_from_buckets` run on start; they only add tables and columns.
 - Lighter images: the server image no longer carries a second copy of Node.js or the development tools (768 → 633 MB).
-- Companion 0.2.20 keeps working; bucket downloads need 0.2.21 (published as 0.2.21-beta.2 for testing while no Electron release carries the October 2026 Node.js fixes).
+- Companion 0.2.20 keeps working; bucket downloads need 0.2.21.
 
 ## Upgrading to 0.2.46
 
@@ -48,6 +55,7 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 ## Windows Companion 0.2.20
 
 - Built on Node.js 24.22.1. Companions 0.2.18 (Node 24.21.0) and 0.2.19 (Node 24.22.0) did not carry the security release: the build runner resolved an older Node 24. The release workflow now pins 24.22.1 and fails if the embedded Node differs.
+- **Correction:** only the build ran on Node 24.22.1. The installed Companion runs its agent and tray on the Node embedded in Electron 42.11.12, 24.19.0, which does not have the October 2026 fixes. 0.2.21 moves the agent to its own patched Node.
 - The server stays on 0.2.44; no migrations or configuration changes.
 
 ## Upgrading to 0.2.44 (Companion 0.2.18)
