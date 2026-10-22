@@ -14,7 +14,7 @@ test("an S3 bucket that does not answer is explained and not saved", async ({ pa
   await form.getByLabel("Nombre del disco").fill("MinIO de prueba");
   await form.getByLabel(/^Endpoint/).fill("http://127.0.0.1:59999");
   await form.getByLabel("Bucket", { exact: true }).fill("videos");
-  await form.getByLabel("Access key", { exact: true }).fill("videocat");
+  await form.getByLabel(/^Access key/).fill("videocat");
   const save = form.getByRole("button", { name: "Guardar" });
   await expect(save).toBeDisabled();
   await expect(save).toHaveAttribute("title", /secret key/);
