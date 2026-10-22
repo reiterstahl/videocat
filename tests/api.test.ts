@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import net from "node:net";
 import { once } from "node:events";
 import test from "node:test";
 import WebSocket from "ws";
@@ -15,6 +16,7 @@ process.env.PROTECTED_FOLDER_PATTERNS ??= "Private,Protected";
 process.env.WEB_ORIGIN ??= "http://localhost:5173";
 process.env.TRUST_PROXY ??= "false";
 process.env.COOKIE_SECURE ??= "false";
+process.env.STORAGE_SECRET_KEY ??= "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 const { buildApp } = await import("../apps/server/src/app.ts");
 const { prisma } = await import("../apps/server/src/lib/prisma.ts");
@@ -1891,5 +1893,93 @@ test("a copy on the same drive never takes the catalog entry of a file that is s
     assert.equal((await prisma.videoFile.findUniqueOrThrow({ where: { id: solo.id } })).relativePath, "Renamed/solo.mp4");
   } finally {
     await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
+// Against a real S3-compatible service (a throwaway MinIO): S3_TEST_ENDPOINT, S3_TEST_ACCESS_KEY
+// and S3_TEST_SECRET_KEY. The test creates its own buckets and objects.
+const s3TestSkip = process.env.RUN_DB_TESTS !== "true" || !process.env.S3_TEST_ENDPOINT;
+
+test("S3 buckets are checked, saved with a sealed secret, edited and removed from Administración", { skip: s3TestSkip }, async () => {
+  const { AwsClient } = await import("aws4fetch");
+  const endpoint = process.env.S3_TEST_ENDPOINT!;
+  const accessKeyId = process.env.S3_TEST_ACCESS_KEY!;
+  const secretAccessKey = process.env.S3_TEST_SECRET_KEY!;
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "us-east-1" });
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const bucket = `videocat-test-${suffix}`;
+  const emptyBucket = `videocat-empty-${suffix}`;
+  for (const name of [bucket, emptyBucket]) assert.equal((await client.fetch(`${endpoint}/${name}/`, { method: "PUT" })).status, 200);
+  for (const key of ["Pel%C3%ADculas/Mi%20viaje%20%282024%29%20%2B%20extra%21.mp4", "Pel%C3%ADculas/otro%20%26%20m%C3%A1s.mkv", "Ra%C3%ADz.mp4"]) {
+    assert.equal((await client.fetch(`${endpoint}/${bucket}/${key}`, { method: "PUT", body: "fake video" })).status, 200);
+  }
+
+  const cookie = await authenticatedCookie();
+  const headers = webMutationHeaders(cookie);
+  const form = { name: `MinIO ${suffix}`, endpoint, region: "us-east-1", bucket, prefix: "", forcePathStyle: true, accessKeyId, secretAccessKey };
+  const createdIds: string[] = [];
+  try {
+    const list = await app.inject({ method: "GET", url: "/api/storage/buckets", headers: { cookie } });
+    assert.equal(list.json().encryptionKey, "ready");
+
+    const check = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: form })).json().check;
+    assert.equal(check.ok, true);
+    assert.deepEqual(check.steps[0], { step: "list", ok: true, objects: 3, truncated: false });
+    assert.equal(check.steps[1].ok, true, "reads an object whose key needs encoding");
+
+    const wrong = (await app.inject({ method: "POST", url: "/api/storage/buckets", headers, payload: { ...form, secretAccessKey: "not-the-secret" } })).json();
+    assert.equal(wrong.saved, false);
+    assert.equal(wrong.check.steps[0].failure.code, "signature_mismatch");
+    const unknownKey = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, accessKeyId: "nobody" } })).json().check;
+    assert.equal(unknownKey.steps[0].failure.code, "invalid_access_key");
+    const missing = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, bucket: `missing-${suffix}` } })).json().check;
+    assert.deepEqual(missing.steps[0].failure, { code: "no_such_bucket", bucket: `missing-${suffix}` });
+    // A port nobody listens on (fetch refuses low "bad ports" like 1 before connecting).
+    const closedPort = await new Promise<number>((resolve) => {
+      const probe = net.createServer().listen(0, "127.0.0.1", () => {
+        const { port } = probe.address() as net.AddressInfo;
+        probe.close(() => resolve(port));
+      });
+    });
+    const refused = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, endpoint: `http://127.0.0.1:${closedPort}` } })).json().check;
+    assert.deepEqual(refused.steps[0].failure, { code: "endpoint_refused", host: `127.0.0.1:${closedPort}` });
+    const unknownHost = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, endpoint: "http://videocat-no-existe.invalid:9000" } })).json().check;
+    assert.equal(unknownHost.steps[0].failure.code, "endpoint_not_found");
+    const withPath = await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, endpoint: `${endpoint}/videos` } });
+    assert.equal(withPath.statusCode, 400);
+    const empty = (await app.inject({ method: "POST", url: "/api/storage/buckets/check", headers, payload: { ...form, bucket: emptyBucket } })).json().check;
+    assert.deepEqual(empty, { ok: true, steps: [{ step: "list", ok: true, objects: 0, truncated: false }, { step: "read", ok: null }] });
+
+    const created = (await app.inject({ method: "POST", url: "/api/storage/buckets", headers, payload: form })).json();
+    assert.equal(created.saved, true);
+    createdIds.push(created.bucket.id);
+    assert.equal(created.bucket.secretHint, secretAccessKey.slice(-4));
+    const row = await prisma.storageBucket.findUniqueOrThrow({ where: { id: created.bucket.id } });
+    assert.ok(!row.secretSealed.includes(secretAccessKey), "the secret is stored sealed");
+    const listed = await app.inject({ method: "GET", url: "/api/storage/buckets", headers: { cookie } });
+    assert.ok(!listed.body.includes(secretAccessKey) && !listed.body.includes(row.secretSealed), "the secret never goes back to the web");
+
+    // An empty secret on edit keeps the saved one.
+    const edited = (await app.inject({ method: "PATCH", url: `/api/storage/buckets/${created.bucket.id}`, headers, payload: { ...form, prefix: "/Películas", secretAccessKey: "" } })).json();
+    assert.equal(edited.saved, true);
+    assert.equal(edited.bucket.prefix, "Películas/");
+    assert.equal(edited.check.steps[0].objects, 2);
+    assert.equal((await prisma.storageBucket.findUniqueOrThrow({ where: { id: created.bucket.id } })).secretSealed, row.secretSealed);
+    const savedCheck = (await app.inject({ method: "POST", url: `/api/storage/buckets/check`, headers, payload: { ...form, secretAccessKey: "", bucketId: created.bucket.id } })).json().check;
+    assert.equal(savedCheck.ok, true);
+
+    const recheck = (await app.inject({ method: "POST", url: `/api/storage/buckets/${created.bucket.id}/check`, headers })).json();
+    assert.equal(recheck.check.ok, true);
+    assert.equal(recheck.bucket.lastCheckOk, true);
+
+    const removed = await app.inject({ method: "DELETE", url: `/api/storage/buckets/${created.bucket.id}`, headers });
+    assert.equal(removed.statusCode, 200);
+    assert.equal(await prisma.storageBucket.count({ where: { id: created.bucket.id } }), 0);
+    const audit = await prisma.actionAudit.findMany({ where: { action: { startsWith: "storage.bucket." } } });
+    assert.deepEqual([...new Set(audit.map((entry) => entry.action))].sort(), ["storage.bucket.create", "storage.bucket.delete", "storage.bucket.update"]);
+    assert.ok(!JSON.stringify(audit).includes(secretAccessKey), "the audit log has no secrets");
+  } finally {
+    await prisma.storageBucket.deleteMany({ where: { id: { in: createdIds } } });
+    await prisma.actionAudit.deleteMany({ where: { action: { startsWith: "storage.bucket." } } });
   }
 });

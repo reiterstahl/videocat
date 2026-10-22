@@ -29,6 +29,7 @@ model Disk {
   deletionRecords      DeletionRecord[]
   transferDestinations TransferDestination[]
   folderFavorites      FolderFavorite[]
+  storageBucket        StorageBucket?
 
   @@index([name])
   @@index([volumeId])
@@ -418,4 +419,27 @@ model TransferItem {
   @@index([sourceDiskId, state])
   @@index([targetDiskId, state])
   @@index([videoFileId])
+}
+
+// An S3-compatible bucket (or a prefix inside it) that the server catalogues like a drive. The
+// secret key is sealed with STORAGE_SECRET_KEY (src/lib/secret-box.ts) and never leaves the server.
+model StorageBucket {
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String
+  endpoint         String
+  region           String
+  bucket           String
+  prefix           String    @default("")
+  forcePathStyle   Boolean   @default(true)
+  accessKeyId      String
+  secretSealed     String
+  secretHint       String    @default("")
+  // The catalog drive this bucket fills; set by its first scan.
+  diskId           String?   @unique @db.Uuid
+  disk             Disk?     @relation(fields: [diskId], references: [id], onDelete: SetNull)
+  lastCheckedAt    DateTime?
+  lastCheckOk      Boolean?
+  lastCheckFailure Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }

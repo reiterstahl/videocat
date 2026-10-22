@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
 import type { AdminDiskOverview, AdminPurgeResponse, AdminRemoveDiskResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
 import type { Disk } from "../types";
+import { StorageBucketsSection } from "../components/StorageBucketsSection";
 
 type MaintenanceResponse = {
   retentionDays: { agentErrors: number; auditActions: number; scans: number };
@@ -414,6 +415,8 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
           })}
         </div>
       </section>
+
+      <StorageBucketsSection locale={locale} refreshKey={refreshKey} />
 
       <section className="vc-panel" aria-labelledby="admin-maintenance-title">
         <div className="vc-panel-head">

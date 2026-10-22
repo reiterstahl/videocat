@@ -46,6 +46,7 @@ Invoke-WebRequest -Uri $composeUrl -OutFile $ComposeFile -UseBasicParsing
 
 if (-not (Test-Path ".env")) {
   $jwtSecret = New-RandomHex
+  $storageSecretKey = New-RandomHex
   $agentToken = New-RandomHex
   $postgresPassword = New-RandomHex
   $adminPassword = New-RandomHex
@@ -64,6 +65,7 @@ SERVER_BIND_ADDR=127.0.0.1
 SERVER_PUBLISHED_PORT=4001
 JWT_SECRET=$jwtSecret
 AGENT_TOKEN=$agentToken
+STORAGE_SECRET_KEY=$storageSecretKey
 PROTECTED_FOLDER_PIN=$protectedPin
 PROTECTED_FOLDER_PATTERNS=Private,Protected
 ADMIN_USER=admin

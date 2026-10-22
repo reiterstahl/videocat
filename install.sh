@@ -50,6 +50,7 @@ fi
 if [ ! -f .env ]; then
   umask 077
   jwt_secret="$(rand_hex)"
+  storage_secret_key="$(rand_hex)"
   agent_token="$(rand_hex)"
   postgres_password="$(rand_hex)"
   admin_password="$(rand_hex)"
@@ -68,6 +69,7 @@ SERVER_BIND_ADDR=127.0.0.1
 SERVER_PUBLISHED_PORT=4001
 JWT_SECRET=$jwt_secret
 AGENT_TOKEN=$agent_token
+STORAGE_SECRET_KEY=$storage_secret_key
 PROTECTED_FOLDER_PIN=$protected_pin
 PROTECTED_FOLDER_PATTERNS=Private,Protected
 ADMIN_USER=admin

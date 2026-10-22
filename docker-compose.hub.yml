@@ -58,6 +58,7 @@ services:
       TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a strong random value}
       AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env to a strong random value}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
       PROTECTED_FOLDER_PIN: ${PROTECTED_FOLDER_PIN:?Set PROTECTED_FOLDER_PIN in .env}
       PROTECTED_FOLDER_PATTERNS: ${PROTECTED_FOLDER_PATTERNS:-Private,Protected}
       ADMIN_USER: ${ADMIN_USER:-admin}

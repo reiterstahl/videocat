@@ -403,3 +403,40 @@ export type ReviewSessionEntry = {
   previous: VideoFile;
   status: ReviewDecision;
 };
+
+// Administración › Almacenamiento S3 (server: routes/storage.ts, lib/s3.ts).
+export type S3Failure =
+  | { code: "endpoint_not_found" | "endpoint_refused" | "endpoint_timeout" | "tls_invalid" | "path_style_required"; host: string }
+  | { code: "network"; host: string; detail: string }
+  | { code: "not_s3"; status: number }
+  | { code: "invalid_access_key" | "signature_mismatch" | "access_denied" }
+  | { code: "no_such_bucket"; bucket: string }
+  | { code: "wrong_region"; region: string | null }
+  | { code: "http_error"; status: number; s3Code: string | null };
+
+export type S3CheckStep =
+  | { step: "list"; ok: true; objects: number; truncated: boolean }
+  | { step: "read"; ok: true; key: string }
+  | { step: "read"; ok: null }
+  | { step: "list" | "read"; ok: false; failure: S3Failure };
+
+export type S3CheckResult = { ok: boolean; steps: S3CheckStep[] };
+
+export type StorageBucketItem = {
+  id: string;
+  name: string;
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  forcePathStyle: boolean;
+  accessKeyId: string;
+  secretHint: string;
+  diskId: string | null;
+  lastCheckedAt: string | null;
+  lastCheckOk: boolean | null;
+  lastCheckFailure: S3Failure | null;
+  createdAt: string;
+};
+
+export type StorageBucketsResponse = { encryptionKey: "ready" | "missing" | "invalid"; buckets: StorageBucketItem[] };

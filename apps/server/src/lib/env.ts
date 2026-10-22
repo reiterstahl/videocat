@@ -30,7 +30,10 @@ const envSchema = z.object({
   REMOTE_STREAM_MAX_SESSIONS_PER_USER: z.coerce.number().int().min(1).max(8).default(2),
   AGENT_ERROR_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(180),
   ACTION_AUDIT_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(365),
-  SCAN_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(180)
+  SCAN_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(180),
+  // 32 bytes in hex (openssl rand -hex 32) that seal the secret keys of S3 buckets. Optional:
+  // missing or malformed only disables adding buckets (lib/secret-box.ts), never the server.
+  STORAGE_SECRET_KEY: z.string().trim().optional()
 });
 
 export const env = envSchema.parse(process.env);

@@ -3364,3 +3364,163 @@ a.vc-button {
     flex-wrap: wrap;
   }
 }
+
+/* Administración › Almacenamiento S3 */
+
+.vc-s3-form {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--vc-border);
+  border-radius: var(--vc-radius);
+  padding: 14px;
+}
+
+.vc-s3-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.vc-s3-row > *,
+.vc-s3-form > * {
+  min-width: 0;
+}
+
+.vc-s3-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.vc-s3-form > .vc-help {
+  justify-self: end;
+}
+
+.vc-s3-check {
+  display: grid;
+  gap: 8px;
+  border-radius: var(--vc-radius);
+  background: var(--vc-sunken);
+  padding: 12px 14px;
+}
+
+.vc-s3-check ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-s3-check > small {
+  color: var(--vc-muted);
+}
+
+.vc-s3-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.vc-s3-step p {
+  margin: 2px 0 0;
+  color: var(--vc-text-soft);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.vc-s3-step p small {
+  display: block;
+  color: var(--vc-muted);
+}
+
+.vc-s3-step-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vc-muted) 18%, transparent);
+  color: var(--vc-muted);
+  font-weight: 600;
+}
+
+.vc-s3-step.is-ok .vc-s3-step-icon {
+  background: color-mix(in srgb, var(--vc-success) 18%, transparent);
+  color: var(--vc-success);
+}
+
+.vc-s3-step.is-failed .vc-s3-step-icon {
+  background: color-mix(in srgb, var(--vc-danger) 18%, transparent);
+  color: var(--vc-danger);
+}
+
+.vc-s3-detail {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vc-text) 7%, transparent);
+  padding: 1px 5px;
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.vc-s3-key {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  border: 1px dashed var(--vc-border-strong);
+  border-radius: var(--vc-radius);
+  padding: 12px 14px;
+}
+
+.vc-s3-key svg {
+  color: var(--vc-accent);
+}
+
+.vc-s3-key div {
+  display: grid;
+  gap: 6px;
+}
+
+.vc-s3-key p,
+.vc-s3-key small {
+  margin: 0;
+  color: var(--vc-muted);
+  font-size: 0.84rem;
+}
+
+.vc-s3-key code {
+  justify-self: start;
+  font-family: var(--vc-font-mono);
+}
+
+.vc-s3-bucket-icon {
+  color: var(--vc-accent);
+}
+
+.vc-s3-row-failure {
+  margin: 4px 0 0;
+  color: var(--vc-danger);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.vc-s3-row-actions {
+  display: flex;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .vc-s3-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vc-s3-actions .vc-button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
