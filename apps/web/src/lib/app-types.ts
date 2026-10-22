@@ -436,7 +436,27 @@ export type StorageBucketItem = {
   lastCheckedAt: string | null;
   lastCheckOk: boolean | null;
   lastCheckFailure: S3Failure | null;
+  scanStatus: "idle" | "running" | "failed";
+  scanRequestedAt: string | null;
+  scanStartedAt: string | null;
+  scanFinishedAt: string | null;
+  scanHeartbeatAt: string | null;
+  // While running: phase and counters; when done: the summary of the last scan.
+  scanProgress: {
+    phase?: "listing" | "processing" | "finishing" | "done";
+    listed?: number;
+    toProcess?: number;
+    processed?: number;
+    failed?: number;
+    relocated?: number;
+    unchanged?: number;
+    markedAbsent?: number;
+    current?: string | null;
+  } | null;
+  scanFailure: S3Failure | { code: "scan_error"; detail: string } | { code: "interrupted" } | null;
   createdAt: string;
 };
 
-export type StorageBucketsResponse = { encryptionKey: "ready" | "missing" | "invalid"; buckets: StorageBucketItem[] };
+export type StorageScannerStatus = { installed: boolean; online: boolean; seenAt: string | null; ffmpeg: string | null; intervalHours: number | null };
+
+export type StorageBucketsResponse = { encryptionKey: "ready" | "missing" | "invalid"; scanner: StorageScannerStatus; buckets: StorageBucketItem[] };

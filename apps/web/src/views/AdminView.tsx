@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Database, HardDrive, HardDriveDownload, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { Check, Cloud, Copy, Database, HardDrive, HardDriveDownload, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
@@ -279,12 +279,14 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
             const usedPercent = totalBytes && usedBytes != null ? Math.min(100, Math.max(0, (usedBytes / totalBytes) * 100)) : 0;
             const catalogPercent = totalBytes ? Math.min(100, (item.storage.catalogedBytes / totalBytes) * 100) : 0;
             const connected = mountedDiskIds.includes(disk.id);
+            // An S3 bucket the server scans: never "connected" to a Companion.
+            const objectStorage = disk.kind === "s3";
             const confirming = purgeTarget === disk.id;
             const confirmWord = purgeKind === "remove" ? "ELIMINAR" : "BORRAR";
             return (
               <article className="vc-admin-disk" key={disk.id}>
                 <header>
-                  <HardDrive size={18} aria-hidden="true" />
+                  {objectStorage ? <Cloud size={18} aria-hidden="true" /> : <HardDrive size={18} aria-hidden="true" />}
                   {renaming?.id === disk.id ? (
                     <form
                       className="vc-admin-rename"
@@ -318,7 +320,9 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                       <span>{[disk.driveLetter, disk.fileSystem].filter(Boolean).join(" · ") || "Sin datos del volumen"}{disk.nameLocked ? " · nombre elegido" : ""}</span>
                     </div>
                   )}
-                  <span className={`vc-badge ${connected ? "is-success" : ""}`}>{connected ? "Conectado" : "Desconectado"}</span>
+                  {objectStorage
+                    ? <span className="vc-badge">Bucket S3</span>
+                    : <span className={`vc-badge ${connected ? "is-success" : ""}`}>{connected ? "Conectado" : "Desconectado"}</span>}
                 </header>
 
                 <div className="vc-admin-storage">
@@ -402,7 +406,9 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                         className="vc-button is-danger-ghost"
                         onClick={() => { setPurgeKind("remove"); setPurgeTarget(disk.id); setPurgeConfirmation(""); }}
                         type="button"
-                        title="Para unidades que ya no existen: la quita de VideoCAT"
+                        title={objectStorage
+                          ? "Quita también el bucket en Almacenamiento S3: si no, el próximo escaneo vuelve a crear este disco"
+                          : "Para unidades que ya no existen: la quita de VideoCAT"}
                       >
                         <HardDriveDownload size={15} />
                         Eliminar unidad

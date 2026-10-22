@@ -137,7 +137,7 @@ jobs:
           retention-days: 7
 
   docker:
-    # Build both images without pushing, so dependency or Dockerfile changes cannot break a release.
+    # Build the images without pushing, so dependency or Dockerfile changes cannot break a release.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -156,6 +156,24 @@ jobs:
           no-cache-filters: base
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
+      - name: Build scanner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          target: scanner
+          push: false
+          load: true
+          tags: videocat-scanner:ci
+          no-cache-filters: base
+          cache-from: type=gha,scope=server
+      - name: Check the scanner image has ffmpeg and the server image does not
+        run: |
+          docker run --rm --entrypoint ffprobe videocat-scanner:ci -version | head -1
+          if docker run --rm --entrypoint sh videocat-server:ci -c 'command -v ffmpeg'; then
+            echo "The server image must not carry ffmpeg" >&2
+            exit 1
+          fi
       - name: Build web image
         uses: docker/build-push-action@v6
         with:
@@ -171,7 +189,7 @@ jobs:
         # Fails on critical or high findings that already have a fix, so a stale base or a
         # vulnerable dependency is caught before a release. Unfixed distro advisories are reported only.
         run: |
-          for image in videocat-server:ci videocat-web:ci; do
+          for image in videocat-server:ci videocat-scanner:ci videocat-web:ci; do
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 \
               image --quiet --scanners vuln --ignore-unfixed --severity CRITICAL,HIGH --exit-code 1 "$image"
           done

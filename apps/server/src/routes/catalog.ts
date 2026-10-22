@@ -587,6 +587,10 @@ async function ensureCategory(key: string, label: string, color: string, builtIn
 async function queueDownloadsForFileIds(fileIds: string[], source = "manual"): Promise<void> {
   const uniqueIds = [...new Set(fileIds)];
   if (uniqueIds.length === 0) return;
+  // No Companion reads S3 buckets yet: such a download would wait forever. Refused before writing.
+  if (await prisma.videoFile.count({ where: { id: { in: uniqueIds }, disk: { kind: "s3" } } }) > 0) {
+    throw Object.assign(new Error("Videos in S3 buckets cannot be downloaded yet"), { statusCode: 409 });
+  }
   await ensureCategory("download", "A descargar", "#FC6121", true);
   const idSql = Prisma.join(uniqueIds.map((id) => Prisma.sql`${id}::uuid`));
   await prisma.$transaction([

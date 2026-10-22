@@ -36,6 +36,12 @@ export function accessSignInUrl(): string {
   return apiUrl(`/api/session/return?to=${encodeURIComponent(back)}`);
 }
 
+// Server refusals that can come from many places, in Spanish (the page translator turns them
+// into English).
+const serverMessages: Record<string, string> = {
+  "Videos in S3 buckets cannot be downloaded yet": "Los videos de buckets S3 todavía no se pueden descargar a la PC."
+};
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const method = (init?.method ?? "GET").toUpperCase();
@@ -65,7 +71,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message ?? "Request failed");
+    throw new Error(serverMessages[error.message] ?? error.message ?? "Request failed");
   }
 
   return response.json() as Promise<T>;

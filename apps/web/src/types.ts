@@ -9,6 +9,8 @@ export type Disk = {
   totalBytes?: number | null;
   freeBytes?: number | null;
   fileSystem?: string | null;
+  // "s3" for buckets the server scans (Administración › Almacenamiento S3).
+  kind?: "drive" | "s3";
   firstScannedAt: string;
   lastScannedAt: string;
   notes?: string | null;
@@ -153,7 +155,7 @@ export type ConsolidatePlan = {
   fits: boolean;
   // Present when the files do not fit yet: they still leave their drives and wait in staging.
   spaceWarning: { reason: "unknown_space" | "no_space"; shortBytes: number } | null;
-  skipped: { duplicates: number; inTransfer: number; favorites: number };
+  skipped: { duplicates: number; inTransfer: number; favorites: number; objectStorage?: number };
 };
 
 export type TransferNeed = {
@@ -222,7 +224,7 @@ export type GroupCandidates = {
   totalBytes: number;
   exact: number;
   similar: number;
-  skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number; favorites: number };
+  skipped: { inside: number; inTransfer: number; ignored: number; duplicates: number; favorites: number; objectStorage?: number };
   // Folder name first, then the optional keywords.
   keywords: string[];
   items: Array<{ id: string; match: "exact" | "similar"; keyword: string }>;

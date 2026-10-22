@@ -26,7 +26,7 @@ COPY apps/server apps/server
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/server \
   && mkdir -p apps/server/node_modules
 
-FROM base AS runtime
+FROM base AS app
 ENV NODE_ENV=production
 # The server never runs a package manager: drop the ones bundled with the Node image
 # (and the advisories that come with their own dependencies).
@@ -41,6 +41,18 @@ COPY --chown=node:node --from=build /app/apps/server/prisma ./apps/server/prisma
 COPY --chown=node:node --from=build /app/apps/server/package.json ./apps/server/package.json
 RUN mkdir -p /data/video-catalog/thumbnails && chown -R node:node /data
 WORKDIR /app/apps/server
+
+# videocat-scanner (--target scanner): the same code plus ffmpeg, to scan S3 buckets. Optional,
+# its own image so the server image does not carry ffmpeg.
+FROM app AS scanner
+RUN apt-get update -y \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+USER node
+CMD ["node", "dist/scanner.js"]
+
+# The server stays the last stage: a build without --target produces it.
+FROM app AS runtime
 USER node
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]

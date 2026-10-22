@@ -7,6 +7,7 @@ import { recordAction } from "../lib/action-audit.js";
 import { prisma } from "../lib/prisma.js";
 import { openSecret, sealSecret, secretHint, storageKeyState, storageSecretKey } from "../lib/secret-box.js";
 import { checkS3Location, normalizePrefix, type S3CheckResult, type S3Location } from "../lib/s3.js";
+import { scannerStatusKey } from "../lib/bucket-scan.js";
 
 // Administración › Almacenamiento S3: buckets the server will catalogue like drives. The secret
 // key goes in sealed and never comes back out; the web only sees its last characters.
@@ -57,8 +58,35 @@ function serializeBucket(bucket: StorageBucket) {
     lastCheckedAt: bucket.lastCheckedAt?.toISOString() ?? null,
     lastCheckOk: bucket.lastCheckOk,
     lastCheckFailure: bucket.lastCheckFailure,
+    scanStatus: bucket.scanStatus,
+    scanRequestedAt: bucket.scanRequestedAt?.toISOString() ?? null,
+    scanStartedAt: bucket.scanStartedAt?.toISOString() ?? null,
+    scanFinishedAt: bucket.scanFinishedAt?.toISOString() ?? null,
+    scanHeartbeatAt: bucket.scanHeartbeatAt?.toISOString() ?? null,
+    scanProgress: bucket.scanProgress,
+    scanFailure: bucket.scanFailure,
     createdAt: bucket.createdAt.toISOString()
   };
+}
+
+// The scanner container is optional: the web says whether it runs and what it is missing.
+const scannerOnlineMs = 60_000;
+async function scannerStatus() {
+  const setting = await prisma.appSetting.findUnique({ where: { key: scannerStatusKey } });
+  if (!setting) return { installed: false, online: false, seenAt: null, ffmpeg: null, intervalHours: null };
+  try {
+    const value = JSON.parse(setting.value) as { seenAt?: string; ffmpeg?: string | null; intervalHours?: number };
+    const seenAt = value.seenAt ?? null;
+    return {
+      installed: true,
+      online: Boolean(seenAt && Date.now() - new Date(seenAt).getTime() <= scannerOnlineMs),
+      seenAt,
+      ffmpeg: value.ffmpeg ?? null,
+      intervalHours: value.intervalHours ?? null
+    };
+  } catch {
+    return { installed: true, online: false, seenAt: null, ffmpeg: null, intervalHours: null };
+  }
 }
 
 function locationOf(fields: z.infer<typeof bucketFieldsSchema>, secretAccessKey: string): S3Location {
@@ -91,7 +119,7 @@ export async function storageRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/storage/buckets", { preHandler: requireWebAuth }, async () => {
     const buckets = await prisma.storageBucket.findMany({ orderBy: { createdAt: "asc" } });
     // encryptionKey: "ready", or "missing"/"invalid" with the steps to set STORAGE_SECRET_KEY.
-    return { encryptionKey: storageKeyState(), buckets: buckets.map(serializeBucket) };
+    return { encryptionKey: storageKeyState(), scanner: await scannerStatus(), buckets: buckets.map(serializeBucket) };
   });
 
   // "Probar conexión" on the form, before saving. Editing with the secret left empty uses the saved one.
@@ -163,6 +191,10 @@ export async function storageRoutes(app: FastifyInstance): Promise<void> {
         lastCheckFailure: Prisma.DbNull
       }
     });
+    // The catalog drive follows the bucket's name.
+    if (bucket.diskId && bucket.name !== saved.name) {
+      await prisma.disk.update({ where: { id: bucket.diskId }, data: { name: bucket.name, nameLocked: true } });
+    }
     await recordAction({
       action: "storage.bucket.update",
       actorType: "web",
@@ -183,6 +215,17 @@ export async function storageRoutes(app: FastifyInstance): Promise<void> {
     const check = await checkS3Location({ ...saved, secretAccessKey: openSecret(saved.secretSealed, saved.id) });
     const bucket = await prisma.storageBucket.update({ where: { id }, data: checkRecord(check) });
     return { check, bucket: serializeBucket(bucket) };
+  });
+
+  // "Escanear ahora": the scanner takes it on its next round (every few seconds).
+  app.post("/api/storage/buckets/:id/scan", { preHandler: requireWebAuth }, async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const saved = await prisma.storageBucket.findUnique({ where: { id } });
+    if (!saved) return reply.code(404).send({ message: "Bucket not found" });
+    if (saved.scanStatus === "running") return reply.code(409).send({ message: "This bucket is already being scanned" });
+    const bucket = await prisma.storageBucket.update({ where: { id }, data: { scanRequestedAt: new Date() } });
+    await recordAction({ action: "storage.bucket.scan", actorType: "web", actorId: "admin", diskId: bucket.diskId, target: auditTarget(bucket), metadata: { bucketId: bucket.id, name: bucket.name } });
+    return { bucket: serializeBucket(bucket) };
   });
 
   app.delete("/api/storage/buckets/:id", { preHandler: requireWebAuth }, async (request, reply) => {

@@ -212,6 +212,7 @@ export function GroupSession({ destinationId, onClose, onOpenTransfers, onChange
                 : `En esta sesión · agrupados: ${formatCount(grouped.files)} (${formatBytes(grouped.bytes)}) · ignorados: ${formatCount(ignored)}`}
             </p>
             {info.skipped.favorites > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.favorites)} están en carpetas favoritas y no se ofrecen.`}</p> : null}
+            {(info.skipped.objectStorage ?? 0) > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.objectStorage ?? 0)} están en buckets S3 y no se ofrecen: los traslados todavía no incluyen buckets.`}</p> : null}
             {info.skipped.duplicates > 0 ? <p className="vc-transfers-detail">{`${formatCount(info.skipped.duplicates)} ya tienen una copia idéntica en la carpeta y se quedan para revisar en Duplicados.`}</p> : null}
             <div className="vc-folders-actions">
               <button className="vc-button is-primary" onClick={onOpenTransfers} type="button"><ArrowRightLeft size={16} /> Ver en Traslados</button>

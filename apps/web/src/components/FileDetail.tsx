@@ -121,9 +121,14 @@ export function FileDetail({
   const galleryThumb = galleryIndex == null ? null : file.thumbnails[galleryIndex];
   const canOpenPreviousImage = galleryIndex != null && galleryIndex > 0;
   const canOpenNextImage = galleryIndex != null && galleryIndex < file.thumbnails.length - 1;
-  const canStreamRemotely = companionOnline && companionMountedDiskIds.includes(file.diskId);
+  // A video in an S3 bucket has no file on a PC: the Companion's actions do not apply to it.
+  const objectStorage = file.disk?.kind === "s3";
+  const objectStorageReason = "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.";
+  const canStreamRemotely = !objectStorage && companionOnline && companionMountedDiskIds.includes(file.diskId);
   const playbackSupport = browserPlaybackSupport(file);
-  const remoteAvailabilityMessage = !companionOnline
+  const remoteAvailabilityMessage = objectStorage
+    ? "Los videos de buckets S3 todavía no se pueden reproducir desde aquí."
+    : !companionOnline
     ? "La reproducción remota requiere un Companion sincronizado con el servidor. Ábrelo en la PC donde está conectado el disco."
     : !companionMountedDiskIds.includes(file.diskId)
       ? "El Companion está activo, pero este disco no fue reportado como conectado. Conéctalo y actualiza los discos desde el Companion."
@@ -626,9 +631,9 @@ export function FileDetail({
     <div className="detail-primary-actions">
       <button
         className="detail-primary-action"
-        disabled={companionBusy === "open-file"}
+        disabled={objectStorage || companionBusy === "open-file"}
         onClick={() => void callCompanion("open-file")}
-        title="Reproducir video"
+        title={objectStorage ? objectStorageReason : "Reproducir video"}
         aria-label="Reproducir video"
         type="button"
       >
@@ -670,9 +675,9 @@ export function FileDetail({
       ) : null}
       <button
         className="detail-primary-action is-folder"
-        disabled={companionBusy === "open-folder"}
+        disabled={objectStorage || companionBusy === "open-folder"}
         onClick={() => void callCompanion("open-folder")}
-        title="Abrir carpeta local"
+        title={objectStorage ? objectStorageReason : "Abrir carpeta local"}
         aria-label="Abrir carpeta local"
         type="button"
       >
@@ -680,9 +685,9 @@ export function FileDetail({
       </button>
       <button
         className="detail-primary-action is-danger"
-        disabled={companionBusy === "delete-file"}
+        disabled={objectStorage || companionBusy === "delete-file"}
         onClick={requestDeleteFile}
-        title="Borrar archivo fisicamente"
+        title={objectStorage ? objectStorageReason : "Borrar archivo fisicamente"}
         aria-label="Borrar archivo fisicamente"
         type="button"
       >
@@ -941,17 +946,17 @@ export function FileDetail({
         label="Ruta absoluta escaneada"
         value={file.absolutePath}
         copy
-        openKind="file"
+        openKind={objectStorage ? undefined : "file"}
         openBusy={companionBusy === "open-file"}
-        onOpen={() => void callCompanion("open-file")}
+        onOpen={objectStorage ? undefined : () => void callCompanion("open-file")}
       />
       <Info
-        label="Carpeta local"
+        label={objectStorage ? "Carpeta en el bucket" : "Carpeta local"}
         value={localFolder}
         copy
-        openKind="folder"
+        openKind={objectStorage ? undefined : "folder"}
         openBusy={companionBusy === "open-folder"}
-        onOpen={() => void callCompanion("open-folder")}
+        onOpen={objectStorage ? undefined : () => void callCompanion("open-folder")}
       />
       <Info label="Tamano exacto" value={`${file.sizeBytes} bytes (${formatBytes(file.sizeBytes)})`} />
       <Info label="Tamano del folder" value={file.folderSizeBytes != null ? formatBytes(file.folderSizeBytes) : "-"} />

@@ -1983,3 +1983,83 @@ test("S3 buckets are checked, saved with a sealed secret, edited and removed fro
     await prisma.actionAudit.deleteMany({ where: { action: { startsWith: "storage.bucket." } } });
   }
 });
+
+// Also needs ffmpeg/ffprobe on PATH and a writable THUMBNAILS_DIR.
+test("the S3 scanner catalogs a bucket, keeps the entry of a renamed object and marks deleted ones absent", { skip: s3TestSkip }, async () => {
+  const { AwsClient } = await import("aws4fetch");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { scanBucket } = await import("../apps/server/src/lib/bucket-scan.ts");
+  const run = promisify(execFile);
+  const endpoint = process.env.S3_TEST_ENDPOINT!;
+  const accessKeyId = process.env.S3_TEST_ACCESS_KEY!;
+  const secretAccessKey = process.env.S3_TEST_SECRET_KEY!;
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "us-east-1" });
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const bucketName = `videocat-scan-${suffix}`;
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), "videocat-scan-test-"));
+  const quiet = { info: () => undefined, warn: () => undefined };
+  const options = { tools: { ffmpeg: "ffmpeg", ffprobe: "ffprobe" }, workDir: path.join(work, "frames"), concurrency: 2, log: quiet };
+  let bucketId: string | null = null;
+  let diskId: string | null = null;
+  try {
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/`, { method: "PUT" })).status, 200);
+    for (const [name, tone] of [["uno", 300], ["dos", 600]] as const) {
+      const file = path.join(work, `${name}.mp4`);
+      await run("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=4:size=320x180:rate=10", "-f", "lavfi", "-i", `sine=frequency=${tone}:duration=4`, "-shortest", "-c:v", "libx264", "-c:a", "aac", file]);
+      assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/${name}.mp4`, { method: "PUT", body: await fs.readFile(file) })).status, 200);
+    }
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/nota.txt`, { method: "PUT", body: "not a video" })).status, 200);
+
+    const cookie = await authenticatedCookie();
+    const created = (await app.inject({
+      method: "POST",
+      url: "/api/storage/buckets",
+      headers: webMutationHeaders(cookie),
+      payload: { name: `Scan ${suffix}`, endpoint, region: "us-east-1", bucket: bucketName, prefix: "Videos", forcePathStyle: true, accessKeyId, secretAccessKey }
+    })).json();
+    assert.equal(created.saved, true);
+    bucketId = created.bucket.id as string;
+
+    const first = await scanBucket(bucketId, options);
+    assert.deepEqual(first, { listed: 2, unchanged: 0, processed: 2, failed: 0, relocated: 0, markedAbsent: 0 });
+    const bucket = await prisma.storageBucket.findUniqueOrThrow({ where: { id: bucketId } });
+    diskId = bucket.diskId;
+    assert.ok(diskId);
+    const disk = await prisma.disk.findUniqueOrThrow({ where: { id: diskId } });
+    assert.equal(disk.kind, "s3");
+    const files = await prisma.videoFile.findMany({ where: { diskId }, include: { thumbnails: true }, orderBy: { relativePath: "asc" } });
+    assert.deepEqual(files.map((file) => [file.relativePath, file.absolutePath, file.scanStatus, file.thumbnails.length, Boolean(file.visualFingerprint), Boolean(file.storageEtag)]), [
+      ["dos.mp4", `s3://${bucketName}/Videos/dos.mp4`, "scanned", 15, true, true],
+      ["uno.mp4", `s3://${bucketName}/Videos/uno.mp4`, "scanned", 15, true, true]
+    ]);
+    const uno = files.find((file) => file.relativePath === "uno.mp4")!;
+
+    // Unchanged objects are not read again.
+    assert.deepEqual(await scanBucket(bucketId, options), { listed: 2, unchanged: 2, processed: 0, failed: 0, relocated: 0, markedAbsent: 0 });
+
+    // S3 renames are a copy and a delete; "dos" is deleted.
+    const copy = await client.fetch(`${endpoint}/${bucketName}/Videos/Archivo/uno%20renombrado.mp4`, { method: "PUT", headers: { "x-amz-copy-source": `/${bucketName}/Videos/uno.mp4` } });
+    assert.equal(copy.status, 200);
+    for (const key of ["Videos/uno.mp4", "Videos/dos.mp4"]) assert.equal((await client.fetch(`${endpoint}/${bucketName}/${key}`, { method: "DELETE" })).status, 204);
+    assert.deepEqual(await scanBucket(bucketId, options), { listed: 1, unchanged: 0, processed: 0, failed: 0, relocated: 1, markedAbsent: 1 });
+    const renamed = await prisma.videoFile.findUniqueOrThrow({ where: { id: uno.id }, include: { thumbnails: true } });
+    assert.equal(renamed.relativePath, "Archivo/uno renombrado.mp4");
+    assert.equal(renamed.thumbnails.length, 15);
+    assert.equal((await prisma.videoFile.findFirstOrThrow({ where: { diskId, relativePath: "dos.mp4" } })).isPresent, false);
+
+    // No transfer or download can involve a bucket yet.
+    const download = await app.inject({ method: "POST", url: "/api/downloads/queue", headers: webMutationHeaders(cookie), payload: { fileIds: [uno.id] } });
+    assert.equal(download.statusCode, 409);
+    const star = await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId, path: "Archivo" } });
+    assert.equal(star.statusCode, 409);
+  } finally {
+    if (bucketId) await prisma.storageBucket.deleteMany({ where: { id: bucketId } });
+    if (diskId) await prisma.disk.deleteMany({ where: { id: diskId } });
+    await prisma.actionAudit.deleteMany({ where: { action: { startsWith: "storage.bucket." } } });
+    await fs.rm(work, { recursive: true, force: true });
+  }
+});

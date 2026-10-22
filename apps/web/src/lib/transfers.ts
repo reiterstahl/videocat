@@ -59,7 +59,8 @@ const transferMessages: Record<string, string> = {
   "Keywords need at least 3 letters or numbers": "Cada palabra clave necesita al menos 3 letras o números.",
   "That file is in a favorite folder and never moves": "Ese archivo está en una carpeta favorita y nunca se mueve.",
   "That tag already moves videos to a folder": "Esa etiqueta ya mueve videos a una carpeta.",
-  "Videos marked for deletion are not moved": "Los videos marcados para borrar no se mueven."
+  "Videos marked for deletion are not moved": "Los videos marcados para borrar no se mueven.",
+  "Folders in S3 buckets cannot receive transfers yet": "Las carpetas de buckets S3 todavía no pueden recibir traslados."
 };
 
 export function transferError(reason: unknown, fallback: string): string {

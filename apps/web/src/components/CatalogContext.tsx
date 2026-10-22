@@ -145,7 +145,7 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
                   <span className={`vc-disk-dot ${mounted ? "is-mounted" : ""}`} title={mounted ? "Conectado al Companion" : "No detectado por el Companion"} />
                   <span className="vc-disk-name">{disk.name}</span>
                   <span className="vc-disk-meta">
-                    {[disk.driveLetter, disk.totalBytes ? formatBytes(disk.totalBytes) : null].filter(Boolean).join(" · ") || (mounted ? "Conectado" : "Sin datos")}
+                    {disk.kind === "s3" ? "Bucket S3" : [disk.driveLetter, disk.totalBytes ? formatBytes(disk.totalBytes) : null].filter(Boolean).join(" · ") || (mounted ? "Conectado" : "Sin datos")}
                   </span>
                   {usage !== null ? (
                     <>

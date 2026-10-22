@@ -12,6 +12,8 @@ model Disk {
   name                 String
   // Set when the name was chosen in the web: scans keep it instead of the detected one.
   nameLocked           Boolean               @default(false)
+  // "drive" (scanned by a Companion) or "s3" (a StorageBucket the server scans).
+  kind                 String                @default("drive")
   volumeLabel          String?
   volumeId             String?
   driveLetter          String?
@@ -82,6 +84,8 @@ model VideoFile {
   ffprobeJson        Json?
   visualFingerprint  String?
   fingerprintVersion Int?
+  // S3 objects only: tells a changed object apart and follows one copied to another key.
+  storageEtag        String?
   fingerprintedAt    DateTime?
   curationStatus     String                @default("none")
   reviewedAt         DateTime?
@@ -440,6 +444,14 @@ model StorageBucket {
   lastCheckedAt    DateTime?
   lastCheckOk      Boolean?
   lastCheckFailure Json?
+  // Scans by the videocat-scanner container (src/scanner.ts).
+  scanRequestedAt  DateTime?
+  scanStatus       String    @default("idle")
+  scanStartedAt    DateTime?
+  scanFinishedAt   DateTime?
+  scanHeartbeatAt  DateTime?
+  scanProgress     Json?
+  scanFailure      Json?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }

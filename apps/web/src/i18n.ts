@@ -706,6 +706,39 @@ const en: Record<string, string> = {
   "Almacenamiento S3": "S3 storage",
   "Buckets compatibles con S3 (MinIO, AWS, Cloudflare R2, Backblaze…) que el servidor cataloga como un disco más. Las credenciales se guardan cifradas en el servidor.": "S3-compatible buckets (MinIO, AWS, Cloudflare R2, Backblaze…) that the server catalogs like any other drive. Credentials are stored encrypted on the server.",
   "Añadir bucket": "Add bucket",
+  "Bucket S3": "S3 bucket",
+  "Carpeta en el bucket": "Folder in the bucket",
+  "Quita también el bucket en Almacenamiento S3: si no, el próximo escaneo vuelve a crear este disco": "Also remove the bucket in S3 storage: otherwise the next scan creates this drive again",
+  "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.": "This video is in an S3 bucket: there is no file on a PC to open or delete from here.",
+  "Los videos de buckets S3 todavía no se pueden reproducir desde aquí.": "Videos in S3 buckets cannot be played from here yet.",
+  "Escanear ahora": "Scan now",
+  "Escaneo fallido": "Scan failed",
+  "Listando el bucket. Objetos vistos:": "Listing the bucket. Objects seen:",
+  "Terminando: marcando lo que ya no está en el bucket.": "Finishing: marking what is no longer in the bucket.",
+  "No hay videos nuevos ni cambiados.": "There are no new or changed videos.",
+  "Leyendo videos nuevos o cambiados:": "Reading new or changed videos:",
+  "El último escaneo falló.": "The last scan failed.",
+  "Se interrumpió y sigue en el próximo.": "It was interrupted and continues in the next one.",
+  "Último escaneo:": "Last scan:",
+  "Videos:": "Videos:",
+  "Leídos:": "Read:",
+  "Con error:": "With errors:",
+  "Movidos:": "Moved:",
+  "Ya no están:": "No longer there:",
+  "El escáner de buckets no está en marcha": "The bucket scanner is not running",
+  "El escáner no encuentra ffmpeg": "The scanner cannot find ffmpeg",
+  "Ya se está escaneando": "It is already being scanned",
+  "En cola: el escáner lo toma en unos segundos": "Queued: the scanner takes it within seconds",
+  "El escáner de buckets no responde.": "The bucket scanner is not answering.",
+  "El escáner de buckets no está instalado.": "The bucket scanner is not installed.",
+  "Los buckets los lee un contenedor aparte, videocat-scanner, que trae ffmpeg. Actívalo en la carpeta del stack con:": "Buckets are read by a separate container, videocat-scanner, which carries ffmpeg. Turn it on in the stack folder with:",
+  "En Portainer: agrega la variable COMPOSE_PROFILES=s3 al stack y vuelve a desplegarlo.": "In Portainer: add the variable COMPOSE_PROFILES=s3 to the stack and deploy it again.",
+  "El escáner está en marcha, pero no encuentra ffmpeg.": "The scanner is running, but cannot find ffmpeg.",
+  "No se pudo pedir el escaneo.": "The scan could not be requested.",
+  "¿Quitarlo de VideoCAT? No se borra nada del bucket; su disco y su catálogo quedan en Discos.": "Remove it from VideoCAT? Nothing in the bucket is deleted; its drive and catalog stay in Drives.",
+  "Los videos de buckets S3 todavía no se pueden descargar a la PC.": "Videos in S3 buckets cannot be downloaded to the PC yet.",
+  "Las carpetas de buckets S3 todavía no pueden recibir traslados.": "Folders in S3 buckets cannot receive transfers yet.",
+  "En buckets S3": "In S3 buckets",
   "Guarda o cancela el formulario abierto": "Save or cancel the open form",
   "Falta configurar STORAGE_SECRET_KEY en el servidor": "STORAGE_SECRET_KEY is not set on the server",
   "La clave de cifrado del servidor no es válida.": "The server's encryption key is not valid.",
@@ -1141,6 +1174,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) no se mueven$/);
   if (match) return `${match[1]} do not move`;
+
+  match = text.match(/^([\d.,\s]+) están en buckets S3 y no se ofrecen: los traslados todavía no incluyen buckets\.$/);
+  if (match) return `${match[1]} are in S3 buckets and are not offered: transfers do not include buckets yet.`;
+
+  match = text.match(/^([\d.,\s]+) no se mueven: los traslados todavía no incluyen buckets$/);
+  if (match) return `${match[1]} do not move: transfers do not include buckets yet`;
 
   match = text.match(/^([\d.,\s]+) están en carpetas favoritas y no se ofrecen\.$/);
   if (match) return `${match[1]} are in favorite folders and are not offered.`;

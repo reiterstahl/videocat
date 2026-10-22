@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Check, Cloud, KeyRound, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Check, Cloud, KeyRound, Pencil, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
-import { dateLabel } from "../lib/app-helpers";
+import { dateLabel, formatCount } from "../lib/app-helpers";
 import type { S3CheckResult, S3CheckStep, S3Failure, StorageBucketItem, StorageBucketsResponse } from "../lib/app-types";
 
 // Administración › Almacenamiento S3: buckets (MinIO, AWS, R2, Backblaze…) that the server
@@ -113,6 +113,62 @@ function CheckResultView({ check, forcePathStyle }: { check: S3CheckResult; forc
   );
 }
 
+// How the last or current scan of a bucket went, in words.
+function ScanState({ bucket, locale }: { bucket: StorageBucketItem; locale: string }) {
+  const progress = bucket.scanProgress;
+  if (bucket.scanStatus === "running") {
+    const total = progress?.toProcess ?? 0;
+    const done = progress?.processed ?? 0;
+    return (
+      <div className="vc-s3-scan is-running">
+        {progress?.phase === "listing" || !progress?.phase ? (
+          <p><span>Listando el bucket. Objetos vistos:</span> <code className="vc-s3-detail">{formatCount(progress?.listed ?? 0)}</code></p>
+        ) : progress.phase === "finishing" ? (
+          <p><span>Terminando: marcando lo que ya no está en el bucket.</span></p>
+        ) : total === 0 ? (
+          <p><span>No hay videos nuevos ni cambiados.</span></p>
+        ) : (
+          <>
+            <p><span>Leyendo videos nuevos o cambiados:</span> <code className="vc-s3-detail">{`${formatCount(done)} / ${formatCount(total)}`}</code></p>
+            <div className="vc-s3-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+              <span style={{ width: `${Math.round((done / Math.max(1, total)) * 100)}%` }} />
+            </div>
+            {progress.current ? <small className="vc-s3-current">{progress.current}</small> : null}
+          </>
+        )}
+      </div>
+    );
+  }
+  if (bucket.scanStatus === "failed" && bucket.scanFailure) {
+    const failure = bucket.scanFailure;
+    return (
+      <div className="vc-s3-scan is-failed">
+        <p className="vc-s3-row-failure">
+          <span>El último escaneo falló.</span>{" "}
+          {failure.code === "scan_error" ? <code className="vc-s3-detail">{failure.detail}</code>
+            : failure.code === "interrupted" ? <span>Se interrumpió y sigue en el próximo.</span>
+            : <FailureText failure={failure} step="list" forcePathStyle={bucket.forcePathStyle} />}
+        </p>
+      </div>
+    );
+  }
+  if (bucket.scanFinishedAt && progress?.phase === "done") {
+    return (
+      <div className="vc-s3-scan">
+        <p>
+          <span>Último escaneo:</span> <code className="vc-s3-detail">{dateLabel(bucket.scanFinishedAt, locale)}</code>{" "}
+          <span>Videos:</span> <code className="vc-s3-detail">{formatCount(progress.listed ?? 0)}</code>{" "}
+          <span>Leídos:</span> <code className="vc-s3-detail">{formatCount(progress.processed ?? 0)}</code>
+          {(progress.failed ?? 0) > 0 ? <>{" "}<span>Con error:</span> <code className="vc-s3-detail">{formatCount(progress.failed ?? 0)}</code></> : null}
+          {(progress.relocated ?? 0) > 0 ? <>{" "}<span>Movidos:</span> <code className="vc-s3-detail">{formatCount(progress.relocated ?? 0)}</code></> : null}
+          {(progress.markedAbsent ?? 0) > 0 ? <>{" "}<span>Ya no están:</span> <code className="vc-s3-detail">{formatCount(progress.markedAbsent ?? 0)}</code></> : null}
+        </p>
+      </div>
+    );
+  }
+  return null;
+}
+
 function bucketPlace(bucket: Pick<StorageBucketItem, "endpoint" | "region" | "bucket" | "prefix">): string {
   const host = bucket.endpoint ? new URL(bucket.endpoint).host : `AWS ${bucket.region}`;
   return `${host} · ${bucket.bucket}/${bucket.prefix}`;
@@ -143,6 +199,36 @@ export function StorageBucketsSection({ locale, refreshKey }: { locale: string; 
   }, [load, refreshKey]);
 
   const keyReady = data?.encryptionKey === "ready";
+  const scanner = data?.scanner;
+  const scanning = data?.buckets.some((bucket) => bucket.scanStatus === "running" || bucket.scanRequestedAt) ?? false;
+
+  // While a scan runs or waits, the rows follow it.
+  useEffect(() => {
+    if (!scanning) return;
+    const timer = window.setInterval(() => void load(), 3000);
+    return () => window.clearInterval(timer);
+  }, [scanning, load]);
+
+  async function requestScan(bucket: StorageBucketItem) {
+    setRowBusy(bucket.id);
+    setError("");
+    try {
+      const response = await api<{ bucket: StorageBucketItem }>(`/api/storage/buckets/${bucket.id}/scan`, { method: "POST", body: JSON.stringify({}) });
+      setData((current) => current ? { ...current, buckets: current.buckets.map((item) => (item.id === bucket.id ? response.bucket : item)) } : current);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo pedir el escaneo.");
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  function scanBlockedReason(bucket: StorageBucketItem): string | null {
+    if (!scanner?.online) return "El escáner de buckets no está en marcha";
+    if (!scanner.ffmpeg) return "El escáner no encuentra ffmpeg";
+    if (bucket.scanStatus === "running") return "Ya se está escaneando";
+    if (bucket.scanRequestedAt) return "En cola: el escáner lo toma en unos segundos";
+    return null;
+  }
 
   function openForm(bucket?: StorageBucketItem) {
     setMessage("");
@@ -272,6 +358,19 @@ export function StorageBucketsSection({ locale, refreshKey }: { locale: string; 
           </div>
         ) : null}
 
+        {data && keyReady && data.buckets.length > 0 && !scanner?.online ? (
+          <div className="vc-s3-key">
+            <Cloud size={18} aria-hidden="true" />
+            <div>
+              <strong>{scanner?.installed ? "El escáner de buckets no responde." : "El escáner de buckets no está instalado."}</strong>
+              <p>Los buckets los lee un contenedor aparte, videocat-scanner, que trae ffmpeg. Actívalo en la carpeta del stack con:</p>
+              <code>docker compose --profile s3 up -d</code>
+              <small>En Portainer: agrega la variable COMPOSE_PROFILES=s3 al stack y vuelve a desplegarlo.</small>
+            </div>
+          </div>
+        ) : null}
+        {scanner?.online && !scanner.ffmpeg ? <div className="form-error">El escáner está en marcha, pero no encuentra ffmpeg.</div> : null}
+
         {form ? (
           <form className="vc-s3-form" onSubmit={save}>
             <label className="vc-field">
@@ -370,16 +469,29 @@ export function StorageBucketsSection({ locale, refreshKey }: { locale: string; 
                   {bucket.lastCheckOk === true ? "Conexión correcta" : bucket.lastCheckOk === false ? "Sin conexión" : "Sin comprobar"}
                 </span>
                 {bucket.lastCheckedAt ? <span className="vc-badge">{`Comprobado ${dateLabel(bucket.lastCheckedAt, locale)}`}</span> : null}
-                {!bucket.diskId ? <span className="vc-badge is-warning">Sin escanear todavía</span> : null}
+                {bucket.scanStatus === "running" ? <span className="vc-badge is-success">Escaneando</span>
+                  : bucket.scanRequestedAt ? <span className="vc-badge">En cola</span>
+                  : bucket.scanStatus === "failed" ? <span className="vc-badge is-danger">Escaneo fallido</span>
+                  : !bucket.scanFinishedAt ? <span className="vc-badge is-warning">Sin escanear todavía</span> : null}
               </div>
               {pendingRemoval === bucket.id ? (
                 <div className="vc-inline-confirm">
-                  <span>¿Quitarlo de VideoCAT? No se borra nada del bucket.</span>
+                  <span>{bucket.diskId ? "¿Quitarlo de VideoCAT? No se borra nada del bucket; su disco y su catálogo quedan en Discos." : "¿Quitarlo de VideoCAT? No se borra nada del bucket."}</span>
                   <button className="vc-button is-small is-danger" disabled={rowBusy === bucket.id} onClick={() => void remove(bucket)} type="button">Quitar</button>
                   <button className="vc-button is-small" onClick={() => setPendingRemoval(null)} type="button">Cancelar</button>
                 </div>
               ) : (
                 <div className="vc-s3-row-actions">
+                  <button
+                    className="vc-icon-button is-ghost"
+                    disabled={rowBusy === bucket.id || scanBlockedReason(bucket) !== null}
+                    onClick={() => void requestScan(bucket)}
+                    aria-label="Escanear ahora"
+                    title={scanBlockedReason(bucket) ?? "Escanear ahora"}
+                    type="button"
+                  >
+                    <Play size={16} />
+                  </button>
                   <button className="vc-icon-button is-ghost" disabled={rowBusy === bucket.id || !keyReady} onClick={() => void recheck(bucket)} aria-label="Probar conexión" title={keyReady ? "Probar conexión" : "Falta configurar STORAGE_SECRET_KEY en el servidor"} type="button">
                     <RefreshCw size={16} />
                   </button>
@@ -391,6 +503,8 @@ export function StorageBucketsSection({ locale, refreshKey }: { locale: string; 
                   </button>
                 </div>
               )}
+              {/* Last in the row: it takes a line of its own below the name, badges and actions. */}
+              <ScanState bucket={bucket} locale={locale} />
             </article>
           ))}
           {data && data.buckets.length === 0 && !form ? <div className="empty">Todavía no hay buckets S3.</div> : null}

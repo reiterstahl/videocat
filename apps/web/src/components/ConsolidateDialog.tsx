@@ -136,6 +136,12 @@ export function ConsolidateDialog({ destination, sources, onCancel, onCreated }:
                     <dd>{`${formatCount(plan.skipped.favorites)} no se mueven`}</dd>
                   </div>
                 ) : null}
+                {(plan.skipped.objectStorage ?? 0) > 0 ? (
+                  <div>
+                    <dt>En buckets S3</dt>
+                    <dd>{`${formatCount(plan.skipped.objectStorage ?? 0)} no se mueven: los traslados todavía no incluyen buckets`}</dd>
+                  </div>
+                ) : null}
                 {plan.skipped.inTransfer > 0 ? (
                   <div>
                     <dt>En otro traslado</dt>

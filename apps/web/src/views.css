@@ -3514,6 +3514,45 @@ a.vc-button {
   gap: 2px;
 }
 
+.vc-s3-scan {
+  grid-column: 2 / -1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.vc-s3-scan p {
+  margin: 0;
+  color: var(--vc-text-soft);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.vc-s3-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vc-muted) 22%, transparent);
+}
+
+.vc-s3-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vc-accent);
+  transition: width 0.4s ease;
+}
+
+.vc-s3-current {
+  overflow: hidden;
+  color: var(--vc-muted);
+  font-family: var(--vc-font-mono);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .vc-s3-row {
     grid-template-columns: minmax(0, 1fr);

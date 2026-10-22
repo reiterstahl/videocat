@@ -93,7 +93,12 @@ const consolidateSchema = z.object({
 const plannedFileSelect = { id: true, diskId: true, relativePath: true, filename: true, sizeBytes: true, modifiedAt: true } satisfies Prisma.VideoFileSelect;
 type PlannedFile = Prisma.VideoFileGetPayload<{ select: typeof plannedFileSelect }>;
 type DestinationWithDisk = Prisma.TransferDestinationGetPayload<{ include: { disk: true } }>;
-type SkipReason = "already_there" | "in_transfer" | "duplicate_at_destination" | "favorite";
+type SkipReason = "already_there" | "in_transfer" | "duplicate_at_destination" | "favorite" | "object_storage";
+
+// Drives the server keeps itself (S3 buckets): no Companion can copy to or from them yet.
+async function objectStorageDiskIds(): Promise<Set<string>> {
+  return new Set((await prisma.disk.findMany({ where: { kind: "s3" }, select: { id: true } })).map((disk) => disk.id));
+}
 
 type FavoriteFolder = { diskId: string; path: string };
 
@@ -137,6 +142,7 @@ async function connectedDiskIds(): Promise<Set<string>> {
 
 // Decides which files can move to the destination and whether they fit there.
 async function planTransfer(destination: DestinationWithDisk, files: PlannedFile[]): Promise<TransferPlan> {
+  const objectStorage = await objectStorageDiskIds();
   const busyIds = new Set((await prisma.transferItem.findMany({
     where: { videoFileId: { in: files.map((file) => file.id) }, state: { in: unfinishedStates } },
     select: { videoFileId: true }
@@ -156,6 +162,10 @@ async function planTransfer(destination: DestinationWithDisk, files: PlannedFile
     }
     if (inFavorite(file, favorites)) {
       skipped.push({ fileId: file.id, reason: "favorite" });
+      return false;
+    }
+    if (objectStorage.has(file.diskId)) {
+      skipped.push({ fileId: file.id, reason: "object_storage" });
       return false;
     }
     if (busyIds.has(file.id)) {
@@ -446,8 +456,9 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/transfers/destinations", { preHandler: requireWebAuth }, async (request, reply) => {
     const body = destinationSchema.parse(request.body);
     const path = cleanFolder(body.path);
-    const disk = await prisma.disk.findUnique({ where: { id: body.diskId }, select: { id: true } });
+    const disk = await prisma.disk.findUnique({ where: { id: body.diskId }, select: { id: true, kind: true } });
     if (!disk) return reply.code(404).send({ message: "Disk not found" });
+    if (disk.kind === "s3") return reply.code(409).send({ message: "Folders in S3 buckets cannot receive transfers yet", reason: "object_storage" });
     // Only folders the person can see: a locked protected folder never becomes a destination.
     const sample = await prisma.videoFile.findFirst({
       where: visibleFilesWhere(isProtectedFolderUnlocked(request), { diskId: body.diskId, OR: [{ relativePath: { startsWith: `${path}/` } }, { relativePath: { startsWith: `${path}\\` } }] }),
@@ -661,7 +672,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
         skipped: {
           duplicates: plan.skipped.filter((entry) => entry.reason === "duplicate_at_destination").length,
           inTransfer: plan.skipped.filter((entry) => entry.reason === "in_transfer").length,
-          favorites: plan.skipped.filter((entry) => entry.reason === "favorite").length
+          favorites: plan.skipped.filter((entry) => entry.reason === "favorite").length,
+          objectStorage: plan.skipped.filter((entry) => entry.reason === "object_storage").length
         }
       };
       if (mode === "preview") return summary;
@@ -735,7 +747,8 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
     const busyIds = new Set(busy.map((item) => item.videoFileId));
     const ignoredIds = new Set(ignored.map((entry) => entry.videoFileId));
     const destinationKeys = new Set(destinationFiles.map((file) => `${file.filename.toLowerCase()}|${file.sizeBytes}`));
-    const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0, favorites: 0 };
+    const objectStorage = await objectStorageDiskIds();
+    const skipped = { inside: 0, inTransfer: 0, ignored: 0, duplicates: 0, favorites: 0, objectStorage: 0 };
     const candidates: Array<{ id: string; match: NameMatch; keyword: string; diskId: string; relativePath: string; sizeBytes: number }> = [];
     for (const file of files) {
       const found = bestNameMatch(file.filename, keys);
@@ -743,6 +756,7 @@ export async function transferRoutes(app: FastifyInstance): Promise<void> {
       const { match, keyword } = found;
       if (file.diskId === destination.diskId && insideFolder(file.relativePath, destination.path)) skipped.inside += 1;
       else if (inFavorite(file, favorites)) skipped.favorites += 1;
+      else if (objectStorage.has(file.diskId)) skipped.objectStorage += 1;
       else if (busyIds.has(file.id)) skipped.inTransfer += 1;
       else if (ignoredIds.has(file.id)) skipped.ignored += 1;
       else if (destinationKeys.has(`${file.filename.toLowerCase()}|${file.sizeBytes}`)) skipped.duplicates += 1;

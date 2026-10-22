@@ -189,6 +189,31 @@ export async function listObjects(
   return parseListObjects(await response.text());
 }
 
+export async function listAllObjects(location: S3Location, onPage?: (listed: number) => void): Promise<S3Object[]> {
+  const objects: S3Object[] = [];
+  let continuationToken: string | null = null;
+  do {
+    const page = await listObjects(location, { continuationToken });
+    objects.push(...page.objects);
+    onPage?.(objects.length);
+    continuationToken = page.truncated ? page.nextContinuationToken : null;
+  } while (continuationToken);
+  return objects;
+}
+
+// A GET URL with the signature in its query, for tools that only take a URL (ffprobe, ffmpeg).
+// It reads only that object and expires; it must never be stored or shown (scrubSignedUrls).
+export async function presignedGetUrl(location: S3Location, key: string, expiresSeconds = 3 * 60 * 60): Promise<string> {
+  const url = objectUrl(location, key);
+  url.searchParams.set("X-Amz-Expires", String(expiresSeconds));
+  const signed = await clientFor(location).sign(url.href, { method: "GET", aws: { signQuery: true } });
+  return signed.url;
+}
+
+export function scrubSignedUrls(text: string, signedUrl: string, replacement: string): string {
+  return text.split(signedUrl).join(replacement).replace(/https?:\/\/[^\s"']*X-Amz-Signature=[^\s"']*/g, replacement);
+}
+
 // Reads one byte: proves the credential may read objects without downloading them.
 export async function readFirstByte(location: S3Location, key: string): Promise<void> {
   const response = await s3Request(location, objectUrl(location, key), { headers: { Range: "bytes=0-0" } });

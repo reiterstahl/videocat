@@ -7,6 +7,15 @@ const booleanEnv = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
+// The S3 scanner (src/scanner.ts, VIDEOCAT_ROLE=scanner) shares this configuration but serves no
+// HTTP and signs nothing: it is not given the session, Companion or admin secrets.
+const scannerRole = process.env.VIDEOCAT_ROLE === "scanner";
+if (scannerRole) {
+  process.env.JWT_SECRET ??= "unused-by-the-videocat-scanner";
+  process.env.AGENT_TOKEN ??= "unused-by-the-videocat-scanner";
+  process.env.ADMIN_PASSWORD ??= "unused-by-the-videocat-scanner";
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   SERVER_PORT: z.coerce.number().int().positive().default(4000),
@@ -73,10 +82,12 @@ function assertProductionSecret(name: string, value: string, minimumLength: numb
   }
 }
 
-assertProductionSecret("JWT_SECRET", env.JWT_SECRET, 32, ["change-me-long-random-string"]);
-assertProductionSecret("AGENT_TOKEN", env.AGENT_TOKEN, 32, ["change-me-agent-token"]);
-assertProductionSecret("ADMIN_PASSWORD", env.ADMIN_PASSWORD, 12, ["change-me-admin-password"]);
-assertProductionSecret("PROTECTED_FOLDER_PIN", env.PROTECTED_FOLDER_PIN, 4, ["0000", "1234", "2468", "9284"]);
+if (!scannerRole) {
+  assertProductionSecret("JWT_SECRET", env.JWT_SECRET, 32, ["change-me-long-random-string"]);
+  assertProductionSecret("AGENT_TOKEN", env.AGENT_TOKEN, 32, ["change-me-agent-token"]);
+  assertProductionSecret("ADMIN_PASSWORD", env.ADMIN_PASSWORD, 12, ["change-me-admin-password"]);
+  assertProductionSecret("PROTECTED_FOLDER_PIN", env.PROTECTED_FOLDER_PIN, 4, ["0000", "1234", "2468", "9284"]);
+}
 
 function allWebOriginsAreLocal(originList: string): boolean {
   return originList
