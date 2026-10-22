@@ -1275,15 +1275,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/playback/random", { preHandler: requireWebAuth }, async (request, reply) => {
     const query = randomPlaybackQuerySchema.parse(request.query);
     const presence = await companionPresence();
-    if (!presence.online) {
-      return reply.code(409).send({ message: "Companion is offline" });
-    }
-    if (presence.mountedDiskIds.length === 0) {
-      return reply.code(409).send({ message: "No connected disks are available" });
+    // S3 buckets play through the server: always available, with or without a Companion.
+    const bucketDiskIds = (await prisma.disk.findMany({ where: { kind: "s3", storageBucket: { isNot: null } }, select: { id: true } })).map((disk) => disk.id);
+    const playableDiskIds = [...(presence.online ? presence.mountedDiskIds : []), ...bucketDiskIds];
+    if (playableDiskIds.length === 0) {
+      return reply.code(409).send({ message: presence.online ? "No connected disks are available" : "Companion is offline" });
     }
 
     const where: Prisma.VideoFileWhereInput = {
-      diskId: { in: presence.mountedDiskIds },
+      diskId: { in: playableDiskIds },
       id: query.excludeId ? { not: query.excludeId } : undefined
     };
     applyHiddenPathFilter(where);

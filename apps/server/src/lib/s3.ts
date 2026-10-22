@@ -214,6 +214,34 @@ export function scrubSignedUrls(text: string, signedUrl: string, replacement: st
   return text.split(signedUrl).join(replacement).replace(/https?:\/\/[^\s"']*X-Amz-Signature=[^\s"']*/g, replacement);
 }
 
+export async function headObject(location: S3Location, key: string): Promise<{ sizeBytes: number; etag: string | null }> {
+  const response = await s3Request(location, objectUrl(location, key), { method: "HEAD" });
+  return {
+    sizeBytes: Number(response.headers.get("content-length") ?? 0),
+    etag: response.headers.get("etag")?.replace(/^"|"$/g, "") ?? null
+  };
+}
+
+// Bytes start..end (inclusive) of an object, as a stream: remote playback serves them as they come.
+// No timeout of its own: the read lasts as long as the person watches; signal ends it.
+export async function readObjectRange(location: S3Location, key: string, start: number, end: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+  // The service has requestTimeoutMs to start answering; the body then flows as long as needed.
+  const controller = new AbortController();
+  const stop = () => controller.abort(signal.reason);
+  if (signal.aborted) stop();
+  else signal.addEventListener("abort", stop, { once: true });
+  const timer = setTimeout(() => controller.abort(new DOMException("No answer", "TimeoutError")), requestTimeoutMs);
+  let response: Response;
+  try {
+    response = await s3Request(location, objectUrl(location, key), { headers: { Range: `bytes=${start}-${end}` }, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (response.status !== 206 && response.status !== 200) throw new S3RequestError({ code: "http_error", status: response.status, s3Code: null });
+  if (!response.body) throw new S3RequestError({ code: "http_error", status: response.status, s3Code: "EmptyBody" });
+  return response.body;
+}
+
 // Reads one byte: proves the credential may read objects without downloading them.
 export async function readFirstByte(location: S3Location, key: string): Promise<void> {
   const response = await s3Request(location, objectUrl(location, key), { headers: { Range: "bytes=0-0" } });

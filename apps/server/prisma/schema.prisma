@@ -290,7 +290,9 @@ model CompanionPairingCode {
 model StreamSession {
   id             String    @id @default(uuid()) @db.Uuid
   videoFileId    String    @db.Uuid
-  companionId    String    @db.Uuid
+  // Who serves the bytes: a Companion through its tunnel, or the server from an S3 bucket.
+  companionId    String?   @db.Uuid
+  storageBucketId String?  @db.Uuid
   ownerUsername  String
   status         String    @default("opening")
   mode           String    @default("original")

@@ -21,11 +21,13 @@ import {
   openCompanionStream,
   readCompanionStreamRange
 } from "../lib/companion-control-tunnel.js";
-import { companionStreamMaxRangeBytes, remoteStreamMaxInFlightRanges } from "@videocat/shared";
+import { companionStreamMaxRangeBytes, remoteStreamMaxInFlightRanges, streamMimeType } from "@videocat/shared";
 import { pumpRange } from "../lib/stream-pump.js";
 import { env } from "../lib/env.js";
 import { rateLimit } from "../lib/security.js";
 import { disksByAgentIdentifiers } from "../lib/disk-identifiers.js";
+import { locationOf } from "../lib/bucket-scan.js";
+import { headObject, readObjectRange } from "../lib/s3.js";
 
 const streamSessionSchema = z.object({
   fileId: z.string().uuid(),
@@ -66,7 +68,7 @@ function sessionExpired(session: { expiresAt: Date; createdAt: Date; lastAccesse
 
 async function expireStreamSession(
   app: FastifyInstance,
-  session: { id: string; companionId: string },
+  session: { id: string; companionId: string | null },
   errorCode: "expired" | "idle_timeout" | "cancelled" | "read_failed",
   reason: "client_closed" | "expired" | "superseded" | "error"
 ): Promise<void> {
@@ -78,7 +80,8 @@ async function expireStreamSession(
       completedAt: new Date()
     }
   });
-  cancelCompanionStream(app, session.companionId, session.id, reason);
+  // Sessions served from an S3 bucket have no Companion to tell.
+  if (session.companionId) cancelCompanionStream(app, session.companionId, session.id, reason);
 }
 
 async function expireInactiveStreams(app: FastifyInstance, companionId?: string): Promise<void> {
@@ -116,6 +119,36 @@ async function* continueWith(first: Buffer, rest: AsyncGenerator<Buffer>): Async
   yield* rest;
 }
 
+// A newer playback of the same person replaces the one they were watching.
+async function replaceSession(app: FastifyInstance, request: { id: string }, ownerUsername: string, replaceSessionId: string | undefined, fileId: string): Promise<void> {
+  if (!replaceSessionId) return;
+  const replacedSession = await prisma.streamSession.findFirst({
+    where: {
+      id: replaceSessionId,
+      ownerUsername,
+      status: { in: activeStreamStatuses }
+    },
+    select: { id: true, companionId: true }
+  });
+  if (!replacedSession) return;
+  await expireStreamSession(app, replacedSession, "cancelled", "superseded");
+  app.log.info({
+    streamSessionId: replacedSession.id,
+    replacementFileId: fileId,
+    companionId: replacedSession.companionId,
+    ownerUsername,
+    requestId: request.id
+  }, "Remote stream session superseded by next playback request");
+}
+
+// Passes the bytes on as they come and keeps the session alive while they flow.
+async function* touchingEach(body: ReadableStream<Uint8Array>, touch: () => void): AsyncGenerator<Buffer> {
+  for await (const chunk of Readable.fromWeb(body as import("node:stream/web").ReadableStream<Uint8Array>)) {
+    touch();
+    yield chunk as Buffer;
+  }
+}
+
 export async function streamRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/stream-sessions", { preHandler: requireWebAuth }, async (request, reply) => {
     const ownerUsername = authenticatedWebUsername(request);
@@ -147,6 +180,40 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       const compatibleAudio = ["aac", "mp3"].includes((file.audioCodec ?? "").toLowerCase());
       if (!containerNeedsRemux || !compatibleVideo || !compatibleAudio) {
         return reply.code(400).send({ message: "This file is not eligible for the MP4 remux fallback" });
+      }
+    }
+
+    // A video in an S3 bucket: the server reads it from the bucket, no Companion takes part.
+    const disk = await prisma.disk.findUnique({ where: { id: file.diskId }, select: { kind: true, storageBucket: true } });
+    if (disk?.kind === "s3") {
+      if (mode === "remux") return reply.code(400).send({ message: "The MP4 remux is not available for videos in S3 buckets" });
+      const bucket = disk.storageBucket;
+      if (!bucket) return reply.code(409).send({ message: "This bucket is no longer set up in Administración" });
+      await expireInactiveStreams(app);
+      await replaceSession(app, request, ownerUsername, replaceSessionId, file.id);
+      const activeUserCount = await prisma.streamSession.count({
+        where: { ownerUsername, status: { in: activeStreamStatuses }, expiresAt: { gt: new Date() } }
+      });
+      if (activeUserCount >= env.REMOTE_STREAM_MAX_SESSIONS_PER_USER) {
+        return reply.code(409).send({ message: "Your account already has the maximum number of remote streams" });
+      }
+      const expiresAt = new Date(Date.now() + env.REMOTE_STREAM_SESSION_LIFETIME_MS);
+      const session = await prisma.streamSession.create({
+        data: { videoFileId: file.id, storageBucketId: bucket.id, ownerUsername, mode, expiresAt }
+      });
+      try {
+        const object = await headObject(locationOf(bucket), `${bucket.prefix}${file.relativePath}`);
+        if (object.sizeBytes !== Number(file.sizeBytes)) throw new Error("Object size changed since the last scan");
+        const ready = await prisma.streamSession.update({
+          where: { id: session.id },
+          data: { status: "ready", fileSizeBytes: BigInt(object.sizeBytes), mimeType: streamMimeType(file.extension.startsWith(".") ? file.extension : `.${file.extension}`) }
+        });
+        app.log.info({ streamSessionId: ready.id, storageBucketId: bucket.id, ownerUsername, requestId: request.id }, "Remote stream session ready from an S3 bucket");
+        return { session: { id: ready.id, status: ready.status, expiresAt: ready.expiresAt.toISOString(), mimeType: ready.mimeType, sizeBytes: Number(ready.fileSizeBytes ?? 0n) } };
+      } catch (error) {
+        await prisma.streamSession.update({ where: { id: session.id }, data: { status: "failed", errorCode: "not_available", completedAt: new Date() } });
+        app.log.warn({ streamSessionId: session.id, storageBucketId: bucket.id, requestId: request.id, error: error instanceof Error ? error.message : "unknown" }, "Remote stream session from an S3 bucket could not be prepared");
+        return reply.code(409).send({ message: "The bucket could not serve this video; scan it again" });
       }
     }
 
@@ -186,26 +253,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     if (!candidate) return reply.code(409).send({ message: mode === "remux" ? "No Companion with optional MP4 remuxing is ready" : "No paired Companion with this disk is ready for streaming" });
 
     await expireInactiveStreams(app, candidate.installationId);
-    if (replaceSessionId) {
-      const replacedSession = await prisma.streamSession.findFirst({
-        where: {
-          id: replaceSessionId,
-          ownerUsername,
-          status: { in: activeStreamStatuses }
-        },
-        select: { id: true, companionId: true }
-      });
-      if (replacedSession) {
-        await expireStreamSession(app, replacedSession, "cancelled", "superseded");
-        app.log.info({
-          streamSessionId: replacedSession.id,
-          replacementFileId: file.id,
-          companionId: replacedSession.companionId,
-          ownerUsername,
-          requestId: request.id
-        }, "Remote stream session superseded by next playback request");
-      }
-    }
+    await replaceSession(app, request, ownerUsername, replaceSessionId, file.id);
     const [activeCompanionCount, activeUserCount] = await Promise.all([
       prisma.streamSession.count({
         where: { companionId: candidate.installationId, ownerUsername, status: { in: activeStreamStatuses }, expiresAt: { gt: new Date() } }
@@ -341,12 +389,6 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         }
       }
       if (request.method === "HEAD") return reply.send();
-      const readRange = (offset: number, rangeLength: number) => readStreamRangeWithRetry(app, {
-        companionId: session.companionId,
-        sessionId: session.id,
-        offset,
-        length: rangeLength
-      });
       // Long playback keeps the session alive without a database write per chunk.
       let touchedAt = Date.now();
       const touch = () => {
@@ -354,6 +396,36 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
         touchedAt = Date.now();
         void prisma.streamSession.update({ where: { id }, data: { lastAccessedAt: new Date() } }).catch(() => undefined);
       };
+
+      if (session.storageBucketId) {
+        const [bucket, file] = await Promise.all([
+          prisma.storageBucket.findUnique({ where: { id: session.storageBucketId } }),
+          prisma.videoFile.findUnique({ where: { id: session.videoFileId }, select: { relativePath: true } })
+        ]);
+        if (!bucket || !file) return reply.code(404).send({ message: "Stream session unavailable" });
+        // The read stops when the browser goes away (a seek, a pause that drops the request).
+        const upstream = new AbortController();
+        request.raw.on("close", () => upstream.abort());
+        let body: ReadableStream<Uint8Array>;
+        try {
+          await prisma.streamSession.update({ where: { id }, data: { status: "streaming", lastAccessedAt: new Date() } });
+          body = await readObjectRange(locationOf(bucket), `${bucket.prefix}${file.relativePath}`, range.start, range.end, upstream.signal);
+        } catch (error) {
+          if (request.raw.aborted || reply.raw.destroyed) return reply;
+          app.log.warn({ streamSessionId: session.id, storageBucketId: bucket.id, requestId: request.id, error: error instanceof Error ? error.message : "unknown" }, "S3 stream range failed; session remains available for retry");
+          return reply.code(503).header("Retry-After", "1").send({ message: "The bucket did not answer this range" });
+        }
+        return reply.send(Readable.from(touchingEach(body, touch), { objectMode: false }));
+      }
+
+      const companionId = session.companionId;
+      if (!companionId) return reply.code(404).send({ message: "Stream session unavailable" });
+      const readRange = (offset: number, rangeLength: number) => readStreamRangeWithRetry(app, {
+        companionId,
+        sessionId: session.id,
+        offset,
+        length: rangeLength
+      });
       const chunks = pumpRange({
         start: range.start,
         end: range.end,

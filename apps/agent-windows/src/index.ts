@@ -18,6 +18,7 @@ import {
   companionPortCandidates,
   formatBytes,
   isVideoExtension,
+  streamMimeType,
   type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
@@ -212,16 +213,6 @@ type CompanionHeartbeatResponse = {
   };
 };
 
-function streamMimeType(filePath: string): string {
-  switch (path.extname(filePath).toLowerCase()) {
-    case ".mp4": return "video/mp4";
-    case ".webm": return "video/webm";
-    case ".mkv": return "video/x-matroska";
-    case ".mov": return "video/quicktime";
-    case ".avi": return "video/x-msvideo";
-    default: return "application/octet-stream";
-  }
-}
 
 async function resolveCompanionStreamFile(input: { diskId: string; relativePath: string }): Promise<{ path: string; sizeBytes: number; mimeType: string } | null> {
   const filePath = await resolveCompanionPath({ diskId: input.diskId, relativePath: input.relativePath });
@@ -229,7 +220,7 @@ async function resolveCompanionStreamFile(input: { diskId: string; relativePath:
   try {
     const stat = await fs.stat(filePath);
     if (!stat.isFile() || stat.size <= 0) return null;
-    return { path: filePath, sizeBytes: stat.size, mimeType: streamMimeType(filePath) };
+    return { path: filePath, sizeBytes: stat.size, mimeType: streamMimeType(path.extname(filePath)) };
   } catch {
     return null;
   }

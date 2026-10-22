@@ -710,7 +710,6 @@ const en: Record<string, string> = {
   "Carpeta en el bucket": "Folder in the bucket",
   "Quita también el bucket en Almacenamiento S3: si no, el próximo escaneo vuelve a crear este disco": "Also remove the bucket in S3 storage: otherwise the next scan creates this drive again",
   "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.": "This video is in an S3 bucket: there is no file on a PC to open or delete from here.",
-  "Los videos de buckets S3 todavía no se pueden reproducir desde aquí.": "Videos in S3 buckets cannot be played from here yet.",
   "Escanear ahora": "Scan now",
   "Escaneo fallido": "Scan failed",
   "Listando el bucket. Objetos vistos:": "Listing the bucket. Objects seen:",

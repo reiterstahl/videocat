@@ -121,13 +121,14 @@ export function FileDetail({
   const galleryThumb = galleryIndex == null ? null : file.thumbnails[galleryIndex];
   const canOpenPreviousImage = galleryIndex != null && galleryIndex > 0;
   const canOpenNextImage = galleryIndex != null && galleryIndex < file.thumbnails.length - 1;
-  // A video in an S3 bucket has no file on a PC: the Companion's actions do not apply to it.
+  // A video in an S3 bucket has no file on a PC: the Companion's actions do not apply to it,
+  // and the server plays it from the bucket (without the MP4 remux, which needs ffmpeg).
   const objectStorage = file.disk?.kind === "s3";
   const objectStorageReason = "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.";
-  const canStreamRemotely = !objectStorage && companionOnline && companionMountedDiskIds.includes(file.diskId);
+  const canStreamRemotely = objectStorage || (companionOnline && companionMountedDiskIds.includes(file.diskId));
   const playbackSupport = browserPlaybackSupport(file);
   const remoteAvailabilityMessage = objectStorage
-    ? "Los videos de buckets S3 todavía no se pueden reproducir desde aquí."
+    ? playbackSupport.result === "" ? "Este navegador no puede reproducir el formato original de este video." : ""
     : !companionOnline
     ? "La reproducción remota requiere un Companion sincronizado con el servidor. Ábrelo en la PC donde está conectado el disco."
     : !companionMountedDiskIds.includes(file.diskId)
@@ -342,7 +343,7 @@ export function FileDetail({
 
   function requestRemotePlayback(mode: "original" | "remux" = "original") {
     if (remoteState === "preparing") return;
-    if (!companionOnline || !companionMountedDiskIds.includes(file.diskId)) {
+    if (!canStreamRemotely) {
       setRemoteState("idle");
       setRemoteMessage(remoteAvailabilityMessage);
       return;
@@ -369,13 +370,13 @@ export function FileDetail({
       setRemoteMessage("Activa Chromecast en Perfil antes de compartir un flujo de video.");
       return;
     }
-    if (!companionOnline || !companionMountedDiskIds.includes(file.diskId)) {
+    if (!canStreamRemotely) {
       setRemoteState("idle");
       setRemoteMessage(remoteAvailabilityMessage);
       return;
     }
 
-    const mode = playbackSupport.result === "" && playbackSupport.remuxUseful ? "remux" : "original";
+    const mode = playbackSupport.result === "" && playbackSupport.remuxUseful && !objectStorage ? "remux" : "original";
     if (remoteSessionId) await stopRemotePlayback("", false);
     setRemoteState("preparing");
     setRemoteMode(mode);
@@ -661,7 +662,7 @@ export function FileDetail({
           <Cast size={20} />
         </button>
       ) : null}
-      {playbackSupport.result === "" && playbackSupport.remuxUseful ? (
+      {playbackSupport.result === "" && playbackSupport.remuxUseful && !objectStorage ? (
         <button
           className="detail-primary-action is-remux"
           disabled={remoteState === "preparing"}
@@ -795,7 +796,7 @@ export function FileDetail({
                 }}
                 onError={(event) => {
                   const video = event.currentTarget;
-                  if (remoteSessionId && companionOnline && remoteRecoveryAttemptsRef.current < 1) {
+                  if (remoteSessionId && (companionOnline || objectStorage) && remoteRecoveryAttemptsRef.current < 1) {
                     remoteRecoveryAttemptsRef.current += 1;
                     remoteResumeTimeRef.current = video.currentTime;
                     setRemoteState("buffering");
@@ -866,7 +867,7 @@ export function FileDetail({
                 </button>
                 <button
                   type="button"
-                  disabled={remoteShuffleEnabled ? !companionOnline || companionMountedDiskIds.length === 0 : !canOpenNext}
+                  disabled={remoteShuffleEnabled ? !objectStorage && (!companionOnline || companionMountedDiskIds.length === 0) : !canOpenNext}
                   onClick={advanceRemotePlayback}
                   title={remoteShuffleEnabled ? "Reproducir otro video al azar" : "Reproducir el siguiente video"}
                   aria-label={remoteShuffleEnabled ? "Reproducir otro video al azar" : "Reproducir el siguiente video"}

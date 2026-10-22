@@ -1985,7 +1985,7 @@ test("S3 buckets are checked, saved with a sealed secret, edited and removed fro
 });
 
 // Also needs ffmpeg/ffprobe on PATH and a writable THUMBNAILS_DIR.
-test("the S3 scanner catalogs a bucket, keeps the entry of a renamed object and marks deleted ones absent", { skip: s3TestSkip }, async () => {
+test("the S3 scanner catalogs a bucket, plays it by ranges, keeps the entry of a renamed object and marks deleted ones absent", { skip: s3TestSkip }, async () => {
   const { AwsClient } = await import("aws4fetch");
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -2040,6 +2040,29 @@ test("the S3 scanner catalogs a bucket, keeps the entry of a renamed object and 
 
     // Unchanged objects are not read again.
     assert.deepEqual(await scanBucket(bucketId, options), { listed: 2, unchanged: 2, processed: 0, failed: 0, relocated: 0, markedAbsent: 0 });
+
+    // Remote playback: the server reads the bucket by ranges, no Companion involved.
+    const original = await fs.readFile(path.join(work, "uno.mp4"));
+    const opened = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId: uno.id } });
+    assert.equal(opened.statusCode, 200, opened.body);
+    const session = opened.json().session;
+    assert.deepEqual([session.status, session.mimeType, session.sizeBytes], ["ready", "video/mp4", original.length]);
+    const head = await app.inject({ method: "GET", url: `/api/streams/${session.id}/content`, headers: { cookie, range: "bytes=0-99" } });
+    assert.equal(head.statusCode, 206);
+    assert.equal(head.headers["content-range"], `bytes 0-99/${original.length}`);
+    assert.ok(head.rawPayload.equals(original.subarray(0, 100)));
+    const rest = await app.inject({ method: "GET", url: `/api/streams/${session.id}/content`, headers: { cookie, range: "bytes=100-" } });
+    assert.equal(rest.statusCode, 206);
+    assert.ok(rest.rawPayload.equals(original.subarray(100)), "an open range streams the rest of the object");
+    assert.equal((await app.inject({ method: "GET", url: `/api/streams/${session.id}/content`, headers: { cookie, range: `bytes=${original.length}-` } })).statusCode, 416);
+    const remux = await app.inject({ method: "POST", url: "/api/stream-sessions", headers: webMutationHeaders(cookie), payload: { fileId: uno.id, mode: "remux" } });
+    assert.equal(remux.statusCode, 400);
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/stream-sessions/${session.id}`, headers: webMutationHeaders(cookie) })).statusCode, 200);
+    assert.equal((await app.inject({ method: "GET", url: `/api/streams/${session.id}/content`, headers: { cookie, range: "bytes=0-9" } })).statusCode, 404, "a closed session serves nothing");
+    // "Another video at random" also picks from buckets, with or without a Companion.
+    const random = await app.inject({ method: "GET", url: `/api/playback/random?excludeId=${uno.id}`, headers: { cookie } });
+    assert.equal(random.statusCode, 200, random.body);
+    assert.equal(random.json().file.diskId, diskId);
 
     // S3 renames are a copy and a delete; "dos" is deleted.
     const copy = await client.fetch(`${endpoint}/${bucketName}/Videos/Archivo/uno%20renombrado.mp4`, { method: "PUT", headers: { "x-amz-copy-source": `/${bucketName}/Videos/uno.mp4` } });

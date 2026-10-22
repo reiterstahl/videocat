@@ -143,6 +143,18 @@ export type AgentErrorInput = z.infer<typeof agentErrorSchema>;
 export type AgentErrorsBatchInput = z.infer<typeof agentErrorsBatchSchema>;
 export type FilesQueryInput = z.infer<typeof filesQuerySchema>;
 
+// The Content-Type a remote playback announces, from the file's extension (".mp4").
+export function streamMimeType(extension: string): string {
+  switch (extension.toLowerCase()) {
+    case ".mp4": return "video/mp4";
+    case ".webm": return "video/webm";
+    case ".mkv": return "video/x-matroska";
+    case ".mov": return "video/quicktime";
+    case ".avi": return "video/x-msvideo";
+    default: return "application/octet-stream";
+  }
+}
+
 export function isVideoExtension(extension: string): boolean {
   return videoExtensions.includes(extension.toLowerCase() as (typeof videoExtensions)[number]);
 }
