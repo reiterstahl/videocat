@@ -114,7 +114,7 @@ flowchart LR
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
 - **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder). Each drive's **free space** is on the map too, always in the same color, so the room left is always in view. **Instant search** (shortcut `/`) keeps only the matching blocks, ignoring case and accents, and filters the videos at the last level.
-- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed, emptied or, when it no longer exists, **removed** from VideoCAT.
+- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed (the name also goes into its marker), emptied or, when it no longer exists, **removed** from VideoCAT.
 - Audit of grouped errors and actions, with search, filters and CSV export.
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
 
@@ -130,6 +130,8 @@ flowchart LR
 - Installs with a Setup.exe, without administrator rights, and **updates itself** from GitHub Releases.
 - Pairs with a one-time code and keeps an individual credential encrypted by Windows.
 - Monitors marked drives and manually added paths, and rescans periodically without repeating work.
+- **A renamed folder or a file moved on the same drive is not processed again**: its catalog entry follows it with its tags, review, thumbnails and fingerprint. A copy stays a separate video.
+- A drive renamed in Administration also gets the new name in its `.videocat-disk.json`.
 - Reconciles missing files without losing tags or history, and reactivates them if they come back.
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
 - Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
@@ -208,7 +210,7 @@ Edit `.env` and replace every `replace-with-…` value. Generate each secret wit
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.44`) and `latest`.
+Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.45`) and `latest`.
 </details>
 
 ### 2. Windows Companion
@@ -233,10 +235,14 @@ The Companion's own windows are in Spanish; the names in parentheses below are t
 
 From the Companion's **Configuración… › Rutas** (Settings › Paths) you can:
 
-- **Añadir unidad…** or **Añadir carpeta…** (add a drive or a local/network folder) to monitor and scan it automatically.
+- **Añadir unidad…** (add a drive) and **Convertir…** (convert) on a drive without a marker: the Companion writes its `.videocat-disk.json` with the name you choose and from then on recognizes it under any letter.
+- **Añadir carpeta…** (add a folder) for a local or network folder.
 - See the **detected VideoCAT drives**: those with a `.videocat-disk.json` file at their root. The marker gives them a stable identity even if the drive letter changes, and lets you choose which inner folders to scan.
 
-To create the marker, use the [CLI agent](#cli-agent) (`init-disk` or `wizard`) or create the file by hand at the drive root:
+> [!IMPORTANT]
+> Drives added by letter in Companions before 0.2.21 show **sigue la letra** (follows the letter): Windows can give that letter to another drive, and its files would land in the wrong catalog. Use **Fijar identidad…** (pin identity): the Companion compares a random sample of that catalog with the files on the drive you pick and, if it is the same drive, writes the marker keeping its catalog. If the sample shows another drive, or a catalog mixed with another drive, it tells you and offers to create a new disk instead.
+
+You can also create the marker with the [CLI agent](#cli-agent) (`init-disk` or `wizard`) or by hand at the drive root:
 
 ```json
 {
@@ -343,7 +349,7 @@ The main `.env` settings (the full, commented list is in [`.env.example`](.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Trust in the reverse proxy; preferably limited to its CIDRs. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Where the `web` container is published (default `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN and folder-name fragments to protect (for example `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.44` or `latest`). |
+| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.45` or `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Optional remux and remote playback limits. |
 | `*_RETENTION_DAYS` | Retention for errors, actions and scans when cleanup runs from Administration. |
 
@@ -511,8 +517,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Docker images** (amd64 and arm64; also update `VIDEOCAT_VERSION` in `docker-compose.hub.yml` and the installers):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.44 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.44 -t reiterstahl/videocat-web:0.2.44 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.45 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.45 -t reiterstahl/videocat-web:0.2.45 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Verifying the Companion installer:

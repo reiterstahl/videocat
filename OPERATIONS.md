@@ -17,6 +17,14 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.45 (Companion 0.2.21)
+
+- **Renamed folders are not scanned again**: Companion 0.2.21 recognizes a folder renamed or a file moved on the same drive (same size, modification time and extension, and the old path is gone) and moves its catalog entry with `POST /api/agent/scans/:id/relocate`, keeping tags, review, thumbnails and fingerprint. Ambiguous cases (a folder renamed and also copied, two files that fit equally) are scanned as new, as before. Each scan that moves entries leaves a `scan.relocate` action in Auditoría.
+- **A copy no longer takes the original's catalog entry**: the server used to guess moves by name, size and time even when the original was still on the drive, so copying a video on the same drive could drop one of the two from the catalog. Companion 0.2.21 decides moves itself (`movesReported`) and the server stops guessing for it; for older Companions the guess skips entries the current scan already saw in place.
+- **Drives are pinned by marker, never by letter**: *Añadir unidad… › Convertir…* writes the `.videocat-disk.json`. Routes by letter saved by older Companions show *sigue la letra* and *Fijar identidad…*, which compares a random sample of that catalog (`GET /api/agent/disks/:id/identity-sample`) with the chosen drive before writing the marker with the same id.
+- **Names chosen in the web reach the marker**: the heartbeat returns them for the connected drives and the Companion rewrites only `diskName`, atomically.
+- No migrations or configuration changes. Server 0.2.45 works with Companion 0.2.20; the new behaviour needs 0.2.21. **Companion 0.2.21 is published once Electron ships the October 2026 Node.js security release** (every Electron release so far embeds Node 24.22.0 and packaging refuses it); until then 0.2.20 keeps working.
+
 ## Windows Companion 0.2.20
 
 - Built on Node.js 24.22.1. Companions 0.2.18 (Node 24.21.0) and 0.2.19 (Node 24.22.0) did not carry the security release: the build runner resolved an older Node 24. The release workflow now pins 24.22.1 and fails if the embedded Node differs.

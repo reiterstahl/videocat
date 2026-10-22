@@ -114,7 +114,7 @@ flowchart LR
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
 - **Esquema de uso** como mapa de carpetas por tamaño, navegable por niveles.
 - **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic **entra en la carpeta** y muestra toda su distribución, nivel por nivel, hasta los videos mismos como bloques proporcionales a su tamaño; los nombres genéricos se pueden excluir de la agrupación. Con clic derecho: **ir al catálogo** o marcar la carpeta como **favorita** (sus videos nunca se ofrecen para moverse a otra carpeta). El **espacio libre** de cada disco también aparece en el mapa, siempre del mismo color, para saber siempre cuánto lugar queda. La **búsqueda instantánea** (atajo `/`) deja solo los bloques que coinciden, sin importar mayúsculas ni tildes, y en el último nivel filtra los videos.
-- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza. Cada disco se puede renombrar, vaciar o, si ya no existe, **eliminar** de VideoCAT.
+- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza. Cada disco se puede renombrar (el nombre se guarda también en su marcador), vaciar o, si ya no existe, **eliminar** de VideoCAT.
 - Auditoría de errores agrupados y acciones, con búsqueda, filtros y exportación CSV.
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
 
@@ -130,6 +130,8 @@ flowchart LR
 - Se instala con un Setup.exe, sin permisos de administrador, y **se actualiza solo** desde GitHub Releases.
 - Emparejamiento con un código de un solo uso y credencial individual cifrada por Windows.
 - Monitorea discos con marcador y rutas añadidas a mano, y reescanea periódicamente sin repetir trabajo.
+- **Una carpeta renombrada o un archivo movido dentro del mismo disco no se vuelve a procesar**: su ficha del catálogo lo sigue con sus etiquetas, revisión, miniaturas y huella. Una copia queda como un video aparte.
+- Un disco renombrado en Administración guarda también el nombre nuevo en su `.videocat-disk.json`.
 - Concilia archivos ausentes sin perder etiquetas ni historial, y los reactiva si reaparecen.
 - Antes de borrar, revalida tamaño, fecha y huella visual; si la ruta ya contiene otro archivo, cancela.
 - Mueve los archivos de los **Traslados** a través de una carpeta temporal local, verificando cada copia con SHA-256.
@@ -208,7 +210,7 @@ Edita `.env` y reemplaza todos los valores `replace-with-…`. Genera cada secre
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.44`) y `latest`.
+Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.45`) y `latest`.
 </details>
 
 ### 2. Companion en Windows
@@ -231,10 +233,14 @@ Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstah
 
 Desde **Configuración… › Rutas** del Companion puedes:
 
-- **Añadir unidad…** o **Añadir carpeta…** (local o de red) para monitorearla y escanearla automáticamente.
+- **Añadir unidad…** y **Convertir…** en una unidad sin marcador: el Companion le escribe su `.videocat-disk.json` con el nombre que elijas y desde ahí la reconoce en cualquier letra.
+- **Añadir carpeta…** para una carpeta local o de red.
 - Ver los **discos VideoCAT detectados**: los que tienen un archivo `.videocat-disk.json` en la raíz. Ese marcador les da una identidad estable aunque cambie la letra de la unidad, y te deja elegir qué carpetas internas escanear.
 
-Para crear el marcador, usa el [agente CLI](#agente-cli) (`init-disk` o `wizard`) o crea el archivo a mano en la raíz del disco:
+> [!IMPORTANT]
+> Las unidades añadidas por letra con Companions anteriores a la 0.2.21 muestran **sigue la letra**: Windows puede darle esa letra a otro disco y sus archivos acabarían en el catálogo equivocado. Usa **Fijar identidad…**: el Companion compara una muestra al azar de ese catálogo con los archivos de la unidad que elijas y, si es el mismo disco, escribe el marcador conservando su catálogo. Si la muestra indica otro disco, o un catálogo mezclado con otra unidad, te lo dice y ofrece crear un disco nuevo.
+
+También puedes crear el marcador con el [agente CLI](#agente-cli) (`init-disk` o `wizard`) o a mano en la raíz del disco:
 
 ```json
 {
@@ -341,7 +347,7 @@ Las principales de `.env` (la lista completa, con comentarios, está en [`.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Confianza en el reverse proxy; mejor limitarla a sus CIDR. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Dónde publica el contenedor `web` (por defecto `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN y fragmentos de nombre de carpeta protegidos (por ejemplo `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.44` o `latest`). |
+| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.45` o `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Remux opcional y límites de la reproducción remota. |
 | `*_RETENTION_DAYS` | Retención de errores, acciones y escaneos al ejecutar la limpieza desde Administración. |
 
@@ -509,8 +515,8 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Imágenes Docker** (amd64 y arm64; actualiza también `VIDEOCAT_VERSION` en `docker-compose.hub.yml` y en los instaladores):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.44 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.44 -t reiterstahl/videocat-web:0.2.44 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.45 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.45 -t reiterstahl/videocat-web:0.2.45 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Verificación del instalador del Companion:
