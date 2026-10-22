@@ -203,6 +203,7 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       });
       try {
         const object = await headObject(locationOf(bucket), `${bucket.prefix}${file.relativePath}`);
+        if (!object) throw new Error("The object is no longer in the bucket");
         if (object.sizeBytes !== Number(file.sizeBytes)) throw new Error("Object size changed since the last scan");
         const ready = await prisma.streamSession.update({
           where: { id: session.id },

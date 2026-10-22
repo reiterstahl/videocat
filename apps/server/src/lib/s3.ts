@@ -214,12 +214,24 @@ export function scrubSignedUrls(text: string, signedUrl: string, replacement: st
   return text.split(signedUrl).join(replacement).replace(/https?:\/\/[^\s"']*X-Amz-Signature=[^\s"']*/g, replacement);
 }
 
-export async function headObject(location: S3Location, key: string): Promise<{ sizeBytes: number; etag: string | null }> {
-  const response = await s3Request(location, objectUrl(location, key), { method: "HEAD" });
+// null when the object does not exist. A HEAD answer has no body to tell "no such key" from
+// a wrong address, so callers first make sure the bucket itself answers (listObjects).
+export async function headObject(location: S3Location, key: string): Promise<{ sizeBytes: number; etag: string | null } | null> {
+  let response: Response;
+  try {
+    response = await s3Request(location, objectUrl(location, key), { method: "HEAD" });
+  } catch (error) {
+    if (error instanceof S3RequestError && "status" in error.failure && error.failure.status === 404) return null;
+    throw error;
+  }
   return {
     sizeBytes: Number(response.headers.get("content-length") ?? 0),
     etag: response.headers.get("etag")?.replace(/^"|"$/g, "") ?? null
   };
+}
+
+export async function deleteObject(location: S3Location, key: string): Promise<void> {
+  await s3Request(location, objectUrl(location, key), { method: "DELETE" });
 }
 
 // Bytes start..end (inclusive) of an object, as a stream: remote playback serves them as they come.

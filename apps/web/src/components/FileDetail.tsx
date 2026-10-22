@@ -688,7 +688,7 @@ export function FileDetail({
         className="detail-primary-action is-danger"
         disabled={objectStorage || companionBusy === "delete-file"}
         onClick={requestDeleteFile}
-        title={objectStorage ? objectStorageReason : "Borrar archivo fisicamente"}
+        title={objectStorage ? "Para borrarlo del bucket, márcalo para borrar (J en Review) y procesa los pendientes en Últimos borrados." : "Borrar archivo fisicamente"}
         aria-label="Borrar archivo fisicamente"
         type="button"
       >

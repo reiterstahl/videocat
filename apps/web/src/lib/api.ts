@@ -38,9 +38,7 @@ export function accessSignInUrl(): string {
 
 // Server refusals that can come from many places, in Spanish (the page translator turns them
 // into English).
-const serverMessages: Record<string, string> = {
-  "Videos in S3 buckets cannot be downloaded yet": "Los videos de buckets S3 todavía no se pueden descargar a la PC."
-};
+const serverMessages: Record<string, string> = {};
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);

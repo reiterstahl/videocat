@@ -379,9 +379,15 @@ export function App() {
     () => visibleFolderOptions(downloadFacets.folders, downloadExpandedFolders, downloadFolderSearch),
     [downloadExpandedFolders, downloadFacets.folders, downloadFolderSearch]
   );
+  // Drives the Companion has connected, plus S3 buckets: those come through the server, so any
+  // online Companion can download them.
+  const downloadAvailableIds = useMemo(
+    () => [...companionMountedDiskIds, ...(companionOnline ? disks.filter((disk) => disk.kind === "s3").map((disk) => disk.id) : [])],
+    [companionMountedDiskIds, companionOnline, disks]
+  );
   const downloadConnectedDisks = useMemo(
-    () => disks.filter((disk) => companionMountedDiskIds.includes(disk.id)),
-    [companionMountedDiskIds, disks]
+    () => disks.filter((disk) => downloadAvailableIds.includes(disk.id)),
+    [downloadAvailableIds, disks]
   );
   const companionNeedsUpdate = companionOnline && companionVersion < 5;
   const companionIndicatorState = companionOnline && !companionNeedsUpdate
@@ -527,7 +533,7 @@ export function App() {
   }, [authenticated, catalogVersion, protectedUnlockVersion]);
 
   useEffect(() => {
-    const availableIds = companionMountedDiskIds.filter((id) => disks.some((disk) => disk.id === id));
+    const availableIds = downloadAvailableIds.filter((id) => disks.some((disk) => disk.id === id));
     const previousIds = previousMountedDiskIdsRef.current;
     setDownloadDiskIds((current) => {
       const retained = current.filter((id) => availableIds.includes(id));
@@ -540,7 +546,7 @@ export function App() {
       setDownloadExpandedFolders([]);
       setDownloadFolderSearch("");
     }
-  }, [companionMountedDiskIds, disks]);
+  }, [downloadAvailableIds, disks]);
 
   useEffect(() => {
     if (!authenticated || disks.length === 0) return;
@@ -1042,11 +1048,16 @@ export function App() {
     setDeletionHistoryError("");
     setDeletionHistoryMessage("");
     try {
-      const response = await api<{ ok: boolean; connectedDiskCount: number }>("/api/review/deletions/process", {
+      const response = await api<{ ok: boolean; connectedDiskCount: number; bucketDeletions?: number }>("/api/review/deletions/process", {
         method: "POST"
       });
+      const buckets = response.bucketDeletions ?? 0;
       setDeletionHistoryMessage(
-        `Orden enviada al companion para ${response.connectedDiskCount} disco(s). Los resultados aparecerán aquí.`
+        response.connectedDiskCount > 0 && buckets > 0
+          ? `Orden enviada al companion para ${response.connectedDiskCount} disco(s) y al escáner de buckets para ${buckets} video(s). Los resultados aparecerán aquí.`
+          : buckets > 0
+            ? `Orden enviada al escáner de buckets para ${buckets} video(s). Los resultados aparecerán aquí.`
+            : `Orden enviada al companion para ${response.connectedDiskCount} disco(s). Los resultados aparecerán aquí.`
       );
       window.setTimeout(() => void loadDeletionHistory(true), 2500);
     } catch (error) {

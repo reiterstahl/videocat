@@ -1985,7 +1985,7 @@ test("S3 buckets are checked, saved with a sealed secret, edited and removed fro
 });
 
 // Also needs ffmpeg/ffprobe on PATH and a writable THUMBNAILS_DIR.
-test("the S3 scanner catalogs a bucket, plays it by ranges, keeps the entry of a renamed object and marks deleted ones absent", { skip: s3TestSkip }, async () => {
+test("the S3 scanner catalogs a bucket, plays and downloads it through the server, follows renamed objects and deletes marked ones", { skip: s3TestSkip }, async () => {
   const { AwsClient } = await import("aws4fetch");
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -2064,6 +2064,22 @@ test("the S3 scanner catalogs a bucket, plays it by ranges, keeps the entry of a
     assert.equal(random.statusCode, 200, random.body);
     assert.equal(random.json().file.diskId, diskId);
 
+    // "A descargar": a bucket video goes to the Companion's server queue only, and its bytes come
+    // through the server.
+    const dos = files.find((file) => file.relativePath === "dos.mp4")!;
+    const queued = await app.inject({ method: "POST", url: "/api/downloads/queue", headers: webMutationHeaders(cookie), payload: { fileIds: [dos.id] } });
+    assert.equal(queued.statusCode, 200, queued.body);
+    const serverQueue = (await app.inject({ method: "GET", url: "/api/agent/downloads/queue?source=server", headers: agentHeaders })).json();
+    assert.equal(serverQueue.source, "server");
+    assert.deepEqual(serverQueue.files.map((item: { fileId: string }) => item.fileId), [dos.id]);
+    const driveQueue = (await app.inject({ method: "GET", url: "/api/agent/downloads/queue", headers: agentHeaders })).json();
+    assert.ok(!driveQueue.files.some((item: { fileId: string }) => item.fileId === dos.id), "drive queues never offer bucket videos");
+    const content = await app.inject({ method: "GET", url: `/api/agent/downloads/${serverQueue.files[0].id}/content`, headers: agentHeaders });
+    assert.equal(content.statusCode, 200);
+    assert.ok(content.rawPayload.equals(await fs.readFile(path.join(work, "dos.mp4"))));
+    assert.equal((await app.inject({ method: "GET", url: `/api/agent/downloads/${serverQueue.files[0].id}/content` })).statusCode, 401);
+    await prisma.downloadQueue.deleteMany({ where: { videoFileId: dos.id } });
+
     // S3 renames are a copy and a delete; "dos" is deleted.
     const copy = await client.fetch(`${endpoint}/${bucketName}/Videos/Archivo/uno%20renombrado.mp4`, { method: "PUT", headers: { "x-amz-copy-source": `/${bucketName}/Videos/uno.mp4` } });
     assert.equal(copy.status, 200);
@@ -2074,12 +2090,38 @@ test("the S3 scanner catalogs a bucket, plays it by ranges, keeps the entry of a
     assert.equal(renamed.thumbnails.length, 15);
     assert.equal((await prisma.videoFile.findFirstOrThrow({ where: { diskId, relativePath: "dos.mp4" } })).isPresent, false);
 
-    // No transfer or download can involve a bucket yet.
-    const download = await app.inject({ method: "POST", url: "/api/downloads/queue", headers: webMutationHeaders(cookie), payload: { fileIds: [uno.id] } });
-    assert.equal(download.statusCode, 409);
+    // Transfers cannot involve a bucket yet.
     const star = await app.inject({ method: "POST", url: "/api/transfers/destinations", headers: webMutationHeaders(cookie), payload: { diskId, path: "Archivo" } });
     assert.equal(star.statusCode, 409);
+
+    // Review › J and "Procesar borrados": the scanner deletes marked bucket videos, unless the
+    // object changed since the last scan.
+    const { processBucketDeletions } = await import("../apps/server/src/lib/bucket-deletions.ts");
+    const changedFile = path.join(work, "cambia.mp4");
+    await run("ffmpeg", ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=duration=3:size=320x180:rate=10", "-c:v", "libx264", changedFile]);
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/cambia.mp4`, { method: "PUT", body: await fs.readFile(changedFile) })).status, 200);
+    await scanBucket(bucketId, options);
+    const markForDeletion = async (relativePath: string) => {
+      const file = await prisma.videoFile.findFirstOrThrow({ where: { diskId, relativePath } });
+      const marked = await app.inject({ method: "PATCH", url: `/api/files/${file.id}/curation`, headers: webMutationHeaders(cookie), payload: { curationStatus: "delete" } });
+      assert.equal(marked.statusCode, 200, marked.body);
+      return file.id;
+    };
+    const renamedId = await markForDeletion("Archivo/uno renombrado.mp4");
+    const changedId = await markForDeletion("cambia.mp4");
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/cambia.mp4`, { method: "PUT", body: "replaced after the scan" })).status, 200);
+    const asked = await app.inject({ method: "POST", url: "/api/review/deletions/process", headers: webMutationHeaders(cookie) });
+    assert.equal(asked.statusCode, 200, asked.body);
+    assert.equal(asked.json().bucketDeletions, 2);
+    assert.deepEqual(await processBucketDeletions(quiet), { deleted: 1, missing: 0, changed: 1, failed: 0 });
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/Archivo/uno%20renombrado.mp4`, { method: "HEAD" })).status, 404, "the object is gone from the bucket");
+    assert.equal(await prisma.videoFile.count({ where: { id: renamedId } }), 0);
+    assert.equal((await prisma.deletionRecord.findUniqueOrThrow({ where: { videoFileId: renamedId } })).status, "deleted");
+    assert.equal((await client.fetch(`${endpoint}/${bucketName}/Videos/cambia.mp4`, { method: "HEAD" })).status, 200, "a changed object is kept");
+    assert.equal((await prisma.videoFile.findUniqueOrThrow({ where: { id: changedId } })).curationStatus, "none");
+    assert.equal((await prisma.deletionRecord.findUniqueOrThrow({ where: { videoFileId: changedId } })).status, "failed");
   } finally {
+    if (diskId) await prisma.deletionRecord.deleteMany({ where: { diskId } });
     if (bucketId) await prisma.storageBucket.deleteMany({ where: { id: bucketId } });
     if (diskId) await prisma.disk.deleteMany({ where: { id: diskId } });
     await prisma.actionAudit.deleteMany({ where: { action: { startsWith: "storage.bucket." } } });

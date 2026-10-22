@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -23,6 +25,8 @@ import { thumbnailStorageHint } from "../lib/thumbnail-storage.js";
 import { agentDiskIdentifierSchema, disksByAgentIdentifiers, isUuid } from "../lib/disk-identifiers.js";
 import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
+import { locationOf } from "../lib/bucket-scan.js";
+import { readObjectRange } from "../lib/s3.js";
 import {
   finishScan,
   markSeen,
@@ -561,14 +565,21 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/agent/downloads/queue", { preHandler: requireAgentAuth }, async (request) => {
     const query = z.object({
       diskId: agentDiskIdentifierSchema.optional(),
+      // "server": videos in S3 buckets, which the Companion downloads through the server
+      // (GET /api/agent/downloads/:id/content). Companions without it never receive them.
+      source: z.enum(["drive", "server"]).default("drive"),
       staleMs: z.coerce.number().int().min(5000).max(24 * 60 * 60 * 1000).optional()
     }).parse(request.query);
     const paused = await appMetricValue("download_queue_paused") > 0;
     if (paused) return { paused: true, files: [] };
 
-    const disk = query.diskId ? await diskByAgentIdentifier(query.diskId) : null;
-    if (query.diskId && !disk) return { paused: false, files: [] };
-    const diskFilter = disk ? Prisma.sql`AND v."diskId" = ${disk.id}::uuid` : Prisma.empty;
+    const disk = query.source === "drive" && query.diskId ? await diskByAgentIdentifier(query.diskId) : null;
+    if (query.source === "drive" && query.diskId && !disk) return { paused: false, files: [] };
+    const diskFilter = query.source === "server"
+      ? Prisma.sql`AND v."diskId" IN (SELECT "id" FROM "Disk" WHERE "kind" = 's3')`
+      : disk
+        ? Prisma.sql`AND v."diskId" = ${disk.id}::uuid`
+        : Prisma.sql`AND v."diskId" IN (SELECT "id" FROM "Disk" WHERE "kind" <> 's3')`;
     if (query.staleMs) {
       const cutoff = new Date(Date.now() - query.staleMs);
       await prisma.$executeRaw(Prisma.sql`
@@ -617,6 +628,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       paused: false,
+      // Echoed so a Companion knows this server understood "server" (older ones ignore it).
+      source: query.source,
       files: queues.map((queue) => ({
         id: queue.id,
         fileId: queue.fileId,
@@ -629,6 +642,32 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         requestedAt: queue.requestedAt
       }))
     };
+  });
+
+  // The object of a queued download from an S3 bucket, streamed from the bucket: the Companion
+  // never holds the bucket's credentials.
+  app.get("/api/agent/downloads/:id/content", { preHandler: requireAgentAuth }, async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const item = await prisma.downloadQueue.findUnique({
+      where: { id },
+      include: { videoFile: { include: { disk: { include: { storageBucket: true } } } } }
+    });
+    if (!item || !["queued", "downloading"].includes(item.status)) return reply.code(404).send({ message: "Download not found" });
+    const bucket = item.videoFile.disk.storageBucket;
+    if (item.videoFile.disk.kind !== "s3" || !bucket) return reply.code(404).send({ message: "Only downloads from S3 buckets come through the server" });
+    const sizeBytes = Number(item.videoFile.sizeBytes);
+    const headers = { "Content-Type": "application/octet-stream", "Cache-Control": "no-store", "Content-Length": String(sizeBytes) };
+    if (sizeBytes === 0) return reply.headers(headers).send(Buffer.alloc(0));
+    const upstream = new AbortController();
+    request.raw.on("close", () => upstream.abort());
+    try {
+      const body = await readObjectRange(locationOf(bucket), `${bucket.prefix}${item.videoFile.relativePath}`, 0, sizeBytes - 1, upstream.signal);
+      return reply.headers(headers).send(Readable.fromWeb(body as WebReadableStream<Uint8Array>));
+    } catch (error) {
+      if (request.raw.aborted || reply.raw.destroyed) return reply;
+      request.log.warn({ downloadId: id, storageBucketId: bucket.id, error: error instanceof Error ? error.message : "unknown" }, "S3 download could not start");
+      return reply.code(502).send({ message: "The bucket did not answer" });
+    }
   });
 
   app.patch("/api/agent/downloads/:id/status", { preHandler: requireAgentAuth }, async (request, reply) => {

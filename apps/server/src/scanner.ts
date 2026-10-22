@@ -11,6 +11,7 @@ process.env.VIDEOCAT_ROLE = "scanner";
 const { prisma } = await import("./lib/prisma.js");
 const { storageKeyState } = await import("./lib/secret-box.js");
 const { scanBucket, scanFailureOf, scannerStatusKey } = await import("./lib/bucket-scan.js");
+const { bucketDeletionHandledKey, bucketDeletionRequestKey, processBucketDeletions } = await import("./lib/bucket-deletions.js");
 const { Prisma } = await import("@prisma/client");
 
 const execFileAsync = promisify(execFile);
@@ -47,6 +48,25 @@ async function heartbeat(ffmpeg: string | null): Promise<void> {
     VALUES (${scannerStatusKey}, ${value}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updatedAt" = CURRENT_TIMESTAMP
   `);
+}
+
+async function metric(key: string): Promise<bigint> {
+  const rows = await prisma.$queryRaw<Array<{ valueBigInt: bigint }>>(Prisma.sql`SELECT "valueBigInt" FROM "AppMetric" WHERE "key" = ${key} LIMIT 1`);
+  return rows[0]?.valueBigInt ?? 0n;
+}
+
+// "Procesar borrados" in Review asked for it since the last time: delete the marked videos of
+// every bucket, then remember which request was handled.
+async function deletionsIfAsked(): Promise<boolean> {
+  const [requested, handled] = await Promise.all([metric(bucketDeletionRequestKey), metric(bucketDeletionHandledKey)]);
+  if (requested <= handled) return false;
+  const summary = await processBucketDeletions({ info: (message) => console.log(message), warn: (message) => console.warn(message) });
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "AppMetric" ("key", "valueBigInt", "updatedAt") VALUES (${bucketDeletionHandledKey}, ${requested}, CURRENT_TIMESTAMP)
+    ON CONFLICT ("key") DO UPDATE SET "valueBigInt" = EXCLUDED."valueBigInt", "updatedAt" = CURRENT_TIMESTAMP
+  `);
+  console.log(`Borrados en buckets: ${summary.deleted} borrados, ${summary.missing} ya no estaban, ${summary.changed} cambiaron (se conservan), ${summary.failed} con error.`);
+  return true;
 }
 
 // Asked from the web, never scanned, due by the interval, or left running by a scanner that died.
@@ -103,10 +123,15 @@ if (storageKeyState() !== "ready") console.warn("STORAGE_SECRET_KEY falta o no e
 
 while (!stop.signal.aborted) {
   await heartbeat(ffmpeg).catch((error) => console.error("No se pudo registrar el estado del escáner:", error));
-  const worked = ffmpeg && storageKeyState() === "ready" ? await runOne().catch((error) => {
+  const ready = storageKeyState() === "ready";
+  const deleted = ready ? await deletionsIfAsked().catch((error) => {
+    console.error("Error borrando en buckets:", error);
+    return false;
+  }) : false;
+  const worked = ffmpeg && ready ? await runOne().catch((error) => {
     console.error("Error del escáner:", error);
     return false;
   }) : false;
-  if (!worked && !stop.signal.aborted) await new Promise((resolve) => setTimeout(resolve, pollMs));
+  if (!worked && !deleted && !stop.signal.aborted) await new Promise((resolve) => setTimeout(resolve, pollMs));
 }
 await prisma.$disconnect();

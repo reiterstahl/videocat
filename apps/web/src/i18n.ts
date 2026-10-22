@@ -706,6 +706,9 @@ const en: Record<string, string> = {
   "Almacenamiento S3": "S3 storage",
   "Buckets compatibles con S3 (MinIO, AWS, Cloudflare R2, Backblaze…) que el servidor cataloga como un disco más. Las credenciales se guardan cifradas en el servidor.": "S3-compatible buckets (MinIO, AWS, Cloudflare R2, Backblaze…) that the server catalogs like any other drive. Credentials are stored encrypted on the server.",
   "Añadir bucket": "Add bucket",
+  "No hay borrados pendientes": "There are no pending deletions",
+  "Hace falta el Companion con los discos conectados": "The Companion with its drives connected is needed",
+  "Para borrarlo del bucket, márcalo para borrar (J en Review) y procesa los pendientes en Últimos borrados.": "To delete it from the bucket, mark it for deletion (J in Review) and process the pending ones in Latest deletions.",
   "Bucket S3": "S3 bucket",
   "Carpeta en el bucket": "Folder in the bucket",
   "Quita también el bucket en Almacenamiento S3: si no, el próximo escaneo vuelve a crear este disco": "Also remove the bucket in S3 storage: otherwise the next scan creates this drive again",
@@ -735,7 +738,6 @@ const en: Record<string, string> = {
   "El escáner está en marcha, pero no encuentra ffmpeg.": "The scanner is running, but cannot find ffmpeg.",
   "No se pudo pedir el escaneo.": "The scan could not be requested.",
   "¿Quitarlo de VideoCAT? No se borra nada del bucket; su disco y su catálogo quedan en Discos.": "Remove it from VideoCAT? Nothing in the bucket is deleted; its drive and catalog stay in Drives.",
-  "Los videos de buckets S3 todavía no se pueden descargar a la PC.": "Videos in S3 buckets cannot be downloaded to the PC yet.",
   "Las carpetas de buckets S3 todavía no pueden recibir traslados.": "Folders in S3 buckets cannot receive transfers yet.",
   "En buckets S3": "In S3 buckets",
   "Guarda o cancela el formulario abierto": "Save or cancel the open form",
@@ -1517,6 +1519,15 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Expira a las (.+)\.$/);
   if (match) return `Expires at ${match[1]}.`;
+
+  match = text.match(/^Orden enviada al companion para (\d+) disco\(s\) y al escáner de buckets para (\d+) video\(s\)\. Los resultados aparecerán aquí\.$/);
+  if (match) return `Order sent to the Companion for ${match[1]} drive(s) and to the bucket scanner for ${match[2]} video(s). Results will appear here.`;
+
+  match = text.match(/^Orden enviada al escáner de buckets para (\d+) video\(s\)\. Los resultados aparecerán aquí\.$/);
+  if (match) return `Order sent to the bucket scanner for ${match[1]} video(s). Results will appear here.`;
+
+  match = text.match(/^([\d.,\s]+) de los pendientes están en buckets S3: los borra el escáner del servidor al procesar, después de comprobar que el objeto no cambió\. No se pueden recuperar si el bucket no guarda versiones\.$/);
+  if (match) return `${match[1]} of the pending ones are in S3 buckets: the server's scanner deletes them when processing, after checking the object did not change. They cannot be recovered unless the bucket keeps versions.`;
 
   match = text.match(/^Orden enviada al companion para (\d+) disco\(s\)\. Los resultados aparecerán aquí\.$/);
   if (match) return `Command sent to the companion for ${match[1]} drive(s). Results will appear here.`;

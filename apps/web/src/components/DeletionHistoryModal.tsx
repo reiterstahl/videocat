@@ -27,11 +27,15 @@ export function DeletionHistoryModal({
 }) {
   const entries = data?.entries ?? [];
   const canProcess = Boolean(
-    data?.companionOnline
-    && data.connectedDiskCount > 0
+    data
     && data.summary.pending > 0
+    && ((data.companionOnline && data.connectedDiskCount > 0) || (data.summary.bucketPending ?? 0) > 0)
     && !processing
   );
+  const bucketPending = data?.summary.bucketPending ?? 0;
+  const processBlocked = !data || processing ? null
+    : data.summary.pending === 0 ? "No hay borrados pendientes"
+    : !canProcess ? "Hace falta el Companion con los discos conectados" : null;
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
@@ -81,14 +85,17 @@ export function DeletionHistoryModal({
             <button className="secondary-button" onClick={onRefresh} disabled={loading} type="button">
               {loading ? "Actualizando..." : "Actualizar"}
             </button>
-            <button className="danger-button" onClick={onProcess} disabled={!canProcess} type="button">
+            <button className="danger-button" onClick={onProcess} disabled={!canProcess} title={processBlocked ?? undefined} type="button">
               <Trash2 size={17} />
               {processing ? "Enviando..." : "Procesar pendientes"}
             </button>
           </div>
         </div>
 
-        {!data?.companionOnline ? (
+        {bucketPending > 0 ? (
+          <div className="deletion-history-notice">{`${bucketPending.toLocaleString(locale)} de los pendientes están en buckets S3: los borra el escáner del servidor al procesar, después de comprobar que el objeto no cambió. No se pueden recuperar si el bucket no guarda versiones.`}</div>
+        ) : null}
+        {data && data.summary.pending <= bucketPending ? null : !data?.companionOnline ? (
           <div className="deletion-history-notice is-warning">El companion no está conectado. Los borrados pendientes se conservarán hasta que vuelva a estar activo.</div>
         ) : data.connectedDiskCount === 0 ? (
           <div className="deletion-history-notice is-warning">El companion está activo, pero no reporta discos conectados.</div>
@@ -124,7 +131,7 @@ export function DeletionHistoryModal({
                       <td data-label="Disco">
                         <strong>{entry.diskName}</strong>
                         <span className={`deletion-disk-state ${entry.connected ? "is-connected" : ""}`}>
-                          {entry.connected ? `Conectado${entry.driveLetter ? ` · ${entry.driveLetter}` : ""}` : "No conectado"}
+                          {entry.objectStorage ? "Bucket S3" : entry.connected ? `Conectado${entry.driveLetter ? ` · ${entry.driveLetter}` : ""}` : "No conectado"}
                         </span>
                       </td>
                       <td data-label="Archivo" className="deletion-file-cell" title={entry.relativePath}>

@@ -155,6 +155,7 @@ export type DeletionHistoryEntry = {
   completedAt?: string | null;
   errorMessage?: string | null;
   connected: boolean;
+  objectStorage?: boolean;
 };
 
 export type DeletionHistoryResponse = {
@@ -162,6 +163,8 @@ export type DeletionHistoryResponse = {
   connectedDiskCount: number;
   summary: {
     pending: number;
+    // Pending deletions in S3 buckets (deleted by the server's scanner, no Companion needed).
+    bucketPending?: number;
     deleted: number;
     missing: number;
     failed: number;

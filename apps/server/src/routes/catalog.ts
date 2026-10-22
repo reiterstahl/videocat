@@ -20,6 +20,7 @@ import { serializeDisk, serializeFile } from "../lib/serialize.js";
 import { recordAction, requestIdempotencyKey, runIdempotentAction } from "../lib/action-audit.js";
 import { groupAuditErrors, toCsv } from "../lib/audit-report.js";
 import { folderTreeLevel } from "../lib/folder-tree.js";
+import { bucketDeletionRequestKey } from "../lib/bucket-deletions.js";
 
 function parseBigInt(value: number | undefined): bigint | undefined {
   return value == null ? undefined : BigInt(Math.floor(value));
@@ -587,10 +588,6 @@ async function ensureCategory(key: string, label: string, color: string, builtIn
 async function queueDownloadsForFileIds(fileIds: string[], source = "manual"): Promise<void> {
   const uniqueIds = [...new Set(fileIds)];
   if (uniqueIds.length === 0) return;
-  // No Companion reads S3 buckets yet: such a download would wait forever. Refused before writing.
-  if (await prisma.videoFile.count({ where: { id: { in: uniqueIds }, disk: { kind: "s3" } } }) > 0) {
-    throw Object.assign(new Error("Videos in S3 buckets cannot be downloaded yet"), { statusCode: 409 });
-  }
   await ensureCategory("download", "A descargar", "#FC6121", true);
   const idSql = Prisma.join(uniqueIds.map((id) => Prisma.sql`${id}::uuid`));
   await prisma.$transaction([
@@ -2056,9 +2053,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     applyHiddenPathFilter(pendingWhere);
     if (!protectedUnlocked) applyProtectedPathFilter(pendingWhere);
 
-    const [presence, pendingTotal, pendingFiles, recentRecords, recordSummary] = await Promise.all([
+    const [presence, pendingTotal, bucketPending, pendingFiles, recentRecords, recordSummary] = await Promise.all([
       companionPresence(),
       prisma.videoFile.count({ where: pendingWhere }),
+      // Of those, the ones in S3 buckets: the scanner deletes them, with or without a Companion.
+      prisma.videoFile.count({ where: { AND: [pendingWhere, { disk: { kind: "s3", storageBucket: { isNot: null } } }] } }),
       prisma.videoFile.findMany({
         where: pendingWhere,
         select: {
@@ -2069,7 +2068,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
           sizeBytes: true,
           reviewedAt: true,
           updatedAt: true,
-          disk: { select: { name: true, driveLetter: true } }
+          disk: { select: { name: true, driveLetter: true, kind: true } }
         },
         orderBy: [{ reviewedAt: "desc" }, { updatedAt: "desc" }],
         take: limit
@@ -2107,6 +2106,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       [...recentRecords, ...failedForPending].map((record) => [record.videoFileId, record])
     );
     const connectedDiskIds = new Set(presence.mountedDiskIds);
+    // Buckets are never "connected": the history says they are S3 instead.
+    const bucketDiskIds = new Set((await prisma.disk.findMany({ where: { kind: "s3" }, select: { id: true } })).map((disk) => disk.id));
 
     const pendingEntries = pendingFiles.map((file) => {
       const failed = recordsByVideoId.get(file.id);
@@ -2129,7 +2130,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         attemptedAt: failedAfterLatestRequest ? failed?.attemptedAt ?? null : null,
         completedAt: null,
         errorMessage: failedAfterLatestRequest ? failed?.errorMessage ?? null : null,
-        connected: connectedDiskIds.has(file.diskId)
+        connected: connectedDiskIds.has(file.diskId),
+        objectStorage: file.disk.kind === "s3"
       };
     });
     const pendingIdSet = new Set(pendingIds);
@@ -2150,7 +2152,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         attemptedAt: record.attemptedAt,
         completedAt: record.completedAt,
         errorMessage: record.errorMessage,
-        connected: record.diskId ? connectedDiskIds.has(record.diskId) : false
+        connected: record.diskId ? connectedDiskIds.has(record.diskId) : false,
+        objectStorage: record.diskId ? bucketDiskIds.has(record.diskId) : false
       }));
     const entries = [...pendingEntries, ...historicalEntries]
       .sort((a, b) => {
@@ -2166,6 +2169,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       connectedDiskCount: presence.mountedDiskCount,
       summary: {
         pending: pendingTotal,
+        bucketPending,
         deleted: Number(summaryByStatus.get("deleted")?.count ?? 0n),
         missing: Number(summaryByStatus.get("missing")?.count ?? 0n),
         failed: Number(summaryByStatus.get("failed")?.count ?? 0n),
@@ -2176,13 +2180,20 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/review/deletions/process", { preHandler: requireWebAuth }, async (_request, reply) => {
-    const presence = await companionPresence();
-    if (!presence.online) return reply.code(409).send({ message: "Companion is offline" });
-    if (presence.mountedDiskCount === 0) return reply.code(409).send({ message: "No connected disks" });
+    const [presence, bucketDeletions] = await Promise.all([
+      companionPresence(),
+      // Marked videos in S3 buckets: the scanner deletes them, no Companion needed.
+      prisma.videoFile.count({ where: { curationStatus: "delete", disk: { kind: "s3", storageBucket: { isNot: null } } } })
+    ]);
+    const companionReady = presence.online && presence.mountedDiskCount > 0;
+    if (!companionReady && bucketDeletions === 0) {
+      return reply.code(409).send({ message: presence.online ? "No connected disks" : "Companion is offline" });
+    }
 
     const requestedAt = Date.now();
-    await setAppMetricValue("delete_process_requested_at", BigInt(requestedAt));
-    return { ok: true, requestedAt, connectedDiskCount: presence.mountedDiskCount };
+    if (companionReady) await setAppMetricValue("delete_process_requested_at", BigInt(requestedAt));
+    if (bucketDeletions > 0) await setAppMetricValue(bucketDeletionRequestKey, BigInt(requestedAt));
+    return { ok: true, requestedAt, connectedDiskCount: companionReady ? presence.mountedDiskCount : 0, bucketDeletions };
   });
 
   app.get("/api/review/recent", { preHandler: requireWebAuth }, async (request) => {
@@ -2368,7 +2379,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       appMetricValue("download_queue_paused")
     ]);
     if (!presence.online) return reply.code(409).send({ message: "Companion is offline" });
-    if (presence.mountedDiskCount === 0) return reply.code(409).send({ message: "No connected disks" });
+    // Videos in S3 buckets come through the server: they need the Companion, not a connected drive.
+    const bucketDownloads = presence.mountedDiskCount === 0
+      ? await prisma.downloadQueue.count({ where: { status: "queued", videoFile: { disk: { kind: "s3" } } } })
+      : 0;
+    if (presence.mountedDiskCount === 0 && bucketDownloads === 0) return reply.code(409).send({ message: "No connected disks" });
     if (paused > 0) return reply.code(409).send({ message: "Download queue is paused" });
 
     const requestedAt = Date.now();
@@ -2477,7 +2492,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     if (!presence.online) {
       return reply.code(409).send({ message: "Companion is offline" });
     }
-    const mountedDiskIds = new Set(presence.mountedDiskIds);
+    // Buckets come through the server: the Companion downloads them without mounting anything.
+    const bucketDiskIds = (await prisma.disk.findMany({ where: { kind: "s3", id: { in: body.diskIds } }, select: { id: true } })).map((disk) => disk.id);
+    const mountedDiskIds = new Set([...presence.mountedDiskIds, ...bucketDiskIds]);
     if (body.diskIds.some((diskId) => !mountedDiskIds.has(diskId))) {
       return reply.code(409).send({ message: "One or more selected disks are not connected" });
     }

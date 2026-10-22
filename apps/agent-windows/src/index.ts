@@ -5,7 +5,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { Transform } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createInterface } from "node:readline/promises";
 import { execFile } from "node:child_process";
@@ -177,6 +177,7 @@ type DownloadQueueFile = {
 
 type DownloadQueueResponse = {
   paused?: boolean;
+  source?: "drive" | "server";
   files: DownloadQueueFile[];
 };
 
@@ -739,6 +740,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       for (const { root, marker } of mounted) {
         await processDownloadQueueForDisk(root, marker, { quietWhenEmpty: true });
       }
+      await processServerDownloads({ quietWhenEmpty: true });
     } finally {
       downloadReviewRunning = false;
       if (downloadPriority.release()) {
@@ -1358,7 +1360,10 @@ async function updateDownloadStatus(
   });
 }
 
-async function copyFileWithProgress(source: string, destination: string, file: DownloadQueueFile, fromLabel?: string): Promise<void> {
+// A path on a connected drive, or a stream opened on demand (a video in an S3 bucket, through the server).
+type DownloadSource = string | (() => Promise<Readable>);
+
+async function copyFileWithProgress(source: DownloadSource, destination: string, file: DownloadQueueFile, fromLabel?: string): Promise<void> {
   const activityKey = `download:${file.id}`;
   const showActivity = (bytesDone: number) => activityReporter?.set(activityKey, {
     kind: "download",
@@ -1377,7 +1382,7 @@ async function copyFileWithProgress(source: string, destination: string, file: D
   }
 }
 
-async function copyFileWithProgressUnreported(source: string, destination: string, file: DownloadQueueFile, showActivity: (bytesDone: number) => void): Promise<void> {
+async function copyFileWithProgressUnreported(source: DownloadSource, destination: string, file: DownloadQueueFile, showActivity: (bytesDone: number) => void): Promise<void> {
   let copiedBytes = 0;
   let lastReportAt = 0;
   let lastReportedBytes = 0;
@@ -1402,7 +1407,7 @@ async function copyFileWithProgressUnreported(source: string, destination: strin
     await updateDownloadStatus(file.id, "downloading", { progressBytes: copiedBytes }).catch(() => undefined);
   }
 
-  const sourceStream = createReadStream(source);
+  const sourceStream = typeof source === "string" ? createReadStream(source) : await source();
   const destinationStream = createWriteStream(destination, { flags: "wx" });
   const progress = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
@@ -1430,6 +1435,76 @@ async function copyFileWithProgressUnreported(source: string, destination: strin
   } finally {
     finished = true;
     clearInterval(watchdog);
+  }
+}
+
+// The object of a download from an S3 bucket, streamed by the server (the Companion never has
+// the bucket's credentials). The server has a minute to start answering; then it flows freely.
+async function serverDownloadStream(queueId: string): Promise<Readable> {
+  const credential = agentCredential();
+  if (!process.env.SERVER_URL || !credential) throw new Error("SERVER_URL y una credencial emparejada son requeridos para descargar desde buckets.");
+  const headers = new Headers({ Authorization: `Bearer ${credential}` });
+  if (companionInstallationId) headers.set("X-VideoCat-Companion-Id", companionInstallationId);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("El servidor no empezó a enviar el video en 60 s.")), 60_000);
+  try {
+    const response = await fetch(`${process.env.SERVER_URL}/api/agent/downloads/${encodeURIComponent(queueId)}/content`, { headers, signal: controller.signal });
+    if (!response.ok || !response.body) throw new Error(`El servidor no entregó el video (${response.status} ${await response.text().catch(() => "")}).`);
+    return Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Videos in S3 buckets in "A descargar": they come through the server, one at a time, after the
+// drives' queues and with the same priority over transfers.
+async function processServerDownloads(options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
+  if (downloadProcessingRunning) return;
+  const downloadDir = process.env.COMPANION_DOWNLOAD_DIR?.trim();
+  if (!downloadDir || !companionAgentApiEnabled()) return;
+  downloadProcessingRunning = true;
+  let claimed = false;
+  try {
+    const staleMs = companionDownloadStallMs();
+    let copied = 0;
+    let failed = 0;
+    while (true) {
+      let queue: DownloadQueueResponse;
+      try {
+        queue = await companionAgentApi<DownloadQueueResponse>(`/api/agent/downloads/queue?source=server&staleMs=${staleMs}`);
+      } catch (error) {
+        console.warn(`No pude consultar descargas desde buckets: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      // An older server ignores source=server and would answer with drive downloads.
+      if (queue.paused || queue.source !== "server") return;
+      const file = queue.files[0];
+      if (!file) break;
+      if (!claimed) {
+        claimed = true;
+        await downloadPriority.claim(() => console.log("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas."));
+      }
+      let destination = "";
+      try {
+        await updateDownloadStatus(file.id, "downloading", { progressBytes: 0 });
+        destination = await uniqueDestinationPath(downloadDir, file.diskName, file.filename);
+        await copyFileWithProgress(() => serverDownloadStream(file.id), destination, file, file.diskName);
+        const written = (await fs.stat(destination)).size;
+        if (written !== file.sizeBytes) throw new Error(`Llegaron ${written} de ${file.sizeBytes} bytes.`);
+        await updateDownloadStatus(file.id, "done", { destinationPath: destination });
+        copied += 1;
+        console.log(`Descarga completada desde el bucket ${file.diskName}: ${file.relativePath} -> ${destination}`);
+      } catch (error) {
+        failed += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        if (destination) await fs.rm(destination, { force: true }).catch(() => undefined);
+        await updateDownloadStatus(file.id, "failed", { errorMessage: message.slice(0, 1000) }).catch(() => undefined);
+        console.warn(`Fallo descargando ${file.relativePath} desde el bucket: ${message}`);
+      }
+    }
+    if (copied + failed > 0 || !options.quietWhenEmpty) console.log(`Descargas desde buckets: copiados ${copied}, fallos ${failed}.`);
+  } finally {
+    downloadProcessingRunning = false;
   }
 }
 
