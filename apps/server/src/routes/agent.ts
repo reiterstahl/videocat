@@ -6,10 +6,7 @@ import { z } from "zod";
 import {
   agentErrorsBatchSchema,
   damagedMediaPrefix,
-  damagedMediaReason,
   filesBatchSchema,
-  isDamagedMediaMessage,
-  isRiskyMediaMessage,
   riskyMediaPrefix,
   registerDiskSchema,
   scanStartSchema,
@@ -22,13 +19,20 @@ import { env } from "../lib/env.js";
 import { finalizeDeletion, recordDeletionFailure } from "../lib/deletion-history.js";
 import { profileAccentColor, protectedFolderPatterns } from "../lib/protected-settings.js";
 import { serializeDisk } from "../lib/serialize.js";
-import { catalogFileIdentityChanged } from "../lib/catalog-file-identity.js";
-import { recordAction } from "../lib/action-audit.js";
-import { isStoragePermissionError, thumbnailStorageHint } from "../lib/thumbnail-storage.js";
+import { thumbnailStorageHint } from "../lib/thumbnail-storage.js";
 import { agentDiskIdentifierSchema, disksByAgentIdentifiers, isUuid } from "../lib/disk-identifiers.js";
 import { inTransitStates, unfinishedStates } from "../lib/transfer-states.js";
 import { companionStagingKey } from "../lib/transfer-summary.js";
-import { cancelVanishedTransfers } from "./transfers.js";
+import {
+  finishScan,
+  markSeen,
+  relocateFiles,
+  renewScanLease,
+  startScan,
+  storeThumbnail,
+  ThumbnailStoreError,
+  writeScannedFiles
+} from "../lib/catalog-scan.js";
 import { activitiesSchema, storeActivity } from "../lib/companion-activity.js";
 import { transferOrders } from "../lib/transfer-control.js";
 
@@ -36,29 +40,9 @@ const transfersModeSchema = z.enum(["running", "stopping", "stopped"]);
 import { noteMountedDisks } from "../lib/connected-work.js";
 
 const fingerprintRepairBatchLimit = 5_000;
-// Renewed on every batch/seen/error upload; this also covers slow initial disk walks.
-const scanLeaseMs = 60 * 60 * 1000;
-
 function scanLeaseOwner(request: { headers: Record<string, string | string[] | undefined> }): string {
   const header = request.headers["x-videocat-companion-id"];
   return typeof header === "string" && z.string().uuid().safeParse(header).success ? header : "legacy-agent";
-}
-
-async function renewScanLease(scanId: string, diskId?: string): Promise<boolean> {
-  const updated = await prisma.scan.updateMany({
-    where: {
-      id: scanId,
-      ...(diskId ? { diskId } : {}),
-      status: "running",
-      leaseExpiresAt: { gt: new Date() }
-    },
-    data: { leaseExpiresAt: new Date(Date.now() + scanLeaseMs) }
-  });
-  return updated.count === 1;
-}
-
-function toDate(value?: string | null): Date | null {
-  return value ? new Date(value) : null;
 }
 
 async function appMetricValue(key: string): Promise<number> {
@@ -89,67 +73,6 @@ async function setAppSettingValue(key: string, value: string): Promise<void> {
     SET "value" = EXCLUDED."value",
         "updatedAt" = CURRENT_TIMESTAMP
   `);
-}
-
-function videoFileData(diskId: string, scanId: string, file: ReturnType<typeof filesBatchSchema.parse>["files"][number]) {
-  return {
-    diskId,
-    filename: file.filename,
-    extension: file.extension.toLowerCase(),
-    absolutePath: file.absolutePath,
-    relativePath: file.relativePath,
-    sizeBytes: file.sizeBytes,
-    folderSizeBytes: file.folderSizeBytes ?? undefined,
-    fileCreatedAt: toDate(file.createdAt),
-    modifiedAt: toDate(file.modifiedAt),
-    scanStatus: file.status,
-    errorMessage: file.errorMessage,
-    durationSeconds: file.metadata?.durationSeconds ?? null,
-    width: file.metadata?.width ?? null,
-    height: file.metadata?.height ?? null,
-    fps: file.metadata?.fps ?? null,
-    videoCodec: file.metadata?.videoCodec ?? null,
-    audioCodec: file.metadata?.audioCodec ?? null,
-    audioChannels: file.metadata?.audioChannels ?? null,
-    bitrate: file.metadata?.bitrate ?? null,
-    containerFormat: file.metadata?.containerFormat ?? null,
-    streamCount: file.metadata?.streamCount ?? null,
-    ffprobeJson: file.metadata?.raw ?? undefined,
-    visualFingerprint: file.visualFingerprint,
-    fingerprintVersion: file.fingerprintVersion,
-    fingerprintedAt: file.visualFingerprint !== undefined ? new Date() : undefined,
-    isPresent: true,
-    missingSince: null,
-    lastSeenScanId: scanId
-  };
-}
-
-function normalizedScanRoot(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+|\/+$/g, "");
-  return normalized || ".";
-}
-
-function scannedScopeWhere(scanRoots: string[]): Prisma.VideoFileWhereInput {
-  if (scanRoots.includes(".")) return {};
-  return {
-    OR: scanRoots.map((root) => ({
-      OR: [
-        { relativePath: root },
-        { relativePath: { startsWith: `${root}/` } }
-      ]
-    }))
-  };
-}
-
-function errorCategory(status: string, message?: string | null): string {
-  if (isRiskyMediaMessage(message)) return "at_risk_file";
-  if (isDamagedMediaMessage(message) || damagedMediaReason(message)) return "damaged_file";
-  const text = `${status} ${message ?? ""}`.toLowerCase();
-  if (text.includes("eperm") || text.includes("eacces") || text.includes("permission")) return "permission";
-  if (text.includes("enoent") || text.includes("not found")) return "missing_path";
-  if (text.includes("ffprobe") || status === "metadata_failed") return "metadata";
-  if (text.includes("ffmpeg") || status === "thumbnail_failed") return "thumbnail";
-  return status === "failed" ? "agent" : status;
 }
 
 async function diskByAgentIdentifier(identifier: string) {
@@ -379,37 +302,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/api/agent/scan/start", { preHandler: requireAgentAuth }, async (request) => {
     const body = scanStartSchema.parse(request.body);
-    const rootPath = normalizedScanRoot(body.rootPath);
-    const owner = scanLeaseOwner(request);
-    const now = new Date();
-    const scan = await prisma.$transaction(async (tx) => {
-      await tx.scan.updateMany({
-        where: { diskId: body.diskId, rootPath, status: "running", leaseExpiresAt: { lte: now } },
-        data: { status: "abandoned", finishedAt: now, leaseExpiresAt: null }
-      });
-      const active = await tx.scan.findFirst({
-        where: { diskId: body.diskId, rootPath, status: "running", leaseExpiresAt: { gt: now } },
-        orderBy: { startedAt: "desc" }
-      });
-      if (active) {
-        if (active.leaseOwner === owner) return active;
-        throw Object.assign(new Error("A reconciliation scan is already active for this disk and root"), { statusCode: 409 });
-      }
-      const latest = await tx.scan.aggregate({
-        where: { diskId: body.diskId, rootPath },
-        _max: { generation: true }
-      });
-      return tx.scan.create({
-        data: {
-          diskId: body.diskId,
-          rootPath,
-          status: "running",
-          leaseOwner: owner,
-          generation: (latest._max.generation ?? 0) + 1,
-          leaseExpiresAt: new Date(Date.now() + scanLeaseMs)
-        }
-      });
-    });
+    const scan = await startScan(body.diskId, body.rootPath, scanLeaseOwner(request));
     return { scan, lease: { expiresAt: scan.leaseExpiresAt, generation: scan.generation } };
   });
 
@@ -528,105 +421,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (!scan || scan.diskId !== body.diskId) return reply.code(404).send({ message: "Scan not found for disk" });
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     if (!await renewScanLease(body.scanId, body.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
-    let errorCount = 0;
-    const existingFiles = await prisma.videoFile.findMany({
-      where: { diskId: body.diskId, relativePath: { in: body.files.map((file) => file.relativePath) } },
-      select: { id: true, relativePath: true, sizeBytes: true, modifiedAt: true, curationStatus: true }
-    });
-    const existingByPath = new Map(existingFiles.map((file) => [file.relativePath, file]));
-
-    for (const file of body.files) {
-      if (file.status !== "scanned") errorCount += 1;
-
-      const data = videoFileData(body.diskId, body.scanId, file);
-      const existing = existingByPath.get(file.relativePath);
-
-      if (existing) {
-        const replacedAtSamePath = catalogFileIdentityChanged(existing, {
-          sizeBytes: file.sizeBytes,
-          modifiedAt: data.modifiedAt
-        });
-        const clearDeleteMark = replacedAtSamePath && existing.curationStatus === "delete";
-        await prisma.$transaction(async (tx) => {
-          await tx.videoFile.update({
-            where: { id: existing.id },
-            data: clearDeleteMark ? { ...data, curationStatus: "none", reviewedAt: null } : data
-          });
-          if (clearDeleteMark) {
-            await tx.videoFileCategory.deleteMany({
-              where: { videoFileId: existing.id, categoryKey: "delete" }
-            });
-          }
-        });
-        if (file.status !== "scanned") {
-          await prisma.agentError.create({
-            data: {
-              diskId: body.diskId,
-              scanId: body.scanId,
-              category: errorCategory(file.status, file.errorMessage),
-              phase: file.status === "thumbnail_failed" ? "thumbnail" : "metadata",
-              message: file.errorMessage ?? file.status,
-              absolutePath: file.absolutePath,
-              relativePath: file.relativePath
-            }
-          });
-        }
-        continue;
-      }
-
-      // Older Companions do not report moves: guess them by name, size and time. A file this scan
-      // already saw at its own path is still there, so a copy never takes its entry.
-      const movedCandidates = data.modifiedAt && !body.movesReported
-        ? await prisma.videoFile.findMany({
-            where: {
-              diskId: body.diskId,
-              filename: file.filename,
-              sizeBytes: file.sizeBytes,
-              modifiedAt: data.modifiedAt,
-              NOT: { relativePath: file.relativePath },
-              OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }]
-            },
-            select: { id: true },
-            take: 2
-          })
-        : [];
-
-      if (movedCandidates.length === 1) {
-        await prisma.videoFile.update({
-          where: { id: movedCandidates[0].id },
-          data
-        });
-      } else {
-        await prisma.videoFile.create({ data });
-      }
-      if (file.status !== "scanned") {
-        await prisma.agentError.create({
-          data: {
-            diskId: body.diskId,
-            scanId: body.scanId,
-            category: errorCategory(file.status, file.errorMessage),
-            phase: file.status === "thumbnail_failed" ? "thumbnail" : "metadata",
-            message: file.errorMessage ?? file.status,
-            absolutePath: file.absolutePath,
-            relativePath: file.relativePath
-          }
-        });
-      }
-    }
-
-    await prisma.scan.update({
-      where: { id: body.scanId },
-      data: {
-        fileCount: { increment: body.files.length },
-        errorCount: { increment: errorCount }
-      }
-    });
-
-    await prisma.disk.update({
-      where: { id: body.diskId },
-      data: { lastScannedAt: new Date() }
-    });
-
+    await writeScannedFiles(body.diskId, body.scanId, body.files, body.movesReported ?? false);
     return { ok: true, accepted: body.files.length };
   });
 
@@ -640,16 +435,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     if (!await renewScanLease(id, scan.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
 
-    const paths = [...new Set(body.paths.map((value) => normalizedScanRoot(value)))];
-    const reactivated = await prisma.videoFile.updateMany({
-      where: { diskId: scan.diskId, relativePath: { in: paths }, isPresent: false },
-      data: { isPresent: true, missingSince: null, lastSeenScanId: id }
-    });
-    const seen = await prisma.videoFile.updateMany({
-      where: { diskId: scan.diskId, relativePath: { in: paths } },
-      data: { isPresent: true, missingSince: null, lastSeenScanId: id }
-    });
-    return { ok: true, seen: seen.count, reactivated: reactivated.count };
+    const { seen, reactivated } = await markSeen(id, scan.diskId, body.paths);
+    return { ok: true, seen, reactivated };
   });
 
   // A folder renamed or a file moved on the same drive: the catalog entry follows it to the new
@@ -672,68 +459,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (scan.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     if (!await renewScanLease(id, scan.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
 
-    const relocated: Array<{ from: string; to: string }> = [];
-    const rejected: Array<{ to: string; reason: "not_found" | "changed" | "occupied" | "in_transfer" }> = [];
-    for (const move of body.moves) {
-      const from = normalizedScanRoot(move.from);
-      const to = normalizedScanRoot(move.to);
-      const [source, occupant] = await Promise.all([
-        prisma.videoFile.findUnique({
-          where: { diskId_relativePath: { diskId: scan.diskId, relativePath: from } },
-          select: { id: true, sizeBytes: true, modifiedAt: true, _count: { select: { transferItems: { where: { state: { in: unfinishedStates } } } } } }
-        }),
-        prisma.videoFile.findUnique({ where: { diskId_relativePath: { diskId: scan.diskId, relativePath: to } }, select: { id: true } })
-      ]);
-      if (!source) {
-        rejected.push({ to, reason: "not_found" });
-        continue;
-      }
-      if (catalogFileIdentityChanged(source, { sizeBytes: move.sizeBytes, modifiedAt: new Date(move.modifiedAt) })) {
-        rejected.push({ to, reason: "changed" });
-        continue;
-      }
-      if (occupant) {
-        rejected.push({ to, reason: "occupied" });
-        continue;
-      }
-      // A transfer knows the file by its old path; it finishes first.
-      if (source._count.transferItems > 0) {
-        rejected.push({ to, reason: "in_transfer" });
-        continue;
-      }
-      try {
-        await prisma.videoFile.update({
-          where: { id: source.id },
-          data: {
-            relativePath: to,
-            absolutePath: move.absolutePath,
-            filename: path.posix.basename(to),
-            extension: path.posix.extname(to).toLowerCase(),
-            ...(move.folderSizeBytes !== undefined ? { folderSizeBytes: move.folderSizeBytes === null ? null : BigInt(move.folderSizeBytes) } : {}),
-            isPresent: true,
-            missingSince: null,
-            lastSeenScanId: id
-          }
-        });
-        relocated.push({ from, to });
-      } catch (error) {
-        // Another scan took the new path at the same moment.
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") rejected.push({ to, reason: "occupied" });
-        else throw error;
-      }
-    }
-
-    if (relocated.length > 0) {
-      await recordAction({
-        action: "scan.relocate",
-        actorType: "companion",
-        actorId: scan.leaseOwner,
-        diskId: scan.diskId,
-        target: `${relocated.length} archivo(s) movidos o en carpetas renombradas`,
-        result: { sample: relocated.slice(0, 5) }
-      });
-    }
-    return { ok: true, relocated: relocated.map((move) => move.to), rejected };
+    const { relocated, rejected } = await relocateFiles({ id, diskId: scan.diskId, leaseOwner: scan.leaseOwner }, body.moves, "companion");
+    return { ok: true, relocated, rejected };
   });
 
   app.post("/api/agent/errors/batch", { preHandler: requireAgentAuth }, async (request, reply) => {
@@ -1017,52 +744,16 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       timestampSeconds: fields.timestampSeconds?.value ?? 0
     });
 
-    const videoFile = await prisma.videoFile.findUnique({
-      where: { diskId_relativePath: { diskId: metadata.diskId, relativePath: metadata.relativePath } }
-    });
-    if (!videoFile) return reply.code(404).send({ message: "Video file must be uploaded before thumbnails" });
-
-    const image = await data.toBuffer();
-    const isJpeg = image.length >= 4
-      && image[0] === 0xff
-      && image[1] === 0xd8
-      && image[image.length - 2] === 0xff
-      && image[image.length - 1] === 0xd9;
-    if (!isJpeg) return reply.code(415).send({ message: "Thumbnail must be a valid JPEG image" });
-
-    const filename = `${metadata.kind}.jpg`;
-    const thumbnailRelativePath = path.posix.join(metadata.diskId, videoFile.id, filename);
-    const destination = path.join(env.THUMBNAILS_DIR, thumbnailRelativePath);
     try {
-      await fs.mkdir(path.dirname(destination), { recursive: true });
-      await fs.writeFile(destination, image);
+      const thumbnail = await storeThumbnail({ ...metadata, image: await data.toBuffer() });
+      return { thumbnail };
     } catch (error) {
-      if (!isStoragePermissionError(error)) throw error;
-      request.log.error({ err: error, destination }, "Thumbnail storage is not writable");
+      if (!(error instanceof ThumbnailStoreError)) throw error;
+      if (error.reason === "no_video") return reply.code(404).send({ message: error.message });
+      if (error.reason === "not_jpeg") return reply.code(415).send({ message: error.message });
+      request.log.error({ err: error.cause }, "Thumbnail storage is not writable");
       return reply.code(507).send({ message: `Thumbnail storage is not writable on the server. ${thumbnailStorageHint}` });
     }
-
-    const thumbnail = await prisma.thumbnail.upsert({
-      where: {
-        videoFileId_kind: {
-          videoFileId: videoFile.id,
-          kind: metadata.kind
-        }
-      },
-      create: {
-        videoFileId: videoFile.id,
-        kind: metadata.kind,
-        timestampSeconds: metadata.timestampSeconds,
-        relativePath: thumbnailRelativePath
-      },
-      update: {
-        timestampSeconds: metadata.timestampSeconds,
-        relativePath: thumbnailRelativePath,
-        createdAt: new Date()
-      }
-    });
-
-    return { thumbnail };
   });
 
   app.post("/api/agent/scan/finish", { preHandler: requireAgentAuth }, async (request, reply) => {
@@ -1076,47 +767,6 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     if (current.status !== "running") return reply.code(409).send({ message: "Scan is not running" });
     if (!await renewScanLease(body.scanId, current.diskId)) return reply.code(409).send({ message: "Scan lease expired; start a new scan" });
 
-    let markedAbsent = 0;
-    if (body.reconcile) {
-      const scanRoots = [...new Set(body.scanRoots.map(normalizedScanRoot))];
-      if (scanRoots.length === 0) return reply.code(400).send({ message: "scanRoots are required for reconciliation" });
-      const newest = await prisma.scan.aggregate({
-        where: { diskId: current.diskId, rootPath: current.rootPath },
-        _max: { generation: true }
-      });
-      if (newest._max.generation !== current.generation) {
-        return reply.code(409).send({ message: "A newer scan generation owns reconciliation" });
-      }
-      const result = await prisma.videoFile.updateMany({
-        where: {
-          diskId: current.diskId,
-          isPresent: true,
-          AND: [
-            scannedScopeWhere(scanRoots),
-            { OR: [{ lastSeenScanId: null }, { lastSeenScanId: { not: body.scanId } }] },
-            // A file on its way to another drive is legitimately missing from its old place.
-            { transferItems: { none: { state: { in: inTransitStates } } } }
-          ]
-        },
-        data: { isPresent: false, missingSince: new Date() }
-      });
-      markedAbsent = result.count;
-    }
-    const cancelledTransfers = markedAbsent > 0 ? await cancelVanishedTransfers() : 0;
-
-    const scan = await prisma.scan.update({
-      where: { id: body.scanId },
-      data: { status: "finished", finishedAt: new Date(), leaseExpiresAt: null }
-    });
-    await recordAction({
-      action: "scan.finish",
-      actorType: "companion",
-      actorId: current.leaseOwner,
-      diskId: current.diskId,
-      target: current.rootPath,
-      metadata: { generation: current.generation, reconciled: body.reconcile },
-      result: { fileCount: scan.fileCount, errorCount: scan.errorCount, markedAbsent, cancelledTransfers }
-    });
-    return { scan, reconciliation: { markedAbsent, cancelledTransfers } };
+    return finishScan(current, { reconcile: body.reconcile, scanRoots: body.scanRoots, actorType: "companion" });
   });
 }

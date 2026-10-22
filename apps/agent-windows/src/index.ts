@@ -14,19 +14,14 @@ import {
   AgentErrorInput,
   AgentFileInput,
   companionDefaultPort,
-  damagedMediaMessage,
-  damagedMediaReason,
   riskyMediaMessage,
   companionPortCandidates,
-  encodeVisualFingerprint,
   formatBytes,
   isVideoExtension,
-  perceptualHashFromGray9x8,
-  visualFingerprintVersion,
   type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
-import { frameExtractionTimestamps, shouldRetryFrameExtraction } from "./frame-extraction.js";
+import { analyzeMedia, compactToolError, extractVisualHash, type MediaTools } from "@videocat/shared/media";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
@@ -239,11 +234,6 @@ async function resolveCompanionStreamFile(input: { diskId: string; relativePath:
     return null;
   }
 }
-
-const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
-  const frame = String(index + 1).padStart(2, "0");
-  return [`frame_${frame}`, (index + 1) / 16] as const;
-});
 
 const markerFileName = ".videocat-disk.json";
 const skippedDirectoryNames = new Set(["$recycle.bin", "system volume information"]);
@@ -1236,7 +1226,7 @@ async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Pr
       for (const index of frameIndexes) {
         const rawDestination = path.join(temporaryRoot, `${String(index).padStart(2, "0")}.raw`);
         const seconds = Math.max(0.1, file.durationSeconds * (index / 16));
-        const extracted = await extractVisualHash(target, rawDestination, seconds);
+        const extracted = await extractVisualHash(target, mediaTools(), rawDestination, seconds);
         observedFrames.push({ index, hash: extracted.hash });
       }
     } catch (error) {
@@ -2101,10 +2091,6 @@ function compactFileLabel(filePath: string): string {
   return `${extension} ...${suffix}`;
 }
 
-function compactToolError(error: unknown): string {
-  return boundedErrorMessage(error, 360).replace(/\s+/g, " ");
-}
-
 function agentStateRoot(): string {
   const configured = process.env.AGENT_STATE_DIR?.trim();
   if (configured) return path.resolve(configured);
@@ -2282,134 +2268,9 @@ async function inspectDisk(scanPath: string) {
   }
 }
 
-function parseFps(value?: string): number | null {
-  if (!value || value === "0/0") return null;
-  const [top, bottom] = value.split("/").map(Number);
-  if (!top || !bottom) return null;
-  return top / bottom;
-}
-
-async function ffprobe(filePath: string, signal?: AbortSignal) {
-  const executable = mediaToolPath("FFPROBE_PATH", "ffprobe");
-  const maxAttempts = 3;
-  let stdout = "";
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
-    if (attempt > 1) {
-      const delayMs = attempt === 2 ? 750 : 2_000;
-      console.log(`Reintentando metadatos ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)} en ${delayMs}ms.`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-
-    const tolerantProbe = attempt === maxAttempts
-      ? ["-analyzeduration", "100M", "-probesize", "100M"]
-      : [];
-    try {
-      const result = await execFileAsync(executable, [
-        "-v",
-        "error",
-        ...tolerantProbe,
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        filePath
-      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000, signal });
-      stdout = result.stdout;
-      if (attempt > 1) console.log(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${compactFileLabel(filePath)}.`);
-      lastError = undefined;
-      break;
-    } catch (error) {
-      lastError = error;
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "EACCES") break;
-    }
-  }
-
-  if (lastError) throw lastError;
-
-  const raw = JSON.parse(stdout);
-  const videoStream = raw.streams?.find((stream: Record<string, unknown>) => stream.codec_type === "video");
-  const audioStream = raw.streams?.find((stream: Record<string, unknown>) => stream.codec_type === "audio");
-  const duration = Number(raw.format?.duration ?? videoStream?.duration ?? 0);
-
-  return {
-    durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : null,
-    width: Number(videoStream?.width) || null,
-    height: Number(videoStream?.height) || null,
-    fps: parseFps(String(videoStream?.avg_frame_rate ?? videoStream?.r_frame_rate ?? "")),
-    videoCodec: typeof videoStream?.codec_name === "string" ? videoStream.codec_name : null,
-    audioCodec: typeof audioStream?.codec_name === "string" ? audioStream.codec_name : null,
-    audioChannels: Number(audioStream?.channels) || null,
-    bitrate: Number(raw.format?.bit_rate) || null,
-    containerFormat: typeof raw.format?.format_name === "string" ? raw.format.format_name : null,
-    streamCount: Array.isArray(raw.streams) ? raw.streams.length : null,
-    raw
-  };
-}
-
-async function extractVisualHash(
-  source: string,
-  rawDestination: string,
-  seconds: number,
-  thumbnailDestination?: string,
-  signal?: AbortSignal
-): Promise<{ hash: string; timestampSeconds: number }> {
-  await fs.mkdir(path.dirname(rawDestination), { recursive: true });
-  const timestamps = frameExtractionTimestamps(seconds);
-  let lastError: unknown;
-
-  for (const [attempt, timestampSeconds] of timestamps.entries()) {
-    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
-    await fs.rm(rawDestination, { force: true }).catch(() => undefined);
-    if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
-
-    const args = ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(timestampSeconds), "-i", source];
-    if (thumbnailDestination) {
-      args.push(
-        "-filter_complex",
-        "[0:v:0]split=2[thumbsrc][hashsrc];[thumbsrc]scale=640:-1[thumb];[hashsrc]scale=9:8,format=gray[hash]",
-        "-map", "[thumb]", "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnailDestination,
-        "-map", "[hash]", "-frames:v", "1", "-f", "rawvideo", rawDestination
-      );
-    } else {
-      args.push(
-        "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=9:8,format=gray", "-f", "rawvideo", rawDestination
-      );
-    }
-
-    try {
-      // One frame never takes minutes on a healthy file; a read stuck in the drive is stopped.
-      await execFileAsync(mediaToolPath("FFMPEG_PATH", "ffmpeg"), args, { maxBuffer: 1024 * 1024 * 10, timeout: 120_000, signal });
-      const pixels = await fs.readFile(rawDestination);
-      const hash = perceptualHashFromGray9x8(pixels);
-      await fs.rm(rawDestination, { force: true }).catch(() => undefined);
-      if (attempt > 0) {
-        console.log(`Fotograma recuperado en posicion alternativa (${timestampSeconds.toFixed(1)}s).`);
-      }
-      return { hash, timestampSeconds };
-    } catch (error) {
-      lastError = error;
-      if (signal?.aborted || !shouldRetryFrameExtraction(error)) break;
-    }
-  }
-
-  await fs.rm(rawDestination, { force: true }).catch(() => undefined);
-  if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
-  throw lastError;
-}
-
-async function createThumbnail(
-  source: string,
-  destination: string,
-  rawDestination: string,
-  seconds: number,
-  signal?: AbortSignal
-): Promise<{ hash: string; timestampSeconds: number }> {
-  await fs.mkdir(path.dirname(destination), { recursive: true });
-  return extractVisualHash(source, rawDestination, seconds, destination, signal);
+// ffmpeg and ffprobe as configured or found (FFMPEG_PATH / FFPROBE_PATH, WinGet, PATH).
+function mediaTools(): MediaTools {
+  return { ffmpeg: mediaToolPath("FFMPEG_PATH", "ffmpeg"), ffprobe: mediaToolPath("FFPROBE_PATH", "ffprobe") };
 }
 
 async function processFile(
@@ -2437,86 +2298,26 @@ async function processFile(
     modifiedAt: stats.mtime.toISOString()
   };
 
-  try {
-    const metadata = await ffprobe(filePath, signal);
-    const thumbs: ThumbResult[] = [];
-    const fingerprintFrames: VisualFingerprintFrame[] = [];
-    let status: AgentFileInput["status"] = "scanned";
-    let errorMessage: string | null = null;
-
-    if ((createThumbnails || createFingerprint) && metadata.durationSeconds) {
-      let thumbnailFailures = 0;
-      let fingerprintFailures = 0;
-      for (const [kind, percent] of thumbnailPercents) {
-        if (signal?.aborted) break;
-        const timestampSeconds = Math.max(0.1, metadata.durationSeconds * percent);
-        const destination = path.join(
-          agentStateRoot(),
-          "temporary-thumbnails",
-          scanId,
-          thumbnailTempName(rel, kind)
-        );
-        const rawDestination = path.join(
-          agentStateRoot(),
-          "temporary-thumbnails",
-          scanId,
-          fingerprintTempName(rel, kind)
-        );
-        try {
-          const extracted = createThumbnails
-            ? await createThumbnail(filePath, destination, rawDestination, timestampSeconds, signal)
-            : await extractVisualHash(filePath, rawDestination, timestampSeconds, undefined, signal);
-          fingerprintFrames.push({ index: Number(kind.slice(-2)), hash: extracted.hash });
-          if (createThumbnails) thumbs.push({ kind, timestampSeconds: extracted.timestampSeconds, filePath: destination });
-        } catch (error) {
-          fingerprintFailures += 1;
-          if (createThumbnails) {
-            thumbnailFailures += 1;
-            status = "thumbnail_failed";
-            errorMessage = boundedErrorMessage(error, 4000, "thumbnail_failed");
-          }
-        }
-      }
-      if (thumbnailFailures > 0) {
-        console.warn(`Miniaturas fallidas ${thumbnailFailures}/${thumbnailPercents.length} para ${compactFileLabel(filePath)}: ${compactToolError(errorMessage)}`);
-      }
-      if (fingerprintFailures > 0 && !createThumbnails) {
-        console.warn(`Huella visual parcial ${fingerprintFrames.length}/${thumbnailPercents.length} para ${compactFileLabel(filePath)}.`);
-      }
-    }
-
-    const visualFingerprint = createFingerprint ? encodeVisualFingerprint(fingerprintFrames) : undefined;
-
-    return {
-      record: {
-        ...baseRecord,
-        status,
-        errorMessage,
-        visualFingerprint,
-        fingerprintVersion: visualFingerprint ? visualFingerprintVersion : createFingerprint ? null : undefined,
-        metadata
-      },
-      thumbnails: thumbs
-    };
-  } catch (error) {
-    // A damaged or unfinished file (an interrupted recording or copy) is not a tool failure: it says
-    // so plainly, keeps the tool output as detail, and is only read again when the file changes.
-    const detail = boundedErrorMessage(error, 4000, "metadata_failed");
-    const damaged = damagedMediaReason(detail);
-    if (damaged) console.warn(`Archivo dañado ${compactFileLabel(filePath)}: ${damaged}`);
-    else console.warn(`Metadatos fallidos para ${compactFileLabel(filePath)}: ${compactToolError(error)}`);
-    return {
-      record: {
-        ...baseRecord,
-        status: "metadata_failed",
-        errorMessage: damaged ? `${damagedMediaMessage(damaged)}\nDetalle: ${detail.slice(0, 1500)}` : detail,
-        visualFingerprint: createFingerprint ? null : undefined,
-        fingerprintVersion: createFingerprint ? null : undefined,
-        metadata: null
-      },
-      thumbnails: []
-    };
-  }
+  const analyzed = await analyzeMedia(filePath, {
+    tools: mediaTools(),
+    label: compactFileLabel(filePath),
+    createThumbnails,
+    createFingerprint,
+    thumbnailPath: (kind) => path.join(agentStateRoot(), "temporary-thumbnails", scanId, thumbnailTempName(rel, kind)),
+    rawPath: (kind) => path.join(agentStateRoot(), "temporary-thumbnails", scanId, fingerprintTempName(rel, kind)),
+    signal
+  });
+  return {
+    record: {
+      ...baseRecord,
+      status: analyzed.status,
+      errorMessage: analyzed.errorMessage,
+      visualFingerprint: analyzed.visualFingerprint,
+      fingerprintVersion: analyzed.fingerprintVersion,
+      metadata: analyzed.metadata
+    },
+    thumbnails: analyzed.thumbnails
+  };
 }
 
 async function uploadBatch(

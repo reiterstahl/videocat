@@ -1,0 +1,289 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { boundedErrorMessage } from "./bounded-text.js";
+import { damagedMediaMessage, damagedMediaReason } from "./damaged-media.js";
+import { encodeVisualFingerprint, perceptualHashFromGray9x8, visualFingerprintVersion, type VisualFingerprintFrame } from "./perceptual-fingerprint.js";
+
+// Reading a video with ffprobe and ffmpeg: metadata, the 15 frames and the visual fingerprint.
+// Shared by the Windows Companion (files on a drive) and the server's scanner (S3 objects
+// through a signed URL): the source is whatever ffmpeg can open. Node only, kept out of the
+// package's main entry so it never reaches the web bundle.
+
+const execFileAsync = promisify(execFile);
+
+export type MediaTools = { ffmpeg: string; ffprobe: string };
+export type MediaLog = { info: (message: string) => void; warn: (message: string) => void };
+const consoleLog: MediaLog = { info: (message) => console.log(message), warn: (message) => console.warn(message) };
+
+export const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
+  const frame = String(index + 1).padStart(2, "0");
+  return [`frame_${frame}`, (index + 1) / 16] as const;
+});
+
+const minimumTimestampSeconds = 0.1;
+
+export function frameExtractionTimestamps(requestedSeconds: number): number[] {
+  const normalized = Math.max(minimumTimestampSeconds, requestedSeconds);
+  const candidates = [
+    normalized,
+    normalized - 5,
+    normalized - 30,
+    normalized * 0.75
+  ];
+
+  const unique = new Set<string>();
+  return candidates
+    .map((seconds) => Math.max(minimumTimestampSeconds, seconds))
+    .filter((seconds) => {
+      const key = seconds.toFixed(3);
+      if (unique.has(key)) return false;
+      unique.add(key);
+      return true;
+    });
+}
+
+export function shouldRetryFrameExtraction(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return [
+    "received no packets",
+    "output file is empty",
+    "nothing was encoded",
+    "could not seek",
+    "seek failed"
+  ].some((fragment) => message.includes(fragment));
+}
+
+export function compactToolError(error: unknown): string {
+  return boundedErrorMessage(error, 360).replace(/\s+/g, " ");
+}
+
+function parseFps(value?: string): number | null {
+  if (!value || value === "0/0") return null;
+  const [top, bottom] = value.split("/").map(Number);
+  if (!top || !bottom) return null;
+  return top / bottom;
+}
+
+export type MediaMetadata = {
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  audioChannels: number | null;
+  bitrate: number | null;
+  containerFormat: string | null;
+  streamCount: number | null;
+  raw: unknown;
+};
+
+export async function probeMedia(
+  source: string,
+  tools: MediaTools,
+  options: { label: string; signal?: AbortSignal; log?: MediaLog }
+): Promise<MediaMetadata> {
+  const log = options.log ?? consoleLog;
+  const { signal } = options;
+  const maxAttempts = 3;
+  let stdout = "";
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
+    if (attempt > 1) {
+      const delayMs = attempt === 2 ? 750 : 2_000;
+      log.info(`Reintentando metadatos ${attempt}/${maxAttempts} para ${options.label} en ${delayMs}ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    const tolerantProbe = attempt === maxAttempts
+      ? ["-analyzeduration", "100M", "-probesize", "100M"]
+      : [];
+    try {
+      const result = await execFileAsync(tools.ffprobe, [
+        "-v",
+        "error",
+        ...tolerantProbe,
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        source
+      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000, signal });
+      stdout = result.stdout;
+      if (attempt > 1) log.info(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${options.label}.`);
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EACCES") break;
+    }
+  }
+
+  if (lastError) throw lastError;
+
+  const raw = JSON.parse(stdout);
+  const videoStream = raw.streams?.find((stream: Record<string, unknown>) => stream.codec_type === "video");
+  const audioStream = raw.streams?.find((stream: Record<string, unknown>) => stream.codec_type === "audio");
+  const duration = Number(raw.format?.duration ?? videoStream?.duration ?? 0);
+
+  return {
+    durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : null,
+    width: Number(videoStream?.width) || null,
+    height: Number(videoStream?.height) || null,
+    fps: parseFps(String(videoStream?.avg_frame_rate ?? videoStream?.r_frame_rate ?? "")),
+    videoCodec: typeof videoStream?.codec_name === "string" ? videoStream.codec_name : null,
+    audioCodec: typeof audioStream?.codec_name === "string" ? audioStream.codec_name : null,
+    audioChannels: Number(audioStream?.channels) || null,
+    bitrate: Number(raw.format?.bit_rate) || null,
+    containerFormat: typeof raw.format?.format_name === "string" ? raw.format.format_name : null,
+    streamCount: Array.isArray(raw.streams) ? raw.streams.length : null,
+    raw
+  };
+}
+
+// One frame as a 9×8 grey image for the perceptual hash and, when asked, as a 640 px JPEG.
+export async function extractVisualHash(
+  source: string,
+  tools: MediaTools,
+  rawDestination: string,
+  seconds: number,
+  thumbnailDestination?: string,
+  signal?: AbortSignal,
+  log: MediaLog = consoleLog
+): Promise<{ hash: string; timestampSeconds: number }> {
+  await fs.mkdir(path.dirname(rawDestination), { recursive: true });
+  if (thumbnailDestination) await fs.mkdir(path.dirname(thumbnailDestination), { recursive: true });
+  const timestamps = frameExtractionTimestamps(seconds);
+  let lastError: unknown;
+
+  for (const [attempt, timestampSeconds] of timestamps.entries()) {
+    if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
+    await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+    if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
+
+    const args = ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(timestampSeconds), "-i", source];
+    if (thumbnailDestination) {
+      args.push(
+        "-filter_complex",
+        "[0:v:0]split=2[thumbsrc][hashsrc];[thumbsrc]scale=640:-1[thumb];[hashsrc]scale=9:8,format=gray[hash]",
+        "-map", "[thumb]", "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnailDestination,
+        "-map", "[hash]", "-frames:v", "1", "-f", "rawvideo", rawDestination
+      );
+    } else {
+      args.push(
+        "-map", "0:v:0", "-frames:v", "1", "-vf", "scale=9:8,format=gray", "-f", "rawvideo", rawDestination
+      );
+    }
+
+    try {
+      // One frame never takes minutes on a healthy file; a read stuck in the drive is stopped.
+      await execFileAsync(tools.ffmpeg, args, { maxBuffer: 1024 * 1024 * 10, timeout: 120_000, signal });
+      const pixels = await fs.readFile(rawDestination);
+      const hash = perceptualHashFromGray9x8(pixels);
+      await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+      if (attempt > 0) {
+        log.info(`Fotograma recuperado en posicion alternativa (${timestampSeconds.toFixed(1)}s).`);
+      }
+      return { hash, timestampSeconds };
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted || !shouldRetryFrameExtraction(error)) break;
+    }
+  }
+
+  await fs.rm(rawDestination, { force: true }).catch(() => undefined);
+  if (thumbnailDestination) await fs.rm(thumbnailDestination, { force: true }).catch(() => undefined);
+  throw lastError;
+}
+
+export type MediaThumbnail = { kind: string; timestampSeconds: number; filePath: string };
+
+export type AnalyzedMedia = {
+  status: "scanned" | "thumbnail_failed" | "metadata_failed";
+  errorMessage: string | null;
+  metadata: MediaMetadata | null;
+  thumbnails: MediaThumbnail[];
+  // undefined: not asked; null: asked but not enough frames.
+  visualFingerprint: string | null | undefined;
+  fingerprintVersion: number | null | undefined;
+};
+
+// Metadata, then each of the 15 frames: thumbnails and/or fingerprint, as asked. A damaged or
+// unfinished file (an interrupted recording or copy) is not a tool failure: it says so plainly,
+// keeps the tool output as detail, and is only read again when the file changes.
+export async function analyzeMedia(source: string, options: {
+  tools: MediaTools;
+  label: string;
+  createThumbnails: boolean;
+  createFingerprint: boolean;
+  thumbnailPath: (kind: string) => string;
+  rawPath: (kind: string) => string;
+  signal?: AbortSignal;
+  log?: MediaLog;
+}): Promise<AnalyzedMedia> {
+  const log = options.log ?? consoleLog;
+  const { createThumbnails, createFingerprint, signal } = options;
+  try {
+    const metadata = await probeMedia(source, options.tools, { label: options.label, signal, log });
+    const thumbnails: MediaThumbnail[] = [];
+    const fingerprintFrames: VisualFingerprintFrame[] = [];
+    let status: AnalyzedMedia["status"] = "scanned";
+    let errorMessage: string | null = null;
+
+    if ((createThumbnails || createFingerprint) && metadata.durationSeconds) {
+      let thumbnailFailures = 0;
+      let fingerprintFailures = 0;
+      for (const [kind, percent] of thumbnailPercents) {
+        if (signal?.aborted) break;
+        const timestampSeconds = Math.max(0.1, metadata.durationSeconds * percent);
+        const destination = options.thumbnailPath(kind);
+        try {
+          const extracted = await extractVisualHash(source, options.tools, options.rawPath(kind), timestampSeconds, createThumbnails ? destination : undefined, signal, log);
+          fingerprintFrames.push({ index: Number(kind.slice(-2)), hash: extracted.hash });
+          if (createThumbnails) thumbnails.push({ kind, timestampSeconds: extracted.timestampSeconds, filePath: destination });
+        } catch (error) {
+          fingerprintFailures += 1;
+          if (createThumbnails) {
+            thumbnailFailures += 1;
+            status = "thumbnail_failed";
+            errorMessage = boundedErrorMessage(error, 4000, "thumbnail_failed");
+          }
+        }
+      }
+      if (thumbnailFailures > 0) {
+        log.warn(`Miniaturas fallidas ${thumbnailFailures}/${thumbnailPercents.length} para ${options.label}: ${compactToolError(errorMessage)}`);
+      }
+      if (fingerprintFailures > 0 && !createThumbnails) {
+        log.warn(`Huella visual parcial ${fingerprintFrames.length}/${thumbnailPercents.length} para ${options.label}.`);
+      }
+    }
+
+    const visualFingerprint = createFingerprint ? encodeVisualFingerprint(fingerprintFrames) : undefined;
+    return {
+      status,
+      errorMessage,
+      metadata,
+      thumbnails,
+      visualFingerprint,
+      fingerprintVersion: visualFingerprint ? visualFingerprintVersion : createFingerprint ? null : undefined
+    };
+  } catch (error) {
+    const detail = boundedErrorMessage(error, 4000, "metadata_failed");
+    const damaged = damagedMediaReason(detail);
+    if (damaged) log.warn(`Archivo dañado ${options.label}: ${damaged}`);
+    else log.warn(`Metadatos fallidos para ${options.label}: ${compactToolError(error)}`);
+    return {
+      status: "metadata_failed",
+      errorMessage: damaged ? `${damagedMediaMessage(damaged)}\nDetalle: ${detail.slice(0, 1500)}` : detail,
+      metadata: null,
+      thumbnails: [],
+      visualFingerprint: createFingerprint ? null : undefined,
+      fingerprintVersion: createFingerprint ? null : undefined
+    };
+  }
+}
