@@ -702,6 +702,7 @@ const en: Record<string, string> = {
   "Expandir discos conectados": "Expand connected drives",
   "Colapsar discos conectados": "Collapse connected drives",
   "Todos": "All",
+  "Ver todos": "Show all",
   "Ninguno": "None",
   "Discos": "Drives",
   "Videos": "Videos",
@@ -1192,6 +1193,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^Carpeta (.+)$/);
   if (match) return `Folder ${match[1]}`;
+
+  match = text.match(/^No hay duplicados dentro de los discos seleccionados \(([\d.,\s]+) de ([\d.,\s]+)\)\.$/);
+  if (match) return `No duplicates within the selected drives (${match[1]} of ${match[2]}).`;
+
+  match = text.match(/^Hay ([\d.,\s]+) grupos? en todos los discos\.$/);
+  if (match) return `There ${match[1].trim() === "1" ? "is 1 group" : `are ${match[1]} groups`} across all drives.`;
 
   match = text.match(/^([\d.,\s]+) grupos? · (.+) recuperables$/);
   if (match) return `${match[1]} ${match[1].trim() === "1" ? "group" : "groups"} · ${match[2]} recoverable`;

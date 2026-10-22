@@ -63,3 +63,17 @@ test("the Duplicates badge counts only groups that still need a decision", async
   await page.keyboard.press("Escape");
   await expect(pendingInView).toHaveText(String(before - 1));
 });
+
+test("a drive selection that leaves out every group says so and shows them all on request", async ({ page }) => {
+  await openView(page, "/duplicados");
+  await expect(page.locator(".vc-dup-group").first()).toBeVisible();
+  // Demo copies always sit on another drive than their original: one drive alone holds no group.
+  await page.getByRole("button", { name: "Ninguno" }).click();
+  await page.locator(".vc-disk-chip").first().click();
+  const notice = page.locator(".vc-dup-scope");
+  await expect(notice).toContainText(/dentro de los discos seleccionados \(1 de \d+\)/);
+  await expect(notice).toContainText(/Hay \d+ grupos? en todos los discos/);
+  await notice.getByRole("button", { name: "Ver todos" }).click();
+  await expect(page.locator(".vc-dup-group").first()).toBeVisible();
+  await expect(page.locator(".vc-disk-chip:not(.is-active)")).toHaveCount(0);
+});

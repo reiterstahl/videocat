@@ -616,3 +616,18 @@
     display: none;
   }
 }
+
+/* Empty list because the drive selection leaves out groups that exist on other drives. */
+.vc-dup-scope {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.vc-dup-scope p {
+  margin: 0;
+}
+
+.vc-dup-scope .vc-button {
+  margin-top: 6px;
+}

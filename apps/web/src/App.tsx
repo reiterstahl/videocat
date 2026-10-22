@@ -2400,7 +2400,9 @@ export function App() {
       {viewMode === "duplicates" ? (
         <DuplicatesView
           {...{
+            allDuplicateGroupCount: stats?.duplicateGroupCount ?? 0,
             auxLoading,
+            diskCount: disks.length,
             duplicateAssistantMessage,
             duplicateDriveRecommendations,
             duplicateGroups,
@@ -2413,6 +2415,8 @@ export function App() {
             openDuplicateAssistant,
             openDuplicateDriveRecommendations,
             pendingAssistedDuplicateGroups,
+            selectAllDisks,
+            selectedDiskCount: connectedDiskIds.length,
             total
           }}
         />

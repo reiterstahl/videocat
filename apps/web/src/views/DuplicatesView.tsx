@@ -12,7 +12,10 @@ import type {
 import type { VideoFile } from "../types";
 
 export type DuplicatesViewProps = {
+  // Groups across every drive (the "Duplicados probables" card), to tell when the selection hides some.
+  allDuplicateGroupCount: number;
   auxLoading: boolean;
+  diskCount: number;
   duplicateAssistantMessage: string;
   duplicateDriveRecommendations: DuplicateDriveRecommendationsResponse | null;
   duplicateGroups: DuplicateGroup[];
@@ -25,10 +28,14 @@ export type DuplicatesViewProps = {
   openDuplicateAssistant: (startGroupKey?: string) => void;
   openDuplicateDriveRecommendations: (force?: boolean) => Promise<void>;
   pendingAssistedDuplicateGroups: AssistedDuplicateGroup[];
+  selectAllDisks: () => void;
+  selectedDiskCount: number;
   total: number;
 };
 
-export function DuplicatesView({ auxLoading, duplicateAssistantMessage, duplicateDriveRecommendations, duplicateGroups, duplicateRecoverableBytes, facets, language, loading, locale, openDetail, openDuplicateAssistant, openDuplicateDriveRecommendations, pendingAssistedDuplicateGroups, total }: DuplicatesViewProps) {
+export function DuplicatesView({ allDuplicateGroupCount, auxLoading, diskCount, duplicateAssistantMessage, duplicateDriveRecommendations, duplicateGroups, duplicateRecoverableBytes, facets, language, loading, locale, openDetail, openDuplicateAssistant, openDuplicateDriveRecommendations, pendingAssistedDuplicateGroups, selectAllDisks, selectedDiskCount, total }: DuplicatesViewProps) {
+  // Groups only count when every copy is on a selected drive; no selection means every drive.
+  const partialSelection = selectedDiskCount > 0 && selectedDiskCount < diskCount;
   return (
     <section className="vc-dup-home">
       <div className="vc-review-hero">
@@ -56,7 +63,15 @@ export function DuplicatesView({ auxLoading, duplicateAssistantMessage, duplicat
         <div className="vc-dup-groups">
           {auxLoading ? <div className="loading">Cargando...</div> : null}
           {!auxLoading && duplicateGroups.length === 0 ? (
-            <div className="empty">No hay duplicados probables para estos discos.</div>
+            partialSelection && allDuplicateGroupCount > 0 ? (
+              <div className="empty vc-dup-scope">
+                <p>{`No hay duplicados dentro de los discos seleccionados (${selectedDiskCount.toLocaleString(locale)} de ${diskCount.toLocaleString(locale)}).`}</p>
+                <p>{`Hay ${allDuplicateGroupCount.toLocaleString(locale)} ${allDuplicateGroupCount === 1 ? "grupo" : "grupos"} en todos los discos.`}</p>
+                <button className="vc-button is-primary" onClick={selectAllDisks} type="button">Ver todos</button>
+              </div>
+            ) : (
+              <div className="empty">No hay duplicados probables para estos discos.</div>
+            )
           ) : null}
           {duplicateGroups.map((group) => {
             const pendingGroup = pendingAssistedDuplicateGroups.find((item) => item.key === group.key);
