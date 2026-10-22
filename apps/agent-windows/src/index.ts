@@ -22,13 +22,13 @@ import {
   type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
-import { analyzeMedia, compactToolError, extractVisualHash, type MediaTools } from "@videocat/shared/media";
+import { analyzeMedia, compactToolError, extractVisualHash, isUnreadableMediaError, mediaReadTimeoutMs, type MediaTools } from "@videocat/shared/media";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
-import { processTransferItem, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
+import { processTransferItem, readStallMs, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
 import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
@@ -1150,8 +1150,16 @@ async function openLocalFolder(targetPath: string, kind: "file" | "directory"): 
   await execFileAsync(opener, [folder]);
 }
 
+// A file system call on a drive that may have bad sectors: past readStallMs it fails instead of
+// waiting (the call itself is abandoned; a read stuck in the drive may never return).
+async function diskCall<T>(work: () => Promise<T>, what: string): Promise<T> {
+  const result = await withDeadline(() => work(), readStallMs);
+  if (!result.done) throw new Error(`El disco no respondió en ${Math.round(readStallMs / 1000)} s al ${what}; puede tener sectores dañados.`);
+  return result.value;
+}
+
 async function deleteLocalFile(filePath: string): Promise<void> {
-  await fs.unlink(filePath);
+  await diskCall(() => fs.unlink(filePath), "borrar el archivo");
 }
 
 function companionAgentApiEnabled(): boolean {
@@ -1196,8 +1204,9 @@ async function reportDeletionResult(
   });
 }
 
-async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const before = await fs.stat(target);
+// unreadable: the drive did not answer while reading the file, so its identity is unknown.
+async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Promise<{ ok: true } | { ok: false; reason: string; unreadable?: boolean }> {
+  const before = await diskCall(() => fs.stat(target), "leer el archivo");
   const metadata = validateDeletionMetadata(file, {
     sizeBytes: before.size,
     modifiedAtMs: before.mtime.getTime()
@@ -1223,6 +1232,9 @@ async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Pr
         observedFrames.push({ index, hash: extracted.hash });
       }
     } catch (error) {
+      if (isUnreadableMediaError(error)) {
+        return { ok: false, unreadable: true, reason: `el disco no respondió en ${Math.round(mediaReadTimeoutMs / 1000)} s al leer el archivo` };
+      }
       return {
         ok: false,
         reason: `no se pudo verificar la huella visual: ${boundedErrorMessage(error, 1000, "fingerprint verification failed")}`
@@ -1235,7 +1247,7 @@ async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Pr
     if (!fingerprint.ok) return fingerprint;
   }
 
-  const after = await fs.stat(target);
+  const after = await diskCall(() => fs.stat(target), "leer el archivo");
   return validateDeletionMetadata(file, {
     sizeBytes: after.size,
     modifiedAtMs: after.mtime.getTime()
@@ -1292,7 +1304,7 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
     }
 
     try {
-      const kind = await existingPath(target);
+      const kind = await diskCall(() => existingPath(target), "buscar el archivo");
       if (kind === "file") {
         const canonicalTarget = await canonicalPathInsideRoot(root, file.relativePath);
         if (!canonicalTarget) {
@@ -1302,6 +1314,14 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
           continue;
         }
         const identity = await verifyDeletionIdentity(canonicalTarget, file);
+        if (!identity.ok && identity.unreadable) {
+          // Never deleted without confirming it is the catalogued file; the user can delete it by hand.
+          const message = `No se borró: ${identity.reason}, así que no se pudo confirmar que es el archivo catalogado. Puede tener sectores dañados; bórralo a mano desde el Explorador si ya no lo necesitas.`;
+          failed += 1;
+          await reportDeletionResult(file.id, "failed", message).catch(() => undefined);
+          console.warn(`${message} Ruta: ${file.relativePath}`);
+          continue;
+        }
         if (!identity.ok) {
           const message = `Identidad del archivo modificada; borrado cancelado: ${identity.reason}`;
           failed += 1;
@@ -2373,6 +2393,7 @@ async function processFile(
     rawPath: (kind) => path.join(agentStateRoot(), "temporary-thumbnails", scanId, fingerprintTempName(rel, kind)),
     signal
   });
+  if (analyzed.unreadable) throw new UnreadableFileError();
   return {
     record: {
       ...baseRecord,
@@ -2385,6 +2406,10 @@ async function processFile(
     thumbnails: analyzed.thumbnails
   };
 }
+
+// A read of the file did not answer in mediaReadTimeoutMs or failed with an I/O error: the file
+// goes at risk right away instead of waiting for its whole deadline.
+class UnreadableFileError extends Error {}
 
 async function uploadBatch(
   scanId: string,
@@ -2739,22 +2764,30 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   }
 
   async function processGuarded(item: PendingScanFile): Promise<ProcessedFile> {
-    const result = await withDeadline((signal) => processFile(
-      resolved.diskRoot,
-      item.filePath,
-      scan.id,
-      item.createThumbnails,
-      item.createFingerprint,
-      folderSizeCache,
-      auditErrors,
-      signal
-    ), fileTimeoutMs);
+    let result: Awaited<ReturnType<typeof withDeadline<ProcessedFile>>>;
+    let unreadable = false;
+    try {
+      result = await withDeadline((signal) => processFile(
+        resolved.diskRoot,
+        item.filePath,
+        scan.id,
+        item.createThumbnails,
+        item.createFingerprint,
+        folderSizeCache,
+        auditErrors,
+        signal
+      ), fileTimeoutMs);
+    } catch (error) {
+      if (!(error instanceof UnreadableFileError)) throw error;
+      result = { done: false };
+      unreadable = true;
+    }
     const rel = relativePath(resolved.diskRoot, item.filePath);
     if (result.done) {
       clearRisky(state.risky, rel);
       return result.value;
     }
-    const message = markAtRisk(rel, item.filePath, "metadata", Math.round(fileTimeoutMs / 1000), false);
+    const message = markAtRisk(rel, item.filePath, "metadata", Math.round((unreadable ? mediaReadTimeoutMs : fileTimeoutMs) / 1000), false);
     return {
       record: {
         filename: path.basename(item.filePath),

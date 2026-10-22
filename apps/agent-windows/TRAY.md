@@ -6,7 +6,8 @@ Esta app ejecuta VideoCAT desde la bandeja de Windows. Mantiene el companion loc
 
 - Arranca el companion local en segundo plano.
 - Mientras trabaja, el color de acento elegido en la web (Tema) recorre el borde blanco del ícono de la bandeja; sin tareas, el ícono queda blanco y quieto. Al pasar el cursor, el tooltip muestra la tarea, el archivo, el avance y cuánto falta.
-- Si un archivo no termina de leerse en **Tiempo máximo por archivo** (`COMPANION_FILE_TIMEOUT_SECONDS`, 180 s por defecto), el escaneo sigue con el siguiente y lo marca en riesgo; los próximos escaneos no lo tocan durante 30 días.
+- Si una lectura de un archivo (sus metadatos o un fotograma) no responde en 30 s o da un error de lectura del disco, el archivo se deja enseguida, sin reintentos, y queda en riesgo; lo mismo si no termina en **Tiempo máximo por archivo** (`COMPANION_FILE_TIMEOUT_SECONDS`, 180 s por defecto). El escaneo sigue con el siguiente y los próximos escaneos no lo tocan durante 30 días.
+- Los traslados abandonan un archivo cuyo disco deja de entregar datos durante 30 s, y un borrado que no puede leer el archivo para confirmar que es el catalogado no lo borra: lo informa para borrarlo a mano.
 - Detecta discos montados con `.videocat-disk.json`.
 - Permite añadir carpetas locales o de red como rutas monitoreadas. Una unidad completa se añade con **Añadir unidad… › Convertir…**, que le escribe su `.videocat-disk.json`: así se reconoce aunque cambie la letra.
 - Las unidades que versiones anteriores seguían por letra muestran **sigue la letra** y **Fijar identidad…**, que compara una muestra del catálogo con la unidad elegida antes de escribir el marcador con el mismo id.

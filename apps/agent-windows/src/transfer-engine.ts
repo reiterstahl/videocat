@@ -63,16 +63,44 @@ const partSuffix = ".vcpart";
 // Bytes processed so far out of the file size, for the activity indicator.
 export type ByteProgress = (bytesDone: number) => void;
 
-export async function hashFile(filePath: string, onProgress?: ByteProgress): Promise<string> {
+// A read stuck on a bad sector may never return, and Windows keeps retrying while the drive stays
+// connected. Past this time without a byte the copy or hash fails and is abandoned, not awaited,
+// so the transfer goes on with the next file.
+export const readStallMs = 30_000;
+
+type Destroyable = { destroy(error?: Error): unknown };
+
+export async function failOnStall<T>(running: Promise<T>, lastByteAt: () => number, streams: Destroyable[], stallMs = readStallMs): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const stalled = new Promise<never>((_resolve, reject) => {
+    timer = setInterval(() => {
+      if (Date.now() - lastByteAt() < stallMs) return;
+      const error = new Error(`el disco no respondió en ${Math.round(stallMs / 1000)} s; puede tener sectores dañados`);
+      for (const stream of streams) stream.destroy(error);
+      reject(error);
+    }, Math.min(5_000, Math.max(1_000, Math.floor(stallMs / 3))));
+  });
+  try {
+    return await Promise.race([running, stalled]);
+  } finally {
+    clearInterval(timer);
+    running.catch(() => undefined);
+  }
+}
+
+export async function hashFile(filePath: string, onProgress?: ByteProgress, stallMs = readStallMs): Promise<string> {
   const hash = createHash("sha256");
   let done = 0;
-  await pipeline(createReadStream(filePath), async function* (source) {
-    for await (const chunk of source) {
+  let lastByteAt = Date.now();
+  const source = createReadStream(filePath);
+  await failOnStall(pipeline(source, async function* (chunks) {
+    for await (const chunk of chunks) {
       hash.update(chunk as Buffer);
       done += (chunk as Buffer).length;
+      lastByteAt = Date.now();
       onProgress?.(done);
     }
-  });
+  }), () => lastByteAt, [source], stallMs);
   return hash.digest("hex");
 }
 
@@ -87,19 +115,20 @@ export async function copyVerified(
   await fs.rm(part, { force: true });
   const hash = createHash("sha256");
   let copied = 0;
+  let lastByteAt = Date.now();
   try {
-    await pipeline(
-      createReadStream(source),
-      new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          hash.update(chunk);
-          copied += chunk.length;
-          onProgress?.("copy", copied);
-          callback(null, chunk);
-        }
-      }),
-      createWriteStream(part, { flags: "wx" })
-    );
+    const reader = createReadStream(source);
+    const hasher = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        hash.update(chunk);
+        copied += chunk.length;
+        lastByteAt = Date.now();
+        onProgress?.("copy", copied);
+        callback(null, chunk);
+      }
+    });
+    const writer = createWriteStream(part, { flags: "wx" });
+    await failOnStall(pipeline(reader, hasher, writer), () => lastByteAt, [reader, hasher, writer]);
     const handle = await fs.open(part, "r+");
     try {
       await handle.sync();

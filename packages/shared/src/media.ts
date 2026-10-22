@@ -55,6 +55,18 @@ export function shouldRetryFrameExtraction(error: unknown): boolean {
   ].some((fragment) => message.includes(fragment));
 }
 
+// One read of a healthy file (its metadata, one frame) answers in seconds, even from a drive
+// that has to spin up. One that does not answer in this time, or fails with an I/O error, sits
+// on a failing part of the drive: retrying only stresses it more, so the file is left at once.
+export const mediaReadTimeoutMs = 30_000;
+
+export function isUnreadableMediaError(error: unknown): boolean {
+  if ((error as Error)?.name === "AbortError") return false;
+  if ((error as { killed?: boolean })?.killed || (error as NodeJS.ErrnoException)?.code === "ETIMEDOUT") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /input\/output error|i\/o error|i\/o device error|error number -5 occurred/i.test(message);
+}
+
 export function compactToolError(error: unknown): string {
   return boundedErrorMessage(error, 360).replace(/\s+/g, " ");
 }
@@ -112,7 +124,7 @@ export async function probeMedia(
         "-show_format",
         "-show_streams",
         source
-      ], { maxBuffer: 1024 * 1024 * 20, timeout: 120_000, signal });
+      ], { maxBuffer: 1024 * 1024 * 20, timeout: mediaReadTimeoutMs, signal });
       stdout = result.stdout;
       if (attempt > 1) log.info(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${options.label}.`);
       lastError = undefined;
@@ -120,7 +132,7 @@ export async function probeMedia(
     } catch (error) {
       lastError = error;
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "EACCES") break;
+      if (code === "ENOENT" || code === "EACCES" || isUnreadableMediaError(error)) break;
     }
   }
 
@@ -181,8 +193,7 @@ export async function extractVisualHash(
     }
 
     try {
-      // One frame never takes minutes on a healthy file; a read stuck in the drive is stopped.
-      await execFileAsync(tools.ffmpeg, args, { maxBuffer: 1024 * 1024 * 10, timeout: 120_000, signal });
+      await execFileAsync(tools.ffmpeg, args, { maxBuffer: 1024 * 1024 * 10, timeout: mediaReadTimeoutMs, signal });
       const pixels = await fs.readFile(rawDestination);
       const hash = perceptualHashFromGray9x8(pixels);
       await fs.rm(rawDestination, { force: true }).catch(() => undefined);
@@ -206,6 +217,9 @@ export type MediaThumbnail = { kind: string; timestampSeconds: number; filePath:
 export type AnalyzedMedia = {
   status: "scanned" | "thumbnail_failed" | "metadata_failed";
   errorMessage: string | null;
+  // A read did not answer or failed with an I/O error (see isUnreadableMediaError): the rest of
+  // the file was not tried.
+  unreadable: boolean;
   metadata: MediaMetadata | null;
   thumbnails: MediaThumbnail[];
   // undefined: not asked; null: asked but not enough frames.
@@ -234,6 +248,7 @@ export async function analyzeMedia(source: string, options: {
     const fingerprintFrames: VisualFingerprintFrame[] = [];
     let status: AnalyzedMedia["status"] = "scanned";
     let errorMessage: string | null = null;
+    let unreadable = false;
 
     if ((createThumbnails || createFingerprint) && metadata.durationSeconds) {
       let thumbnailFailures = 0;
@@ -253,6 +268,10 @@ export async function analyzeMedia(source: string, options: {
             status = "thumbnail_failed";
             errorMessage = boundedErrorMessage(error, 4000, "thumbnail_failed");
           }
+          if (isUnreadableMediaError(error)) {
+            unreadable = true;
+            break;
+          }
         }
       }
       if (thumbnailFailures > 0) {
@@ -263,10 +282,12 @@ export async function analyzeMedia(source: string, options: {
       }
     }
 
+    if (unreadable) log.warn(`Lectura sin respuesta en ${options.label}: se deja el archivo sin intentar el resto de sus fotogramas.`);
     const visualFingerprint = createFingerprint ? encodeVisualFingerprint(fingerprintFrames) : undefined;
     return {
       status,
       errorMessage,
+      unreadable,
       metadata,
       thumbnails,
       visualFingerprint,
@@ -280,6 +301,7 @@ export async function analyzeMedia(source: string, options: {
     return {
       status: "metadata_failed",
       errorMessage: damaged ? `${damagedMediaMessage(damaged)}\nDetalle: ${detail.slice(0, 1500)}` : detail,
+      unreadable: isUnreadableMediaError(error),
       metadata: null,
       thumbnails: [],
       visualFingerprint: createFingerprint ? null : undefined,
