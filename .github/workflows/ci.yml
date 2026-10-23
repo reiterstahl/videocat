@@ -182,9 +182,10 @@ jobs:
             $acl.Access | ForEach-Object { "  $($_.IdentityReference): $($_.FileSystemRights) ($($_.AccessControlType))" }
             # Administrators, SYSTEM and TrustedInstaller; CREATOR OWNER (inherited in Program Files)
             # only reaches what its owner creates, and only administrators create there.
-            $writers = $acl.Access | Where-Object {
+            # Read as SIDs: some inherited names (ALL APPLICATION PACKAGES) do not translate back.
+            $writers = $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object {
               $_.AccessControlType -eq 'Allow' -and
-              $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464', 'S-1-3-0') -and
+              $_.IdentityReference.Value -notin @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464', 'S-1-3-0') -and
               ([int64]$_.FileSystemRights -band $writeBits)
             }
             if ($writers) { throw "$folder can be written by: $($writers.IdentityReference -join ', ')" }
