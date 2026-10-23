@@ -93,7 +93,9 @@ export function videoFileData(diskId: string, scanId: string, file: AgentFileInp
     fingerprintedAt: file.visualFingerprint !== undefined ? new Date() : undefined,
     isPresent: true,
     missingSince: null,
-    lastSeenScanId: scanId
+    lastSeenScanId: scanId,
+    // The file was read (again): a pending retry from the web is done, whatever the result.
+    readRetryAt: null
   };
 }
 

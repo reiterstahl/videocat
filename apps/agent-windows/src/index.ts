@@ -198,6 +198,8 @@ type ScanIndexResponse = {
     sizeBytes: number;
     modifiedAt?: string | null;
   }>;
+  // Files at risk the web asked to read again.
+  readRetry?: string[];
 };
 
 type CompanionHeartbeatResponse = {
@@ -2524,6 +2526,13 @@ async function hydrateStateFromServer(diskId: string, state: State): Promise<num
       setCompletedState(state, file.relativePath, modifiedAt, file.sizeBytes);
       restored += 1;
     }
+    // Asked from the web: off the list of files at risk and read in full on this scan.
+    for (const rel of response.readRetry ?? []) {
+      clearRisky(state.risky, rel);
+      delete state.completed[rel];
+      restored += 1;
+    }
+    if (response.readRetry?.length) console.log(`Se vuelven a leer ${response.readRetry.length} archivo(s) con problema de lectura, a pedido de la web.`);
     return restored;
   } catch (error) {
     console.warn(`No se pudo reconstruir el estado desde el servidor; se usara el estado local: ${error instanceof Error ? error.message : String(error)}`);

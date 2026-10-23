@@ -711,6 +711,20 @@ const en: Record<string, string> = {
   "Hace falta el Companion con los discos conectados": "The Companion with its drives connected is needed",
   "Para borrarlo del bucket, márcalo para borrar (J en Review) y procesa los pendientes en Últimos borrados.": "To delete it from the bucket, mark it for deletion (J in Review) and process the pending ones in Latest deletions.",
   "Bucket S3": "S3 bucket",
+  "Problema de lectura": "Read problem",
+  "El disco no respondió al leer este archivo: puede tener sectores dañados. Los escaneos lo dejan de lado por 30 días. Si lo necesitas, cópialo a otro disco o revisa el disco; si ya no, bórralo a mano.": "The drive did not answer while reading this file: it may have bad sectors. Scans leave it alone for 30 days. If you need it, copy it to another drive or check the drive; if not, delete it by hand.",
+  "Volver a leerlo": "Read it again",
+  "Volver a leerlos": "Read them again",
+  "Pidiendo...": "Requesting...",
+  "No se pudo pedir que se vuelva a leer.": "Could not ask to read it again.",
+  "No se pudo pedir que se vuelvan a leer.": "Could not ask to read them again.",
+  "Con problema de lectura": "With read problems",
+  "Archivos que el disco no dejó leer (posibles sectores dañados)": "Files the drive did not let VideoCAT read (possible bad sectors)",
+  "Ver archivos": "Show files",
+  "Se vuelven a leer en el próximo escaneo de este disco.": "They are read again on this drive's next scan.",
+  "El disco no respondió al leerlos: puede tener sectores dañados. Los escaneos los dejan de lado por 30 días.": "The drive did not answer while reading them: it may have bad sectors. Scans leave them alone for 30 days.",
+  "Ya se pidió volver a leerlos en el próximo escaneo": "Already asked to read them again on the next scan",
+  "Los quita de la lista de archivos en riesgo del Companion y los lee en el próximo escaneo": "Takes them off the Companion's list of files at risk and reads them on the next scan",
   "Carpeta en el bucket": "Folder in the bucket",
   "Quita también el bucket en Almacenamiento S3: si no, el próximo escaneo vuelve a crear este disco": "Also remove the bucket in S3 storage: otherwise the next scan creates this drive again",
   "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.": "This video is in an S3 bucket: there is no file on a PC to open or delete from here.",
@@ -1077,6 +1091,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);
   if (match) return `${match[1]} of ${match[2]} drives selected`;
+
+  match = text.match(/^([\d.,\s]+) con problema de lectura$/);
+  if (match) return `${match[1]} with read problems`;
+
+  match = text.match(/^Se vuelve a leer en el próximo escaneo de (.+)\.$/);
+  if (match) return `It is read again on the next scan of ${match[1]}.`;
 
   match = text.match(/^([\d.,\s]+) pendientes$/);
   if (match) return `${match[1]} pending`;

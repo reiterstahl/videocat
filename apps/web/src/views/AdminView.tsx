@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Cloud, Copy, Database, HardDrive, HardDriveDownload, History, Pencil, RefreshCw, Shield, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Copy, Database, HardDrive, HardDriveDownload, History, Pencil, RefreshCw, RotateCcw, Shield, Trash2 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
@@ -25,6 +25,7 @@ type AdminViewProps = {
   mountedDiskIds: string[];
   onDiskPurged: (disk: Disk) => void;
   onDiskRemoved: (disk: Disk) => void;
+  onShowReadProblems: (diskId: string) => void;
 };
 
 const onlineWindowMs = 45_000;
@@ -35,7 +36,7 @@ const removeDiskMessages: Record<string, string> = {
   "Files from or to this drive are in the Companion staging folder": "Hay archivos de esta unidad (o hacia ella) en la carpeta temporal del Companion. Espera a que terminen esos traslados antes de eliminarla."
 };
 
-export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, onDiskRemoved, onDiskRenamed }: AdminViewProps) {
+export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, onDiskRemoved, onDiskRenamed, onShowReadProblems }: AdminViewProps) {
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [renameError, setRenameError] = useState("");
   const [disks, setDisks] = useState<AdminDiskOverview[]>([]);
@@ -52,6 +53,7 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
   const [purgeKind, setPurgeKind] = useState<"purge" | "remove">("purge");
   const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [purgingDiskId, setPurgingDiskId] = useState<string | null>(null);
+  const [readRetryDiskId, setReadRetryDiskId] = useState<string | null>(null);
   const [pruning, setPruning] = useState(false);
 
   const load = useCallback(async () => {
@@ -165,6 +167,22 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
     }
   }
 
+
+  // Every file of the drive with a read problem, read again on its next scan.
+  async function retryReadProblems(disk: Disk) {
+    setReadRetryDiskId(disk.id);
+    setMessage("");
+    try {
+      const response = await api<{ requested: number }>("/api/files/read-retry", { method: "POST", body: JSON.stringify({ diskId: disk.id }) });
+      setDisks((current) => current.map((item) => item.disk.id === disk.id
+        ? { ...item, catalog: { ...item.catalog, readRetryFiles: response.requested } }
+        : item));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo pedir que se vuelvan a leer.");
+    } finally {
+      setReadRetryDiskId(null);
+    }
+  }
 
   async function renameDisk(disk: Disk, name: string | null) {
     setRenameError("");
@@ -347,6 +365,32 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                   <div><dt>Escaneos</dt><dd>{formatCount(item.catalog.scanCount)}</dd></div>
                   <div><dt>Errores</dt><dd>{formatCount(item.catalog.errorCount)}</dd></div>
                 </dl>
+                {item.catalog.readProblemFiles > 0 ? (
+                  <div className="vc-status-banner is-danger vc-admin-read-problems" role="status">
+                    <AlertTriangle size={16} aria-hidden="true" />
+                    <div>
+                      <strong>{`${formatCount(item.catalog.readProblemFiles)} con problema de lectura`}</strong>
+                      <span>
+                        {item.catalog.readRetryFiles >= item.catalog.readProblemFiles
+                          ? "Se vuelven a leer en el próximo escaneo de este disco."
+                          : "El disco no respondió al leerlos: puede tener sectores dañados. Los escaneos los dejan de lado por 30 días."}
+                      </span>
+                      <div className="vc-admin-read-problem-actions">
+                        <button className="vc-button is-small" onClick={() => onShowReadProblems(disk.id)} type="button">Ver archivos</button>
+                        <button
+                          className="vc-button is-small"
+                          disabled={readRetryDiskId === disk.id || item.catalog.readRetryFiles >= item.catalog.readProblemFiles}
+                          onClick={() => void retryReadProblems(disk)}
+                          title={item.catalog.readRetryFiles >= item.catalog.readProblemFiles ? "Ya se pidió volver a leerlos en el próximo escaneo" : "Los quita de la lista de archivos en riesgo del Companion y los lee en el próximo escaneo"}
+                          type="button"
+                        >
+                          <RotateCcw size={14} aria-hidden="true" />
+                          {readRetryDiskId === disk.id ? "Pidiendo..." : "Volver a leerlos"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <p className="vc-admin-indexed">{`Último indexado: ${dateLabel(disk.lastScannedAt, locale)}`}</p>
 
                 <details className="vc-admin-activity">

@@ -320,7 +320,8 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       select: {
         relativePath: true,
         sizeBytes: true,
-        modifiedAt: true
+        modifiedAt: true,
+        readRetryAt: true
       },
       orderBy: { relativePath: "asc" }
     });
@@ -331,7 +332,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         relativePath: file.relativePath,
         sizeBytes: Number(file.sizeBytes),
         modifiedAt: file.modifiedAt?.toISOString() ?? null
-      }))
+      })),
+      // Files at risk the web asked to read again (Companion 0.2.22 or later).
+      readRetry: files.filter((file) => file.readRetryAt).map((file) => file.relativePath)
     };
   });
 

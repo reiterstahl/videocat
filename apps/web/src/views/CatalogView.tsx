@@ -43,6 +43,7 @@ export type CatalogViewProps = {
   curationStatus: CurationStatus | "";
   deleteCategory: (category: CurationCategory) => Promise<void>;
   duplicateOnly: boolean;
+  readProblemOnly: boolean;
   duplicates: VideoFile[];
   extension: string;
   extensions: string[];
@@ -76,6 +77,7 @@ export type CatalogViewProps = {
   setCatalogView: Dispatch<SetStateAction<CatalogLayout>>;
   setCurationStatus: Dispatch<SetStateAction<CurationStatus | "">>;
   setDuplicateOnly: Dispatch<SetStateAction<boolean>>;
+  setReadProblemOnly: (value: boolean) => void;
   setExtension: Dispatch<SetStateAction<string>>;
   setFiltersOpen: Dispatch<SetStateAction<boolean>>;
   setFolderSearch: Dispatch<SetStateAction<string>>;
@@ -101,7 +103,7 @@ export type CatalogViewProps = {
   visibleSelectedCount: number;
 };
 
-export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, totalBytes, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
+export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, readProblemOnly, setReadProblemOnly, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, totalBytes, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
   return (
     <section
       className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
@@ -214,6 +216,14 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
               onChange={(event) => { setDuplicateOnly(event.target.checked); setPage(1); }}
             />
             Duplicados probables
+          </label>
+          <label className="check-row" title="Archivos que el disco no dejó leer (posibles sectores dañados)">
+            <input
+              type="checkbox"
+              checked={readProblemOnly}
+              onChange={(event) => { setReadProblemOnly(event.target.checked); setPage(1); }}
+            />
+            Con problema de lectura
           </label>
           <div className="facet-block">
             <div className="facet-title">Categorias</div>

@@ -1047,6 +1047,51 @@ test("a damaged video is reported as such and not retried on every scan", { skip
   }
 });
 
+test("files with a read problem are listed, counted per drive and read again on the next scan when asked", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Failing ${suffix}`, volumeId: `failing-${suffix}` } });
+  try {
+    const cookie = await authenticatedCookie();
+    const atRisk = "Archivo en riesgo: la lectura no respondió en 30 s aunque el disco seguía conectado; puede tener sectores dañados. Los próximos escaneos no lo leen durante 30 días. Conviene copiarlo o revisar el disco.";
+    const file = (name: string, status: string, errorMessage: string | null) => ({
+      filename: name, extension: ".mp4", absolutePath: `D:\\${name}`, relativePath: name, sizeBytes: 10, modifiedAt: "2026-10-01T10:00:00.000Z", status, errorMessage
+    });
+    const upload = async (files: unknown[]) => {
+      const scanId = (await app.inject({ method: "POST", url: "/api/agent/scan/start", headers: agentHeaders, payload: { diskId: disk.id, rootPath: "D:\\" } })).json().scan.id;
+      const batch = await app.inject({ method: "POST", url: "/api/agent/files/batch", headers: agentHeaders, payload: { scanId, diskId: disk.id, files } });
+      assert.equal(batch.statusCode, 200, batch.body);
+    };
+    await upload([file("stuck.mp4", "metadata_failed", atRisk), file("stuck2.mp4", "metadata_failed", atRisk), file("fine.mp4", "scanned", null)]);
+
+    const listed = (await app.inject({ method: "GET", url: `/api/files?diskIds=${disk.id}&readProblemOnly=true`, headers: { cookie } })).json();
+    assert.deepEqual(listed.files.map((item: { filename: string }) => item.filename).sort(), ["stuck.mp4", "stuck2.mp4"]);
+    const overview = async () => ((await app.inject({ method: "GET", url: "/api/admin/disks/overview", headers: { cookie } })).json().disks as Array<{ disk: { id: string }; catalog: { readProblemFiles: number; readRetryFiles: number } }>)
+      .find((item) => item.disk.id === disk.id)!.catalog;
+    assert.deepEqual(await overview(), { ...(await overview()), readProblemFiles: 2, readRetryFiles: 0 });
+
+    // One file from its detail, then the whole drive; a file without a read problem is never touched.
+    const stuck = listed.files.find((item: { filename: string }) => item.filename === "stuck.mp4");
+    const one = await app.inject({ method: "POST", url: "/api/files/read-retry", headers: webMutationHeaders(cookie), payload: { fileIds: [stuck.id] } });
+    assert.equal(one.json().requested, 1);
+    assert.equal((await overview()).readRetryFiles, 1);
+    const all = await app.inject({ method: "POST", url: "/api/files/read-retry", headers: webMutationHeaders(cookie), payload: { diskId: disk.id } });
+    assert.equal(all.json().requested, 2);
+    assert.equal(await prisma.videoFile.count({ where: { diskId: disk.id, readRetryAt: { not: null } } }), 2);
+
+    const index = (await app.inject({ method: "GET", url: `/api/agent/disks/${disk.id}/scan-index`, headers: agentHeaders })).json();
+    assert.deepEqual(index.readRetry.sort(), ["stuck.mp4", "stuck2.mp4"]);
+
+    // The next scan read one fine and the other failed again: neither waits for a retry any more.
+    await upload([file("stuck.mp4", "scanned", null), file("stuck2.mp4", "metadata_failed", atRisk)]);
+    assert.deepEqual((await app.inject({ method: "GET", url: `/api/agent/disks/${disk.id}/scan-index`, headers: agentHeaders })).json().readRetry, []);
+    const after = await overview();
+    assert.equal(after.readProblemFiles, 1);
+    assert.equal(after.readRetryFiles, 0);
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("a scan of the source drive does not hide a file that is waiting in staging", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = Math.random().toString(36).slice(2, 8);
   const disk = await prisma.disk.create({ data: { name: `Scan ${suffix}`, volumeId: `scan-${suffix}`, totalBytes: 10n, freeBytes: 10n } });

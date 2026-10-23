@@ -128,6 +128,8 @@ export const filesQuerySchema = z.object({
   height: z.coerce.number().int().optional(),
   codec: z.string().optional(),
   duplicateOnly: z.coerce.boolean().optional(),
+  // Files at risk: a read did not answer or failed with an I/O error (bad sectors).
+  readProblemOnly: z.coerce.boolean().optional(),
   curationStatus: z.string().min(1).max(40).regex(/^[a-z0-9_-]+$/).optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(50),

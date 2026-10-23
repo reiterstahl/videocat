@@ -1,6 +1,7 @@
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
+  AlertTriangle,
   ArrowRightLeft,
   Cast,
   ChevronLeft,
@@ -89,6 +90,10 @@ export function FileDetail({
   const [companionBusy, setCompanionBusy] = useState<CompanionAction | null>(null);
   const [companionMessage, setCompanionMessage] = useState("");
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
+  // Read problem (file at risk): when this view asked to read it again, and whether it is asking.
+  const [readRetryAt, setReadRetryAt] = useState<string | null>(file.readRetryAt ?? null);
+  const [readRetryBusy, setReadRetryBusy] = useState(false);
+  const [readRetryError, setReadRetryError] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
@@ -191,6 +196,24 @@ export function FileDetail({
       if (next < 0 || next >= file.thumbnails.length) return current;
       return next;
     });
+  }
+
+  useEffect(() => {
+    setReadRetryAt(file.readRetryAt ?? null);
+    setReadRetryError("");
+  }, [file.id, file.readRetryAt]);
+
+  async function requestReadRetry() {
+    setReadRetryBusy(true);
+    setReadRetryError("");
+    try {
+      await api<{ requested: number }>("/api/files/read-retry", { method: "POST", body: JSON.stringify({ fileIds: [file.id] }) });
+      setReadRetryAt(new Date().toISOString());
+    } catch (error) {
+      setReadRetryError(error instanceof Error ? error.message : "No se pudo pedir que se vuelva a leer.");
+    } finally {
+      setReadRetryBusy(false);
+    }
   }
 
   async function callCompanion(action: CompanionAction) {
@@ -899,6 +922,24 @@ export function FileDetail({
     </>
   );
   const hasRemotePlayer = Boolean(remoteUrl) || remoteState === "preparing";
+  const readProblemNotice = isRiskyMediaMessage(file.errorMessage) ? (
+    <div className="vc-status-banner is-danger vc-detail-read-problem" role="status">
+      <AlertTriangle size={18} aria-hidden="true" />
+      <div>
+        <strong>Problema de lectura</strong>
+        <span>El disco no respondió al leer este archivo: puede tener sectores dañados. Los escaneos lo dejan de lado por 30 días. Si lo necesitas, cópialo a otro disco o revisa el disco; si ya no, bórralo a mano.</span>
+        {readRetryAt ? (
+          <span className="vc-detail-read-retry">{`Se vuelve a leer en el próximo escaneo de ${file.disk?.name ?? "este disco"}.`}</span>
+        ) : (
+          <button className="vc-button is-small" disabled={readRetryBusy} onClick={() => void requestReadRetry()} type="button">
+            <RotateCcw size={14} aria-hidden="true" />
+            {readRetryBusy ? "Pidiendo..." : "Volver a leerlo"}
+          </button>
+        )}
+        {readRetryError ? <span className="form-error" role="alert">{readRetryError}</span> : null}
+      </div>
+    </div>
+  ) : null;
   const transitNotice = file.transfer ? (
     <div className="vc-status-banner is-warning vc-detail-transit" role="status">
       <ArrowRightLeft size={18} aria-hidden="true" />
@@ -1071,6 +1112,7 @@ export function FileDetail({
           </div>
         )}
         {playbackNotices}
+        {readProblemNotice}
         {transitNotice}
         {compatibilityNotice}
         {thumbStrip}
@@ -1139,6 +1181,7 @@ export function FileDetail({
 
         {playbackNotices}
         {hasRemotePlayer ? remotePlayer : null}
+        {readProblemNotice}
         {transitNotice}
         {compatibilityNotice}
         {thumbStrip}

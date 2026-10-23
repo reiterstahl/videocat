@@ -147,7 +147,7 @@ flowchart LR
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
 - Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
 - While it works (copying, verifying, downloading, scanning or deleting), the accent chosen in the web travels around the white outline of its tray icon, and hovering it shows the task, how far it got and about how long is left.
-- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting.
+- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting. The catalog filters these files (**With read problems**), each drive in Administration says how many it has, and **Read again** has the next scan try them.
 
 <details>
 <summary><strong>More screenshots</strong></summary>

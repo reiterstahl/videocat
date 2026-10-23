@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Next release (unreleased)
+
+- **Files with a read problem** (a read that did not answer or failed with an I/O error on a connected drive, usually bad sectors): Companion reads have 30 s and are never retried, and a frame that does not answer leaves the whole file at once; transfers and deletions give up on a drive that stops answering. In the web, the catalog filter **Con problema de lectura**, a notice per drive in Administración › Discos with **Ver archivos** and **Volver a leerlos**, and the same notice in each file's detail.
+- **Read again** marks the files (`VideoFile.readRetryAt`, migration `0030_read_retry`); the scan index the Companion asks for at the start of each scan lists them, and it takes them off its list of files at risk. Needs the new Companion; older ones ignore the list.
+
 ## Windows Companion 0.2.21
 
 - Includes everything from 0.2.21-beta.1 and beta.2: drives pinned by marker, renamed folders that are not scanned again, names chosen in the web written to the marker, and downloads of S3 bucket videos through the server (stack 0.2.47).

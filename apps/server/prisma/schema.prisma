@@ -86,6 +86,8 @@ model VideoFile {
   fingerprintVersion Int?
   // S3 objects only: tells a changed object apart and follows one copied to another key.
   storageEtag        String?
+  // Asked from the web: read again a file at risk (bad sectors); cleared when a scan reads it.
+  readRetryAt        DateTime?
   fingerprintedAt    DateTime?
   curationStatus     String                @default("none")
   reviewedAt         DateTime?
@@ -288,23 +290,23 @@ model CompanionPairingCode {
 }
 
 model StreamSession {
-  id             String    @id @default(uuid()) @db.Uuid
-  videoFileId    String    @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  videoFileId     String    @db.Uuid
   // Who serves the bytes: a Companion through its tunnel, or the server from an S3 bucket.
-  companionId    String?   @db.Uuid
-  storageBucketId String?  @db.Uuid
-  ownerUsername  String
-  status         String    @default("opening")
-  mode           String    @default("original")
-  fileSizeBytes  BigInt?
-  mimeType       String?
-  expiresAt      DateTime
-  lastAccessedAt DateTime?
-  completedAt    DateTime?
-  errorCode      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  videoFile      VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
+  companionId     String?   @db.Uuid
+  storageBucketId String?   @db.Uuid
+  ownerUsername   String
+  status          String    @default("opening")
+  mode            String    @default("original")
+  fileSizeBytes   BigInt?
+  mimeType        String?
+  expiresAt       DateTime
+  lastAccessedAt  DateTime?
+  completedAt     DateTime?
+  errorCode       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  videoFile       VideoFile @relation(fields: [videoFileId], references: [id], onDelete: Cascade)
 
   @@index([videoFileId])
   @@index([companionId, status])

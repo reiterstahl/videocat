@@ -169,6 +169,7 @@ export function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [duplicateOnly, setDuplicateOnly] = useState(false);
+  const [readProblemOnly, setReadProblemOnly] = useState(false);
   const [curationStatus, setCurationStatus] = useState<CurationStatus | "">("");
   const [bulkCategoryKey, setBulkCategoryKey] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -699,6 +700,7 @@ export function App() {
     if (selectedFolders.length > 0) params.set("folders", selectedFolders.join(","));
     if (selectedTags.length > 0) params.set("tags", selectedTags.join(","));
     if (duplicateOnly) params.set("duplicateOnly", "true");
+    if (readProblemOnly) params.set("readProblemOnly", "true");
     if (curationStatus) params.set("curationStatus", curationStatus);
 
     setLoading(true);
@@ -716,6 +718,7 @@ export function App() {
     diskQuery,
     disks.length,
     duplicateOnly,
+    readProblemOnly,
     curationStatus,
     extension,
     locationScope,
@@ -1876,6 +1879,7 @@ export function App() {
     setFolderSearch("");
     setSelectedTags([]);
     setDuplicateOnly(false);
+    setReadProblemOnly(false);
     setCurationStatus("");
     setConnectedDiskIds(disks.map((disk) => disk.id));
     setSortBy("modifiedAt");
@@ -1908,8 +1912,19 @@ export function App() {
     setSelectedFolders([]);
     setSelectedTags([]);
     setDuplicateOnly(false);
+    setReadProblemOnly(false);
     setCurationStatus("");
     setPage(1);
+  }
+
+  // Administración › Discos: the files of one drive with a read problem.
+  function openReadProblemsInCatalog(diskId: string) {
+    clearCatalogFilters();
+    setQ("");
+    setConnectedDiskIds([diskId]);
+    setReadProblemOnly(true);
+    setSelected(null);
+    navigateToView("catalog");
   }
 
   const activeCatalogFilters: Array<{ key: string; label: string; onRemove: () => void }> = [
@@ -1928,6 +1943,7 @@ export function App() {
       }
     })),
     ...(duplicateOnly ? [{ key: "duplicates", label: "Duplicados probables", onRemove: () => { setDuplicateOnly(false); setPage(1); } }] : []),
+    ...(readProblemOnly ? [{ key: "read-problems", label: "Con problema de lectura", onRemove: () => { setReadProblemOnly(false); setPage(1); } }] : []),
     ...(curationStatus
       ? [{ key: "category", label: categoryLabel(curationStatus, facets.curationStatuses), onRemove: () => { setCurationStatus(""); setPage(1); } }]
       : []),
@@ -2262,6 +2278,7 @@ export function App() {
             curationStatus,
             deleteCategory,
             duplicateOnly,
+            readProblemOnly,
             duplicates,
             extension,
             extensions,
@@ -2295,6 +2312,7 @@ export function App() {
             setCatalogView,
             setCurationStatus,
             setDuplicateOnly,
+            setReadProblemOnly,
             setExtension,
             setFiltersOpen,
             setFolderSearch,
@@ -2482,6 +2500,7 @@ export function App() {
           locale={locale}
           refreshKey={catalogVersion}
           mountedDiskIds={companionMountedDiskIds}
+          onShowReadProblems={openReadProblemsInCatalog}
           onDiskPurged={handleDiskPurged}
           onDiskRemoved={(disk) => {
             handleDiskPurged(disk);

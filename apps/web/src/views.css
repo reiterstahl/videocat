@@ -1061,6 +1061,12 @@ a.vc-button {
   gap: 2px;
 }
 
+/* The icon keeps its size next to a long text. */
+.vc-status-banner > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 .vc-status-banner strong {
   font-weight: 600;
 }
@@ -3562,4 +3568,31 @@ a.vc-button {
     flex: 1 1 auto;
     justify-content: center;
   }
+}
+
+/* Read problems (files at risk) */
+
+.vc-admin-read-problems {
+  min-width: 0;
+}
+
+.vc-status-banner .vc-admin-read-problem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.vc-detail-read-problem {
+  min-width: 0;
+}
+
+.vc-detail-read-problem .vc-button {
+  justify-self: start;
+  margin-top: 6px;
+}
+
+.vc-detail-read-problem .vc-detail-read-retry {
+  color: var(--vc-text);
+  font-weight: 500;
 }

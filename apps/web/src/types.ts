@@ -36,6 +36,8 @@ export type VideoFile = {
   modifiedAt?: string | null;
   scanStatus: string;
   errorMessage?: string | null;
+  // Read problem: when the web asked to read it again on the next scan.
+  readRetryAt?: string | null;
   durationSeconds?: number | null;
   width?: number | null;
   height?: number | null;

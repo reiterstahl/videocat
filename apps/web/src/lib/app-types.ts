@@ -269,6 +269,9 @@ export type AdminDiskOverview = {
     scanCount: number;
     errorCount: number;
     deletionCount: number;
+    // Files at risk (reads that did not answer), and how many of them wait to be read again.
+    readProblemFiles: number;
+    readRetryFiles: number;
   };
   latestScan?: {
     status: string;

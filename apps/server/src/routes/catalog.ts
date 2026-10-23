@@ -21,6 +21,7 @@ import { recordAction, requestIdempotencyKey, runIdempotentAction } from "../lib
 import { groupAuditErrors, toCsv } from "../lib/audit-report.js";
 import { folderTreeLevel } from "../lib/folder-tree.js";
 import { bucketDeletionRequestKey } from "../lib/bucket-deletions.js";
+import { readProblemWhere } from "../lib/read-problems.js";
 
 function parseBigInt(value: number | undefined): bigint | undefined {
   return value == null ? undefined : BigInt(Math.floor(value));
@@ -882,12 +883,14 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { name: "asc" }
     });
     const activityLimit = Math.max(40, Math.min(400, disks.length * 8));
-    const [fileStats, recentScans, recentDeletions] = await Promise.all([
+    const [fileStats, readProblems, readRetries, recentScans, recentDeletions] = await Promise.all([
       prisma.videoFile.groupBy({
         by: ["diskId", "isPresent"],
         _count: { _all: true },
         _sum: { sizeBytes: true }
       }),
+      prisma.videoFile.groupBy({ by: ["diskId"], where: readProblemWhere, _count: { _all: true } }),
+      prisma.videoFile.groupBy({ by: ["diskId"], where: { ...readProblemWhere, readRetryAt: { not: null } }, _count: { _all: true } }),
       prisma.scan.findMany({
         orderBy: { startedAt: "desc" },
         take: activityLimit,
@@ -963,7 +966,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             missingFiles: missing?._count._all ?? 0,
             scanCount: _count.scans,
             errorCount: _count.agentErrors,
-            deletionCount: _count.deletionRecords
+            deletionCount: _count.deletionRecords,
+            readProblemFiles: readProblems.find((item) => item.diskId === disk.id)?._count._all ?? 0,
+            readRetryFiles: readRetries.find((item) => item.diskId === disk.id)?._count._all ?? 0
           },
           latestScan,
           recentActions: actions
@@ -1165,6 +1170,13 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       where.AND = [
         ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
         ...searchFilters
+      ];
+    }
+
+    if (query.readProblemOnly) {
+      where.AND = [
+        ...((Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []) as Prisma.VideoFileWhereInput[]),
+        readProblemWhere
       ];
     }
 
@@ -1835,6 +1847,33 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         serializeFile(file, isProtectedPath(file.relativePath) ? 0 : (duplicateCountBySize.get(file.sizeBytes.toString()) ?? 0))
       )
     };
+  });
+
+  // Files with a read problem, read again on the next scan of their drive: the Companion gets
+  // them with the scan index and takes them off its list of files at risk.
+  app.post("/api/files/read-retry", { preHandler: requireWebAuth }, async (request, reply) => {
+    const body = z.union([
+      z.object({ fileIds: z.array(z.string().uuid()).min(1).max(500) }),
+      z.object({ diskId: z.string().uuid() })
+    ]).parse(request.body);
+    const where: Prisma.VideoFileWhereInput = "diskId" in body
+      ? { ...readProblemWhere, diskId: body.diskId }
+      : { ...readProblemWhere, id: { in: [...new Set(body.fileIds)] } };
+    if ("fileIds" in body && !isProtectedFolderUnlocked(request)) {
+      const files = await prisma.videoFile.findMany({ where, select: { relativePath: true } });
+      if (files.some((file) => isProtectedPath(file.relativePath))) return reply.code(403).send({ message: "PIN required" });
+    }
+    const updated = await prisma.videoFile.updateMany({ where, data: { readRetryAt: new Date() } });
+    await recordAction({
+      action: "file.read_retry",
+      actorType: "web",
+      actorId: "admin",
+      requestId: request.id,
+      diskId: "diskId" in body ? body.diskId : undefined,
+      target: "diskId" in body ? "disk" : `${body.fileIds.length} file(s)`,
+      result: { requested: updated.count }
+    });
+    return { requested: updated.count };
   });
 
   app.post("/api/files/batch/thumbnails/regenerate", { preHandler: requireWebAuth }, async (request, reply) => {
