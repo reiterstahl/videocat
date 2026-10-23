@@ -47,7 +47,7 @@
   "dependencies": {
     "@videocat/shared": "0.1.0",
     "velopack": "1.2.161",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "build": {
     "appId": "app.videocat.companion",
