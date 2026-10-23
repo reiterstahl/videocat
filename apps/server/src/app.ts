@@ -15,6 +15,7 @@ import { companionRoutes } from "./routes/companions.js";
 import { streamRoutes } from "./routes/streams.js";
 import { versionRoutes } from "./routes/version.js";
 import { storageRoutes } from "./routes/storage.js";
+import { diskHealthRoutes } from "./routes/disk-health.js";
 import { installCompanionControlTunnel } from "./lib/companion-control-tunnel.js";
 
 export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
@@ -75,6 +76,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   await app.register(activityRoutes);
   await app.register(versionRoutes);
   await app.register(storageRoutes);
+  await app.register(diskHealthRoutes);
 
   return app;
 }

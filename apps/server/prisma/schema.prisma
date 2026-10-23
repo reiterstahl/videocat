@@ -32,9 +32,25 @@ model Disk {
   transferDestinations TransferDestination[]
   folderFavorites      FolderFavorite[]
   storageBucket        StorageBucket?
+  health               DiskHealth?
 
   @@index([name])
   @@index([volumeId])
+}
+
+// The last SMART check of a drive, sent by the Companion that has it connected.
+model DiskHealth {
+  diskId            String   @id @db.Uuid
+  // "good", "attention", "failing" or "unavailable" (no SMART data through its adapter).
+  status            String
+  checkedAt         DateTime
+  // smartctl's compact report (compactSmartReport) and its evaluation, items and counters.
+  report            Json?
+  evaluation        Json
+  // The web alert was dismissed for this state; a worse state shows it again.
+  alertDismissedKey String?
+  updatedAt         DateTime @updatedAt
+  disk              Disk     @relation(fields: [diskId], references: [id], onDelete: Cascade)
 }
 
 model Scan {

@@ -31,6 +31,7 @@ import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, readStallMs, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
+import { HealthMonitor, healthForDrives, healthTaskInstalled, readCollectedHealth, runHealthTask } from "./disk-health.js";
 import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
 import { ActivityReporter } from "./activity.js";
 import { renameDiskMarker } from "./disk-marker.js";
@@ -948,10 +949,56 @@ async function startCompanionDiskWatcher(): Promise<void> {
     }
   }
 
+  // Drive health (SMART), when "Salud de discos" is on (see disk-health.ts): a check when a drive
+  // connects and every 6 hours, and each new result sent once.
+  const healthMonitor = new HealthMonitor();
+  let healthTask = { installed: false, checkedAt: 0 };
+  let healthRunning = false;
+  let healthUploadUnsupported = false;
+  async function reviewDiskHealth(): Promise<void> {
+    if (healthRunning || process.platform !== "win32" || !companionAgentApiEnabled()) return;
+    healthRunning = true;
+    try {
+      // Rechecked every minute while off (it can be turned on at any time), every 10 while on.
+      if (Date.now() - healthTask.checkedAt >= (healthTask.installed ? 10 * 60_000 : 60_000)) {
+        healthTask = { installed: await healthTaskInstalled(), checkedAt: Date.now() };
+      }
+      if (!healthTask.installed) return;
+      const drives = (await discoverCompanionTargets()).map(({ root, marker }) => ({ diskId: marker.diskId, root }));
+      healthMonitor.observe(drives.map((drive) => drive.diskId));
+      if (healthMonitor.shouldRun() && await runHealthTask()) {
+        healthMonitor.started();
+        console.log("Revisando la salud (SMART) de los discos conectados.");
+      }
+      const collected = await readCollectedHealth();
+      if (!collected || !healthMonitor.isNew(collected) || drives.length === 0 || healthUploadUnsupported) return;
+      const disks = healthForDrives(collected, drives);
+      if (disks.length > 0) {
+        try {
+          await companionAgentApi("/api/agent/disk-health", { method: "POST", body: JSON.stringify({ disks }) });
+          console.log(`Salud de discos enviada: ${disks.length} disco(s).`);
+        } catch (error) {
+          if (!(error instanceof Error && error.message.startsWith("404"))) throw error;
+          healthUploadUnsupported = true;
+          console.log("El servidor actual no recibe la salud de los discos. Actualiza el contenedor server a 0.2.49 o posterior.");
+        }
+      }
+      healthMonitor.sent(collected);
+    } catch (error) {
+      console.warn(`Fallo revisando la salud de los discos: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      healthRunning = false;
+    }
+  }
+
   await sendHeartbeat();
   setInterval(() => {
     void sendHeartbeat();
   }, heartbeatMs);
+  void reviewDiskHealth();
+  setInterval(() => {
+    void reviewDiskHealth();
+  }, 60_000);
   await checkMountedDisks(true);
   setInterval(() => {
     void checkMountedDisks(false).catch((error) => {

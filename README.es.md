@@ -147,7 +147,8 @@ flowchart LR
 - Antes de borrar, revalida tamaño, fecha y huella visual; si la ruta ya contiene otro archivo, cancela.
 - Mueve los archivos de los **Traslados** a través de una carpeta temporal local, verificando cada copia con SHA-256.
 - Mientras trabaja (copiando, verificando, descargando, escaneando o borrando), el color de acento elegido en la web recorre el borde blanco de su ícono en la bandeja, y al pasar el cursor muestra la tarea, el avance y cuánto falta.
-- Un archivo que deja de responder en un escaneo (sectores dañados con el disco conectado) no lo bloquea: una lectura que no responde en 30 s o da un error de lectura no se reintenta, el escaneo sigue y el archivo queda **En riesgo**, sin volver a leerse durante 30 días. Los traslados y los borrados también se rinden ante un disco que deja de responder en vez de esperar. El catálogo filtra esos archivos (**Con problema de lectura**), cada disco dice en Administración cuántos tiene, y **Volver a leerlos** hace que el próximo escaneo los intente de nuevo.
+- Un archivo que deja de responder en un escaneo (sectores dañados con el disco conectado) no lo bloquea: una lectura que no responde en 30 s o da un error de lectura no se reintenta, el escaneo sigue y el archivo queda **En riesgo**, sin volver a leerse durante 30 días. Los traslados y los borrados también se rinden ante un disco que deja de responder en vez de esperar.
+- **Salud de discos (SMART)**, opcional: el Companion lee cada disco conectado con smartctl al conectarlo y cada 6 horas. Administración muestra el estado de cada disco (bien, atención, falla probable o sin datos SMART por su adaptador USB) con sus sectores dañados, errores y temperatura en palabras, y un disco cuyos sectores dañados siguen creciendo levanta un aviso descartable en todas las secciones. El catálogo filtra esos archivos (**Con problema de lectura**), cada disco dice en Administración cuántos tiene, y **Volver a leerlos** hace que el próximo escaneo los intente de nuevo.
 
 <details>
 <summary><strong>Más capturas</strong></summary>
@@ -445,6 +446,7 @@ VideoCAT funciona detrás de un acceso previo como Cloudflare Access. Cuando la 
 - Las rutas se resuelven de forma canónica antes de abrir, copiar o borrar, y nunca se sobrescribe un archivo existente al descargar ni al trasladar.
 - En los traslados, un archivo solo se borra de un lugar después de verificar con SHA-256 su copia en el siguiente; cada cambio de estado se aplica de forma atómica en el servidor, de modo que una cancelación o dos Companions a la vez no pueden pisarse.
 - Las actualizaciones llegan desde GitHub Releases con SHA-256, atestación de origen y SBOM.
+- El Companion nunca corre como administrador. La salud de discos, si se activa, pide ese permiso a Windows una vez: smartctl (fijado por SHA-256) y su script se copian a `Program Files\VideoCAT SMART`, donde solo escriben los administradores, y una tarea programada los ejecuta con argumentos fijos; su carpeta de resultados en ProgramData solo la pueden leer los usuarios. Al desactivarla se quitan ambos.
 
 **Web y API**
 - Login con JWT de algoritmo fijo que caduca a las 12 horas, y escrituras validadas contra `WEB_ORIGIN`.
@@ -606,6 +608,6 @@ Web (sesión):
 
 ## Licencia y apoyo
 
-VideoCAT se distribuye bajo licencia [`AGPL-3.0-or-later`](LICENSE): puedes usar, estudiar, modificar y distribuir el proyecto y sus versiones derivadas, respetando las obligaciones de copyleft y atribución.
+VideoCAT se distribuye bajo licencia [`AGPL-3.0-or-later`](LICENSE): puedes usar, estudiar, modificar y distribuir el proyecto y sus versiones derivadas, respetando las obligaciones de copyleft y atribución. El Companion de Windows incluye `smartctl.exe` sin modificar de [smartmontools](https://www.smartmontools.org) 7.5 (GPL-2.0-or-later), con su licencia y el enlace a su código fuente al lado.
 
 La distribución oficial incluye enlaces opcionales de apoyo al autor original ([GitHub Sponsors](https://github.com/sponsors/reiterstahl)). Los forks y versiones modificadas pueden quitarlos o reemplazarlos, siempre que cumplan la licencia y conserven los avisos de copyright y atribución.

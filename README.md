@@ -147,7 +147,8 @@ flowchart LR
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
 - Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
 - While it works (copying, verifying, downloading, scanning or deleting), the accent chosen in the web travels around the white outline of its tray icon, and hovering it shows the task, how far it got and about how long is left.
-- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting. The catalog filters these files (**With read problems**), each drive in Administration says how many it has, and **Read again** has the next scan try them.
+- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting.
+- **Drive health (SMART)**, optional: the Companion reads each connected drive with smartctl when it connects and every 6 hours. Administration shows each drive's state (good, attention, probable failure or no SMART data through its USB adapter) with its damaged sectors, errors and temperature in words, and a drive whose damaged sectors keep growing raises a dismissible notice on every section. The catalog filters these files (**With read problems**), each drive in Administration says how many it has, and **Read again** has the next scan try them.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -447,6 +448,7 @@ VideoCAT works behind an access gateway such as Cloudflare Access. When that gat
 - Paths are resolved canonically before opening, copying or deleting, and neither downloads nor transfers overwrite an existing file.
 - In transfers, a file is only removed from one place after its copy in the next one is verified with SHA-256; every state change is applied atomically on the server, so a cancel or two Companions at once cannot overwrite each other.
 - Updates come from GitHub Releases with a SHA-256 checksum, a provenance attestation and an SBOM.
+- The Companion never runs as administrator. Drive health, when turned on, asks Windows for that permission once: smartctl (pinned by SHA-256) and its script are copied to `Program Files\VideoCAT SMART`, where only administrators can write, and a scheduled task runs them with fixed arguments; its results folder in ProgramData can only be read by users. Turning it off removes both.
 
 **Web and API**
 - Sign-in uses fixed-algorithm JWTs that expire after 12 hours, and writes are validated against `WEB_ORIGIN`.
@@ -608,6 +610,6 @@ Web (session):
 
 ## License and support
 
-VideoCAT is released under the [`AGPL-3.0-or-later`](LICENSE) license: you can use, study, modify and distribute the project and derived versions, following its copyleft and attribution obligations.
+VideoCAT is released under the [`AGPL-3.0-or-later`](LICENSE) license: you can use, study, modify and distribute the project and derived versions, following its copyleft and attribution obligations. The Windows Companion includes an unmodified `smartctl.exe` from [smartmontools](https://www.smartmontools.org) 7.5 (GPL-2.0-or-later), with its license and the link to its source next to it.
 
 The official distribution includes optional links to support the original author ([GitHub Sponsors](https://github.com/sponsors/reiterstahl)). Forks and modified versions may remove or replace them, as long as they comply with the license and keep the required copyright and attribution notices.

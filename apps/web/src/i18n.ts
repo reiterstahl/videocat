@@ -712,6 +712,28 @@ const en: Record<string, string> = {
   "Para borrarlo del bucket, márcalo para borrar (J en Review) y procesa los pendientes en Últimos borrados.": "To delete it from the bucket, mark it for deletion (J in Review) and process the pending ones in Latest deletions.",
   "Bucket S3": "S3 bucket",
   "Problema de lectura": "Read problem",
+  "Salud: bien": "Health: good",
+  "Salud: atención": "Health: attention",
+  "Falla probable": "Probable failure",
+  "Sin datos SMART": "No SMART data",
+  "El adaptador USB de este disco no deja leer SMART. Los archivos con problema de lectura siguen avisando.": "This drive's USB adapter does not let SMART through. Files with read problems still raise a notice.",
+  "Salud sin revisar: actívala en el Companion, en Configuración › Salud de discos.": "Health not checked: turn it on in the Companion, under Configuración › Salud de discos.",
+  "Ver el disco": "Show the drive",
+  "Descartar: vuelve a aparecer si el disco empeora": "Dismiss: it shows again if the drive gets worse",
+  "Sectores reasignados": "Reallocated sectors",
+  "Reasignaciones de sectores": "Sector reallocation events",
+  "Sectores pendientes (ilegibles por ahora)": "Pending sectors (unreadable for now)",
+  "Sectores incorregibles": "Uncorrectable sectors",
+  "Errores de lectura incorregibles": "Uncorrectable read errors",
+  "Reintentos al arrancar el motor": "Spin-up retries",
+  "Errores de transmisión (cable o adaptador USB)": "Transfer errors (cable or USB adapter)",
+  "SMART dice que el disco está fallando": "SMART says the drive is failing",
+  "Aviso crítico del disco NVMe": "NVMe critical warning",
+  "Reserva de bloques bajo el mínimo": "Spare blocks below the minimum",
+  "Errores de lectura del medio": "Media read errors",
+  "Desgaste": "Wear",
+  "Temperatura alta": "High temperature",
+  "Aumentaron desde la revisión anterior": "Grew since the previous check",
   "El disco no respondió al leer este archivo: puede tener sectores dañados. Los escaneos lo dejan de lado por 30 días. Si lo necesitas, cópialo a otro disco o revisa el disco; si ya no, bórralo a mano.": "The drive did not answer while reading this file: it may have bad sectors. Scans leave it alone for 30 days. If you need it, copy it to another drive or check the drive; if not, delete it by hand.",
   "Volver a leerlo": "Read it again",
   "Volver a leerlos": "Read them again",
@@ -1091,6 +1113,12 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);
   if (match) return `${match[1]} of ${match[2]} drives selected`;
+
+  match = text.match(/^Falla probable: (.+)$/);
+  if (match) return `Probable failure: ${match[1]}`;
+
+  match = text.match(/^Descartar el aviso de (.+)$/);
+  if (match) return `Dismiss the notice for ${match[1]}`;
 
   match = text.match(/^([\d.,\s]+) con problema de lectura$/);
   if (match) return `${match[1]} with read problems`;

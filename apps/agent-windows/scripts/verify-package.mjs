@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { listPackage } from "@electron/asar";
 import { agentNodeVersion, assertPatchedNode } from "./check-node-security.mjs";
+import { packedFiles, sha256, smartmontools } from "./fetch-smartctl.mjs";
 
 const agentRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(agentRoot, "../..");
@@ -75,4 +76,13 @@ if (!fs.existsSync(packagedAgent)) {
 const agentNode = agentNodeVersion(packagedAgent);
 assertPatchedNode(`v${agentNode}`, "The packaged agent executable");
 
-console.log(`Verified ${checked.size} runtime modules inside app.asar, the Velopack updater and the agent executable (Node ${agentNode}).`);
+// Drive health: smartctl (pinned) and the scripts that install and run it.
+const packagedSmart = path.join(agentRoot, "release", "win-unpacked", "resources", "smartmontools");
+for (const file of packedFiles) {
+  if (!fs.existsSync(path.join(packagedSmart, file))) throw new Error(`Drive health file missing from packaged resources: ${file}`);
+}
+if (sha256(path.join(packagedSmart, "smartctl.exe")) !== smartmontools.smartctlSha256) throw new Error("Packaged smartctl.exe does not match its pinned SHA-256.");
+const setupScript = fs.readFileSync(path.join(packagedSmart, "smart-setup.ps1"), "utf8");
+if (!setupScript.toLowerCase().includes(`'${smartmontools.smartctlSha256}'`)) throw new Error("smart-setup.ps1 does not pin the packaged smartctl.exe.");
+
+console.log(`Verified ${checked.size} runtime modules inside app.asar, the Velopack updater, the agent executable (Node ${agentNode}) and smartctl ${smartmontools.version}.`);

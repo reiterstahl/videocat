@@ -136,6 +136,75 @@ jobs:
           path: e2e/.report
           retention-days: 7
 
+  # Drive health on a real Windows machine (the runner is an administrator): packs smartctl, turns
+  # the check on over a planted junction, checks the folders' permissions, runs the task, reads
+  # its results with the Companion's code and turns it off again.
+  companion-smart:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+      - name: Pack smartctl
+        shell: pwsh
+        run: |
+          node apps/agent-windows/scripts/fetch-smartctl.mjs "$env:RUNNER_TEMP\smartmontools"
+          if ($LASTEXITCODE -ne 0) { throw "fetch-smartctl failed" }
+      - name: Turn the check on over a planted junction
+        shell: pwsh
+        run: |
+          # What a user could prepare: ProgramData\VideoCAT as a link to a folder of theirs.
+          $decoy = Join-Path $env:RUNNER_TEMP 'decoy'
+          New-Item -ItemType Directory -Path $decoy | Out-Null
+          Set-Content -LiteralPath (Join-Path $decoy 'canary.txt') -Value 'untouched'
+          New-Item -ItemType Junction -Path (Join-Path $env:ProgramData 'VideoCAT') -Target $decoy | Out-Null
+          $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File apps/agent-windows/smart/smart-setup.ps1 -Source "$env:RUNNER_TEMP\smartmontools" -UserSid $sid
+          if ($LASTEXITCODE -ne 0) { throw "smart-setup exited with $LASTEXITCODE" }
+          if ((Get-Content -LiteralPath (Join-Path $decoy 'canary.txt')) -ne 'untouched') { throw 'The junction was followed' }
+          if ((Get-Item -LiteralPath (Join-Path $env:ProgramData 'VideoCAT') -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'ProgramData\VideoCAT is still a link' }
+          foreach ($folder in @((Join-Path $env:ProgramData 'VideoCAT'), (Join-Path $env:ProgramData 'VideoCAT\smart'), (Join-Path $env:ProgramFiles 'VideoCAT SMART'))) {
+            $acl = Get-Acl -LiteralPath $folder
+            # Administrators, SYSTEM and TrustedInstaller; CREATOR OWNER (inherited in Program Files)
+            # only reaches what its owner creates, and only administrators create there.
+            $writers = $acl.Access | Where-Object {
+              $_.AccessControlType -eq 'Allow' -and
+              $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-32-544', 'S-1-5-18', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464', 'S-1-3-0') -and
+              ($_.FileSystemRights -band ([Security.AccessControl.FileSystemRights]'Write, Modify, FullControl, ChangePermissions, TakeOwnership'))
+            }
+            if ($writers) { throw "$folder can be written by: $($writers.IdentityReference -join ', ')" }
+            "${folder}: only administrators and SYSTEM can write"
+          }
+          if (-not (Get-ScheduledTask -TaskPath '\VideoCAT\' -TaskName 'Salud de discos' -ErrorAction SilentlyContinue)) { throw 'The task was not registered' }
+      - name: Run the task and read its results
+        shell: pwsh
+        run: |
+          schtasks.exe /Run /TN "\VideoCAT\Salud de discos"
+          if ($LASTEXITCODE -ne 0) { throw "schtasks /Run exited with $LASTEXITCODE" }
+          $results = Join-Path $env:ProgramData 'VideoCAT\smart\smart.json'
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $results); $i++) { Start-Sleep -Seconds 2 }
+          if (-not (Test-Path $results)) { throw 'The task wrote no results in 2 minutes' }
+          npx tsx tests/windows/disk-health-results.ts
+          if ($LASTEXITCODE -ne 0) { throw "Reading the results failed" }
+      - name: Turn the check off
+        if: always()
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File apps/agent-windows/smart/smart-setup.ps1 -Remove
+          if ($LASTEXITCODE -ne 0) { throw "smart-setup -Remove exited with $LASTEXITCODE" }
+          if (Get-ScheduledTask -TaskPath '\VideoCAT\' -TaskName 'Salud de discos' -ErrorAction SilentlyContinue) { throw 'The task is still there' }
+          if (Test-Path (Join-Path $env:ProgramFiles 'VideoCAT SMART')) { throw 'Program Files\VideoCAT SMART is still there' }
+
   docker:
     # Build the images without pushing, so dependency or Dockerfile changes cannot break a release.
     runs-on: ubuntu-latest

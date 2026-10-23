@@ -22,6 +22,7 @@ import { groupAuditErrors, toCsv } from "../lib/audit-report.js";
 import { folderTreeLevel } from "../lib/folder-tree.js";
 import { bucketDeletionRequestKey } from "../lib/bucket-deletions.js";
 import { readProblemWhere } from "../lib/read-problems.js";
+import { healthSummary } from "../lib/disk-health.js";
 
 function parseBigInt(value: number | undefined): bigint | undefined {
   return value == null ? undefined : BigInt(Math.floor(value));
@@ -878,7 +879,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/admin/disks/overview", { preHandler: requireWebAuth }, async () => {
     const disks = await prisma.disk.findMany({
       include: {
-        _count: { select: { scans: true, agentErrors: true, deletionRecords: true } }
+        _count: { select: { scans: true, agentErrors: true, deletionRecords: true } },
+        health: { select: { status: true, checkedAt: true, evaluation: true } }
       },
       orderBy: { name: "asc" }
     });
@@ -949,7 +951,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         ]
           .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
           .slice(0, 5);
-        const { _count, ...diskRecord } = disk;
+        const { _count, health, ...diskRecord } = disk;
         const totalBytes = disk.totalBytes == null ? null : Number(disk.totalBytes);
         const freeBytes = disk.freeBytes == null ? null : Number(disk.freeBytes);
 
@@ -971,6 +973,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             readRetryFiles: readRetries.find((item) => item.diskId === disk.id)?._count._all ?? 0
           },
           latestScan,
+          health: health ? healthSummary(health) : null,
           recentActions: actions
         };
       })

@@ -26,7 +26,7 @@
     "pretray": "npm run ensure-tray-runtime",
     "tray": "electron dist/tray.js",
     "build:icon": "node scripts/build-icon.mjs",
-    "prepackage:tray": "npm run ensure-tray-runtime && npm run build:icon && npm run build:agent-sea && npm run check:node-security",
+    "prepackage:tray": "npm run ensure-tray-runtime && npm run build:icon && npm run build:agent-sea && npm run fetch:smartctl && npm run check:node-security",
     "package:tray": "electron-builder --win dir && npm run verify:package",
     "verify:package": "node scripts/verify-package.mjs",
     "preinit-disk": "npm run ensure-runtime",
@@ -41,7 +41,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tray": "tsc -p tsconfig.tray.json --noEmit",
     "check:node-security": "node scripts/check-node-security.mjs --electron",
-    "build:agent-sea": "node scripts/build-agent-sea.mjs"
+    "build:agent-sea": "node scripts/build-agent-sea.mjs",
+    "fetch:smartctl": "node scripts/fetch-smartctl.mjs"
   },
   "dependencies": {
     "@videocat/shared": "0.1.0",
@@ -85,6 +86,10 @@
       {
         "from": "release/agent-sea/videocat-agent.exe",
         "to": "videocat-agent.exe"
+      },
+      {
+        "from": "release/smartmontools",
+        "to": "smartmontools"
       }
     ],
     "win": {

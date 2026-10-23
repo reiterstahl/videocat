@@ -280,8 +280,24 @@ export type AdminDiskOverview = {
     fileCount: number;
     errorCount: number;
   } | null;
+  // Last SMART check from the Companion (null until its first one).
+  health: DiskHealthSummary | null;
   recentActions: AdminDiskAction[];
 };
+
+export type DiskHealthItem = { key: string; severity: "info" | "attention" | "failing"; label: string; value: string };
+
+export type DiskHealthSummary = {
+  status: "good" | "attention" | "failing" | "unavailable";
+  checkedAt: string;
+  model: string | null;
+  serial: string | null;
+  temperature: number | null;
+  powerOnHours: number | null;
+  items: DiskHealthItem[];
+};
+
+export type DiskHealthAlert = DiskHealthSummary & { diskId: string; diskName: string };
 
 export type CompanionAdminItem = {
   installationId: string;

@@ -23,6 +23,8 @@ type TrayMarkerResult =
 type TrayIdentityCheck =
   | { ok: true; root: string; diskName: string | null; check: { verdict: "empty" | "match" | "mixed" | "mismatch"; checked: number; matched: number; totalFiles: number } }
   | { ok: false; message: string };
+type TrayHealthStatus = { supported: boolean; installed: boolean; administrator: boolean; lastCheckedAt: string | null };
+type TrayHealthResult = { ok: boolean; message: string };
 type TrayUpdateStatus = {
   installed: boolean;
   currentVersion: string;
@@ -47,6 +49,10 @@ contextBridge.exposeInMainWorld("videocatConfig", {
     ipcRenderer.invoke("config:check-identity", targetId, root) as Promise<TrayIdentityCheck>,
   pinIdentity: (input: { targetId: string; root: string; name: string; acceptMixed?: boolean }): Promise<TrayMarkerResult> =>
     ipcRenderer.invoke("config:pin-identity", input) as Promise<TrayMarkerResult>,
+  healthStatus: (): Promise<TrayHealthStatus> => ipcRenderer.invoke("health:status") as Promise<TrayHealthStatus>,
+  enableHealth: (): Promise<TrayHealthResult> => ipcRenderer.invoke("health:enable") as Promise<TrayHealthResult>,
+  disableHealth: (): Promise<TrayHealthResult> => ipcRenderer.invoke("health:disable") as Promise<TrayHealthResult>,
+  checkHealth: (): Promise<TrayHealthResult> => ipcRenderer.invoke("health:check") as Promise<TrayHealthResult>,
   save: (values: TrayConfig): Promise<TrayConfigSaveResult> =>
     ipcRenderer.invoke("config:save", values) as Promise<TrayConfigSaveResult>,
   pairingStatus: (): Promise<TrayPairingStatus> =>

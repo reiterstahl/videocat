@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Next release (unreleased)
+
+- **Drive health (SMART)**: Companion › Configuración › Salud de discos installs, with one Windows administrator prompt, smartctl 7.5 (smartmontools, pinned by SHA-256) and its collector in `C:\Program Files\VideoCAT SMART`, a results folder in `C:\ProgramData\VideoCAT\smart` that users can only read, and the scheduled task `\VideoCAT\Salud de discos` (S4U, highest privileges, fixed arguments). The Companion, never elevated, starts it when a drive connects and every 6 hours and sends each drive's compact report to `POST /api/agent/disk-health`; the server evaluates it (`evaluateSmartReport`, so the rules change without a new Companion) against the previous check.
+- Administración › Discos shows each drive's health; a probable failure (SMART FAILED, uncorrectable sectors, an NVMe critical warning or damaged sectors that grew) shows a notice on every section that can be dismissed until the drive gets worse.
+- Migration `0031_disk_health` adds the `DiskHealth` table.
+- Turn it off in the Companion before uninstalling it: the task and the Program Files folder are not removed by the uninstaller.
+
 ## Upgrading to 0.2.48 (Companion 0.2.22)
 
 - **Files with a read problem** (a read that did not answer or failed with an I/O error on a connected drive, usually bad sectors): Companion reads have 30 s and are never retried, and a frame that does not answer leaves the whole file at once; transfers and deletions give up on a drive that stops answering. In the web, the catalog filter **Con problema de lectura**, a notice per drive in Administración › Discos with **Ver archivos** and **Volver a leerlos**, and the same notice in each file's detail.

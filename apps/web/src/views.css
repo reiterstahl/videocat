@@ -3596,3 +3596,74 @@ a.vc-button {
   color: var(--vc-text);
   font-weight: 500;
 }
+
+/* Drive health (SMART) */
+
+.vc-admin-health {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vc-admin-health-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.vc-admin-health-head > span:last-child,
+.vc-admin-health p,
+.vc-admin-health-off {
+  color: var(--vc-text-soft);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.vc-admin-health ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vc-admin-health li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+
+.vc-admin-health li.is-failing strong {
+  color: var(--vc-danger);
+}
+
+.vc-admin-health li.is-attention strong {
+  color: #b45309;
+}
+
+.vc-health-alerts {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vc-health-alert {
+  min-width: 0;
+}
+
+.vc-health-alert > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.vc-health-alert .vc-button {
+  justify-self: start;
+  margin-top: 6px;
+}
+
+.vc-health-alert-dismiss {
+  flex: none;
+}

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type NativeImage } from "electron";
 import type { OpenDialogOptions } from "electron";
@@ -12,6 +12,7 @@ import { formatTrayTooltip, LineSplitter, parseAccent, parseTrayStatus, prepareT
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { generateCompanionToken, minimumCompanionTokenLength } from "./local-auth.js";
 import { CompanionUpdater, createUpdateClient, runVelopackHooks } from "./updater.js";
+import { healthTaskInstalled, readCollectedHealth, runHealthTask } from "./disk-health.js";
 
 // Velopack may start the app only to run an install/update hook and exit, so this runs first.
 if (app.isPackaged && process.platform === "win32") runVelopackHooks();
@@ -584,6 +585,88 @@ function agentExecutablePath(): string | null {
   if (!app.isPackaged) return null;
   const executable = path.join(resourcesPath(), "videocat-agent.exe");
   return existsSync(executable) ? executable : null;
+}
+
+// Drive health (SMART), see disk-health.ts and smart/smart-setup.ps1. smartctl and the scripts
+// travel in resources/smartmontools (scripts/fetch-smartctl.mjs); turning it on or off runs the
+// setup script elevated, which is the one moment Windows asks for administrator permission.
+type HealthStatus = { supported: boolean; installed: boolean; administrator: boolean; lastCheckedAt: string | null };
+type HealthResult = { ok: true; message: string } | { ok: false; message: string };
+
+function smartToolsDir(): string {
+  return app.isPackaged ? path.join(resourcesPath(), "smartmontools") : path.join(app.getAppPath(), "release", "smartmontools");
+}
+
+function runQuiet(command: string, args: string[], timeout = 15_000): Promise<{ code: number; stdout: string }> {
+  return new Promise((resolve) => {
+    execFile(command, args, { windowsHide: true, timeout }, (error, stdout) => {
+      const code = error ? (typeof (error as NodeJS.ErrnoException & { code?: unknown }).code === "number" ? Number((error as { code?: unknown }).code) : 1) : 0;
+      resolve({ code, stdout: String(stdout ?? "") });
+    });
+  });
+}
+
+async function windowsUser(): Promise<{ sid: string | null; administrator: boolean }> {
+  const user = await runQuiet("whoami.exe", ["/user", "/fo", "csv", "/nh"]);
+  const sid = /"(S-1-5-21-[\d-]+)"/.exec(user.stdout)?.[1] ?? null;
+  // Listed even while UAC keeps the token filtered ("deny only"): what matters is that the
+  // account can be elevated.
+  const groups = await runQuiet("whoami.exe", ["/groups", "/fo", "csv", "/nh"]);
+  return { sid, administrator: groups.stdout.includes("S-1-5-32-544") };
+}
+
+async function healthStatus(): Promise<HealthStatus> {
+  if (process.platform !== "win32") return { supported: false, installed: false, administrator: false, lastCheckedAt: null };
+  const [installed, user, collected] = await Promise.all([healthTaskInstalled(), windowsUser(), readCollectedHealth()]);
+  return { supported: true, installed, administrator: user.administrator, lastCheckedAt: collected?.collectedAt ?? null };
+}
+
+const cancelledExitCode = 1223;
+// smart-setup.ps1 writes nothing outside its protected folders: its exit code says what failed.
+const healthSetupErrors: Record<number, string> = {
+  10: "no se pudo identificar tu usuario de Windows",
+  11: "smartctl.exe no es la versión que trae VideoCAT; reinstala o actualiza el Companion",
+  12: "Windows no aceptó la tarea programada"
+};
+
+// Runs smart-setup.ps1 elevated and waits for it.
+async function runHealthSetup(args: string): Promise<{ code: number; detail: string }> {
+  const source = smartToolsDir();
+  const setup = path.join(source, "smart-setup.ps1");
+  if (!existsSync(setup) || !existsSync(path.join(source, "smartctl.exe"))) {
+    return { code: -1, detail: "Este Companion no trae smartctl; actualízalo." };
+  }
+  const powershell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  // Windows paths cannot contain double quotes, so quoting each one is enough; the whole line goes
+  // to PowerShell as a single-quoted literal.
+  const elevatedArgs = `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${setup}" ${args}`.replace(/'/g, "''");
+  const command = [
+    "try {",
+    `  $process = Start-Process -FilePath '${powershell.replace(/'/g, "''")}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '${elevatedArgs}'`,
+    "  exit $process.ExitCode",
+    `} catch { exit ${cancelledExitCode} }`
+  ].join("\n");
+  const encoded = Buffer.from(command, "utf16le").toString("base64");
+  const result = await runQuiet(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], 5 * 60_000);
+  return { code: result.code, detail: healthSetupErrors[result.code] ?? "" };
+}
+
+async function enableHealth(): Promise<HealthResult> {
+  const user = await windowsUser();
+  if (!user.administrator) return { ok: false, message: "Tu usuario de Windows no es administrador: la salud de discos necesita una cuenta que pueda serlo." };
+  if (!user.sid) return { ok: false, message: "No se pudo identificar tu usuario de Windows." };
+  const result = await runHealthSetup(`-Source "${smartToolsDir()}" -UserSid ${user.sid}`);
+  if (result.code === cancelledExitCode) return { ok: false, message: "Se canceló el permiso de Windows; la salud de discos sigue desactivada." };
+  if (result.code !== 0) return { ok: false, message: `No se pudo activar la salud de discos${result.detail ? `: ${result.detail}` : ` (código ${result.code}).`}` };
+  await runHealthTask();
+  return { ok: true, message: "Salud de discos activada. La primera revisión llega a VideoCAT en un minuto." };
+}
+
+async function disableHealth(): Promise<HealthResult> {
+  const result = await runHealthSetup("-Remove");
+  if (result.code === cancelledExitCode) return { ok: false, message: "Se canceló el permiso de Windows; la salud de discos sigue activa." };
+  if (result.code !== 0) return { ok: false, message: `No se pudo desactivar${result.detail ? `: ${result.detail}` : ` (código ${result.code}).`}` };
+  return { ok: true, message: "Salud de discos desactivada: se quitaron la tarea y smartctl de Program Files." };
 }
 
 function spawnAgent(args: string[]): ChildProcessWithoutNullStreams {
@@ -1216,6 +1299,19 @@ function configHtml(logoDataUrl: string): string {
           </div>
           <textarea name="COMPANION_MONITORED_TARGETS" id="COMPANION_MONITORED_TARGETS" hidden></textarea>
           <input name="COMPANION_DISABLED_DISK_IDS" id="COMPANION_DISABLED_DISK_IDS" hidden />
+        </section>
+        <section class="card">
+          <div class="card-head">
+            <div><h2>Salud de discos</h2><p>Lee el estado SMART de los discos conectados (sectores dañados, errores, temperatura) con smartctl y lo muestra en VideoCAT › Administración. Revisa cada disco al conectarlo y cada 6 horas.</p></div>
+          </div>
+          <div class="update-row">
+            <p id="healthText">Consultando…</p>
+            <div class="monitor-actions">
+              <button type="button" id="healthCheck" class="ghost" hidden>Revisar ahora</button>
+              <button type="button" id="healthToggle" class="primary" hidden>Activar…</button>
+            </div>
+          </div>
+          <p class="note">Windows pide permiso de administrador al activarla y al desactivarla: smartctl queda en Program Files y una tarea programada lo ejecuta con ese permiso. El Companion nunca corre como administrador.</p>
         </section>
       </div>
 
@@ -1852,7 +1948,60 @@ function configHtml(logoDataUrl: string): string {
       }
     }
 
+    const healthText = document.getElementById("healthText");
+    const healthToggle = document.getElementById("healthToggle");
+    const healthCheck = document.getElementById("healthCheck");
+    let healthInstalled = false;
+
+    async function refreshHealth() {
+      const health = await window.videocatConfig?.healthStatus?.().catch(() => null);
+      if (!health) {
+        healthText.textContent = "No se pudo consultar la salud de discos.";
+        return;
+      }
+      healthInstalled = health.installed;
+      healthToggle.hidden = !health.supported;
+      healthCheck.hidden = !health.installed;
+      healthToggle.textContent = health.installed ? "Desactivar…" : "Activar…";
+      healthToggle.className = health.installed ? "ghost" : "primary";
+      // A disabled button says why.
+      healthToggle.disabled = !health.installed && !health.administrator;
+      healthToggle.title = healthToggle.disabled ? "Necesita una cuenta de Windows que pueda ser administradora" : "";
+      healthText.textContent = !health.supported
+        ? "Solo disponible en Windows."
+        : health.installed
+          ? (health.lastCheckedAt ? "Activa. Última revisión: " + new Date(health.lastCheckedAt).toLocaleString() + "." : "Activa. Todavía sin revisiones.")
+          : health.administrator
+            ? "Desactivada."
+            : "Desactivada. Tu usuario de Windows no es administrador: hace falta una cuenta que pueda serlo.";
+    }
+
+    healthToggle.addEventListener("click", async () => {
+      healthToggle.disabled = true;
+      healthCheck.disabled = true;
+      setStatus(healthInstalled ? "Desactivando: acepta el permiso de Windows…" : "Activando: acepta el permiso de Windows…", "info");
+      try {
+        const result = healthInstalled ? await window.videocatConfig.disableHealth() : await window.videocatConfig.enableHealth();
+        setStatus(result.message, result.ok ? "success" : "error");
+      } catch (error) {
+        setStatus(error?.message || "No se pudo completar la acción.", "error");
+      } finally {
+        healthCheck.disabled = false;
+        await refreshHealth();
+      }
+    });
+    healthCheck.addEventListener("click", async () => {
+      healthCheck.disabled = true;
+      try {
+        const result = await window.videocatConfig.checkHealth();
+        setStatus(result.message, result.ok ? "success" : "error");
+      } finally {
+        healthCheck.disabled = false;
+      }
+    });
+
     void loadConfig();
+    void refreshHealth();
     window.videocatConfig?.updateStatus?.().then(renderUpdate).catch(() => undefined);
     window.videocatConfig?.onUpdateReady?.(renderUpdate);
     updateButton.addEventListener("click", () => window.videocatConfig?.installUpdate?.());
@@ -2272,6 +2421,12 @@ async function main(): Promise<void> {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle("config:list-drives", async () => discoverAccessibleDrives());
+  ipcMain.handle("health:status", async () => healthStatus());
+  ipcMain.handle("health:enable", async () => enableHealth());
+  ipcMain.handle("health:disable", async () => disableHealth());
+  ipcMain.handle("health:check", async (): Promise<HealthResult> => (await runHealthTask())
+    ? { ok: true, message: "Revisión iniciada. El resultado llega a VideoCAT en un minuto." }
+    : { ok: false, message: "No se pudo iniciar la revisión: activa la salud de discos otra vez." });
   ipcMain.handle("config:convert-drive", async (_event, input: { root: string; name: string }) => convertDrive(input));
   ipcMain.handle("config:check-identity", async (_event, targetId: string, root: string) => checkDriveIdentity(String(targetId), String(root)));
   ipcMain.handle("config:pin-identity", async (_event, input: { targetId: string; root: string; name: string; acceptMixed?: boolean }) =>

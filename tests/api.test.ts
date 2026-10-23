@@ -1092,6 +1092,54 @@ test("files with a read problem are listed, counted per drive and read again on 
   }
 });
 
+test("SMART checks from the Companion give each drive its health and a dismissible alert when it is failing", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const disk = await prisma.disk.create({ data: { name: `Smart ${suffix}`, volumeId: `smart-${suffix}` } });
+  try {
+    const cookie = await authenticatedCookie();
+    const report = (reallocated: number, uncorrectable: number) => ({
+      smartPassed: true, model: "WDC WD40NMZW", serial: `SN-${suffix}`, protocol: "ATA", temperature: 39, powerOnHours: 1200,
+      attributes: [{ id: 5, name: "Reallocated_Sector_Ct", raw: reallocated }, { id: 198, name: "Offline_Uncorrectable", raw: uncorrectable }],
+      nvme: null, messages: []
+    });
+    const upload = (checkedAt: string, value: ReturnType<typeof report> | null) => app.inject({
+      method: "POST", url: "/api/agent/disk-health", headers: agentHeaders,
+      // The Companion names drives by their marker id (volumeId here) or catalog id.
+      payload: { disks: [{ diskId: disk.volumeId, checkedAt, report: value }, { diskId: "not-a-drive", checkedAt, report: value }] }
+    });
+    const health = async () => ((await app.inject({ method: "GET", url: "/api/admin/disks/overview", headers: { cookie } })).json().disks as Array<{ disk: { id: string }; health: { status: string; items: Array<{ key: string }> } | null }>)
+      .find((item) => item.disk.id === disk.id)!.health;
+    const alerts = async () => ((await app.inject({ method: "GET", url: "/api/disk-health/alerts", headers: { cookie } })).json().alerts as Array<{ diskId: string }>)
+      .filter((alert) => alert.diskId === disk.id);
+
+    assert.equal(await health(), null);
+    assert.equal((await upload("2026-10-20T10:00:00.000Z", report(4, 0))).json().saved, 1);
+    assert.equal((await health())!.status, "attention");
+    assert.equal((await alerts()).length, 0, "only a probable failure raises the alert");
+
+    await upload("2026-10-21T10:00:00.000Z", report(4, 2));
+    assert.equal((await health())!.status, "failing");
+    assert.equal((await alerts()).length, 1);
+    const dismissed = await app.inject({ method: "POST", url: `/api/disk-health/${disk.id}/dismiss`, headers: webMutationHeaders(cookie) });
+    assert.equal(dismissed.statusCode, 200);
+    assert.equal((await alerts()).length, 0);
+
+    // An older check arriving late changes nothing; a worse one brings the alert back.
+    await upload("2026-10-19T10:00:00.000Z", report(0, 0));
+    assert.equal((await health())!.status, "failing");
+    await upload("2026-10-22T10:00:00.000Z", report(9, 2));
+    assert.ok((await health())!.items.some((item) => item.key === "reallocatedGrowing"));
+    assert.equal((await alerts()).length, 1);
+
+    // A USB adapter that blocks SMART: no data, no alert.
+    await upload("2026-10-23T10:00:00.000Z", null);
+    assert.equal((await health())!.status, "unavailable");
+    assert.equal((await alerts()).length, 0);
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
+  }
+});
+
 test("a scan of the source drive does not hide a file that is waiting in staging", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
   const suffix = Math.random().toString(36).slice(2, 8);
   const disk = await prisma.disk.create({ data: { name: `Scan ${suffix}`, volumeId: `scan-${suffix}`, totalBytes: 10n, freeBytes: 10n } });

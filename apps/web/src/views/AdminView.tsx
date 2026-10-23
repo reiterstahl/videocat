@@ -3,7 +3,7 @@ import { AlertTriangle, Check, Cloud, Copy, Database, HardDrive, HardDriveDownlo
 import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
-import type { AdminDiskOverview, AdminPurgeResponse, AdminRemoveDiskResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
+import type { AdminDiskOverview, AdminPurgeResponse, DiskHealthSummary, AdminRemoveDiskResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
 import type { Disk } from "../types";
 import { StorageBucketsSection } from "../components/StorageBucketsSection";
 
@@ -29,6 +29,13 @@ type AdminViewProps = {
 };
 
 const onlineWindowMs = 45_000;
+
+const healthLabels: Record<DiskHealthSummary["status"], { label: string; badge: string }> = {
+  good: { label: "Salud: bien", badge: "is-success" },
+  attention: { label: "Salud: atención", badge: "is-warning" },
+  failing: { label: "Falla probable", badge: "is-danger" },
+  unavailable: { label: "Sin datos SMART", badge: "" }
+};
 
 // Server refusals when removing a drive, in Spanish (the page translator turns them into English).
 const removeDiskMessages: Record<string, string> = {
@@ -365,6 +372,28 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
                   <div><dt>Escaneos</dt><dd>{formatCount(item.catalog.scanCount)}</dd></div>
                   <div><dt>Errores</dt><dd>{formatCount(item.catalog.errorCount)}</dd></div>
                 </dl>
+                {item.health ? (
+                  <div className={`vc-admin-health is-${item.health.status}`}>
+                    <div className="vc-admin-health-head">
+                      <span className={`vc-badge ${healthLabels[item.health.status].badge}`}>{healthLabels[item.health.status].label}</span>
+                      <span>{[`Revisado ${dateLabel(item.health.checkedAt, locale)}`, item.health.model, item.health.temperature != null ? `${item.health.temperature} °C` : null, item.health.powerOnHours != null ? `${formatCount(item.health.powerOnHours)} h de uso` : null].filter(Boolean).join(" · ")}</span>
+                    </div>
+                    {item.health.status === "unavailable" ? (
+                      <p>El adaptador USB de este disco no deja leer SMART. Los archivos con problema de lectura siguen avisando.</p>
+                    ) : item.health.items.length > 0 ? (
+                      <ul>
+                        {item.health.items.map((entry) => (
+                          <li className={`is-${entry.severity}`} key={entry.key}>
+                            <span>{entry.label}</span>
+                            <strong>{entry.value}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : objectStorage ? null : (
+                  <p className="vc-admin-health-off">Salud sin revisar: actívala en el Companion, en Configuración › Salud de discos.</p>
+                )}
                 {item.catalog.readProblemFiles > 0 ? (
                   <div className="vc-status-banner is-danger vc-admin-read-problems" role="status">
                     <AlertTriangle size={16} aria-hidden="true" />

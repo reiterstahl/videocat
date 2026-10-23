@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { formatBytes } from "@videocat/shared";
 import { AppHeader } from "./components/AppHeader";
+import { DiskHealthAlerts } from "./components/DiskHealthAlerts";
 import { AppSidebar } from "./components/AppSidebar";
 import { CatalogContext } from "./components/CatalogContext";
 import { ClearDownloadHistoryConfirmModal } from "./components/ClearDownloadHistoryConfirmModal";
@@ -2226,6 +2227,7 @@ export function App() {
         />
 
         <div className="vc-content">
+      {authenticated ? <DiskHealthAlerts refreshKey={catalogVersion} onOpenDisk={() => navigateToView("admin")} /> : null}
       {showCatalogContext ? (
         <CatalogContext
           {...{
