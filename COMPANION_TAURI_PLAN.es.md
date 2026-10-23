@@ -11,7 +11,7 @@ Plan para bajar el instalador del Companion de Windows de **194 MB a ~45–50 MB
 | Código de VideoCAT, scripts de salud de discos | ~2 MB |
 | **Total (`Setup.exe`)** | **194 MB** |
 
-Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parchado, y el de Electron, que solo usan la bandeja y sus ventanas. Ese segundo sigue en Node 24.22.0, sin las correcciones de octubre de 2026, porque ninguna versión de Electron las trae todavía; por eso cada release necesita la excepción `tray_node_exception`.
+Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parchado, y el de Electron, que solo usan la bandeja y sus ventanas. Ese segundo sigue en Node 24.22.0, sin las correcciones de octubre de 2026, porque ninguna versión de Electron las trae todavía; por eso cada release estable necesita la excepción `tray_node_exception` (las betas pasan sin ella).
 
 ## La idea
 
