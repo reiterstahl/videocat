@@ -90,7 +90,8 @@ try {
   # The Companion (the same user, not elevated) may start the task and read it; nothing else.
   $service = New-Object -ComObject 'Schedule.Service'
   $service.Connect()
-  $task = $service.GetFolder($taskPath).GetTask($taskName)
+  # The COM folder path has no trailing backslash ('\VideoCAT'), unlike the cmdlets' TaskPath.
+  $task = $service.GetFolder($taskPath.TrimEnd('\')).GetTask($taskName)
   $task.SetSecurityDescriptor("D:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GRGX;;;$UserSid)", 0)
 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 13 }
 exit 0
