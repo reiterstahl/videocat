@@ -17,12 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
-## Next release (unreleased)
+## Upgrading to 0.2.49 (Companion 0.2.23)
 
 - **Drive health (SMART)**: Companion › Configuración › Salud de discos installs, with one Windows administrator prompt, smartctl 7.5 (smartmontools, pinned by SHA-256) and its collector in `C:\Program Files\VideoCAT SMART`, a results folder in `C:\ProgramData\VideoCAT\smart` that users can only read, and the scheduled task `\VideoCAT\Salud de discos` (S4U, highest privileges, fixed arguments). The Companion, never elevated, starts it when a drive connects and every 6 hours and sends each drive's compact report to `POST /api/agent/disk-health`; the server evaluates it (`evaluateSmartReport`, so the rules change without a new Companion) against the previous check.
 - Administración › Discos shows each drive's health; a probable failure (SMART FAILED, uncorrectable sectors, an NVMe critical warning or damaged sectors that grew) shows a notice on every section that can be dismissed until the drive gets worse.
 - Migration `0031_disk_health` adds the `DiskHealth` table.
 - Turn it off in the Companion before uninstalling it: the task and the Program Files folder are not removed by the uninstaller.
+- **Companion 0.2.23** is published first as `0.2.23-beta.1` (prerelease) to try the administrator prompt and the task on a real PC; without it, or with Companion 0.2.22, nothing changes and each drive says its health was not checked.
 
 ## Upgrading to 0.2.48 (Companion 0.2.22)
 
