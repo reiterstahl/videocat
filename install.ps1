@@ -70,7 +70,7 @@ PROTECTED_FOLDER_PIN=$protectedPin
 PROTECTED_FOLDER_PATTERNS=Private,Protected
 ADMIN_USER=admin
 ADMIN_PASSWORD=$adminPassword
-VIDEOCAT_VERSION=0.2.49
+VIDEOCAT_VERSION=0.2.50
 "@
 
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)

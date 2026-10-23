@@ -222,7 +222,7 @@ Edita `.env` y reemplaza todos los valores `replace-with-…`. Genera cada secre
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.48`) y `latest`.
+Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.50`) y `latest`.
 </details>
 
 ### 2. Companion en Windows
@@ -395,7 +395,7 @@ Las principales de `.env` (la lista completa, con comentarios, está en [`.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Confianza en el reverse proxy; mejor limitarla a sus CIDR. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Dónde publica el contenedor `web` (por defecto `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN y fragmentos de nombre de carpeta protegidos (por ejemplo `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.48` o `latest`). |
+| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.50` o `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Remux opcional y límites de la reproducción remota. |
 | `STORAGE_SECRET_KEY` | Cifra las secret keys de los buckets S3 (64 caracteres hexadecimales). Si cambia, hay que volver a escribir la secret key de cada bucket. |
 | `S3_SCAN_INTERVAL_HOURS`, `S3_SCAN_CONCURRENCY` | Cada cuánto el escáner vuelve a leer cada bucket (24) y cuántos videos lee a la vez (2). |
@@ -579,9 +579,9 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Imágenes Docker** (amd64 y arm64; actualiza también `VIDEOCAT_VERSION` en `docker-compose.hub.yml` y en los instaladores):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.49 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.48 -t reiterstahl/videocat-scanner:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.48 -t reiterstahl/videocat-web:0.2.48 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.50 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.50 -t reiterstahl/videocat-scanner:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.50 -t reiterstahl/videocat-web:0.2.50 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Verificación del instalador del Companion:
