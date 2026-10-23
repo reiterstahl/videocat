@@ -172,4 +172,4 @@ Instalar VideoCAT en un LXC de Proxmox con un comando de [community-scripts.org]
 
 ## En plan: Companion más liviano (Electron → Tauri)
 
-Bajar el instalador del Companion de ~158 MB a ~35–45 MB con un envoltorio Tauri (WebView2) y el mismo agente de Node empaquetado como ejecutable único. Fases, riesgos y resultado esperado en [COMPANION_TAURI_PLAN.es.md](COMPANION_TAURI_PLAN.es.md).
+Bajar el instalador del Companion de 194 MB a ~45–50 MB con un envoltorio Tauri (WebView2) y el mismo agente de Node, que ya es un ejecutable propio desde la 0.2.21; de paso, todo el Companion queda sobre un Node parchado. Fase 0 aprobada; el resto empieza cuando la 0.2.23 pase a estable. Detalle en [COMPANION_TAURI_PLAN.es.md](COMPANION_TAURI_PLAN.es.md).
