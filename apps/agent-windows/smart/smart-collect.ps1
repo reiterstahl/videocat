@@ -1,4 +1,4 @@
-# VideoCAT drive health collector. smart-setup.ps1 installs it in Program Files, next to
+﻿# VideoCAT drive health collector. smart-setup.ps1 installs it in Program Files, next to
 # smartctl.exe, and the scheduled task "\VideoCAT\Salud de discos" runs it with the highest
 # privileges, which SMART needs. It reads every drive with smartctl and writes one JSON file that
 # the Companion (not elevated) reads: ProgramData\VideoCAT\smart\smart.json.

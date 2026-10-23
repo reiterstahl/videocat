@@ -1,4 +1,4 @@
-# Turns VideoCAT's drive health check on or off. The Companion runs it elevated (UAC), once:
+﻿# Turns VideoCAT's drive health check on or off. The Companion runs it elevated (UAC), once:
 #   smart-setup.ps1 -Source <folder with smartctl.exe, drivedb.h, COPYING.txt, smart-collect.ps1> -UserSid <SID>
 #   smart-setup.ps1 -Remove
 # The task it creates runs with the highest privileges, so everything it runs lives where only
@@ -8,7 +8,8 @@
 # system file by a link): each failure is its own exit code, which the Companion explains.
 param([string]$Source, [string]$UserSid, [switch]$Remove)
 $ErrorActionPreference = 'Stop'
-trap { exit 1 }
+# Each failure also goes to standard error (seen when run directly, as in CI; never a file).
+trap { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
 
 $installDir = Join-Path $env:ProgramFiles 'VideoCAT SMART'
 $parentDir = Join-Path $env:ProgramData 'VideoCAT'
@@ -83,11 +84,13 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 try {
   Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Principal $principal -Settings $settings `
     -Description 'VideoCAT: lee la salud (SMART) de los discos con smartctl. La inicia el Companion.' | Out-Null
+} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 12 }
 
+try {
   # The Companion (the same user, not elevated) may start the task and read it; nothing else.
   $service = New-Object -ComObject 'Schedule.Service'
   $service.Connect()
   $task = $service.GetFolder($taskPath).GetTask($taskName)
   $task.SetSecurityDescriptor("D:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GRGX;;;$UserSid)", 0)
-} catch { exit 12 }
+} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 13 }
 exit 0

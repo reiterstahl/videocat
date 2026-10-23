@@ -626,7 +626,8 @@ const cancelledExitCode = 1223;
 const healthSetupErrors: Record<number, string> = {
   10: "no se pudo identificar tu usuario de Windows",
   11: "smartctl.exe no es la versión que trae VideoCAT; reinstala o actualiza el Companion",
-  12: "Windows no aceptó la tarea programada"
+  12: "Windows no aceptó la tarea programada",
+  13: "Windows no aceptó los permisos de la tarea programada"
 };
 
 // Runs smart-setup.ps1 elevated and waits for it.
