@@ -72,7 +72,7 @@ flowchart LR
 | **server** | API for login, catalog, review, duplicates, audit and the Companion tunnel. Applies database migrations on start. |
 | **postgres** | Catalog database, reachable only on the internal Docker network. |
 | **scanner** | Optional (`--profile s3`): the server's code plus FFmpeg. Scans S3 buckets and deletes their marked videos on request. |
-| **Companion** | Windows tray app: detects drives, scans with FFmpeg, uploads metadata and thumbnails, processes deletions and copies, and serves remote playback through an **outbound** tunnel (no open ports). |
+| **Companion** | Windows tray app: detects drives, scans with FFmpeg, uploads metadata and thumbnails, processes deletions and copies, serves remote playback through an **outbound** tunnel (no open ports) and, optionally, reads the drives' health (SMART). |
 
 ## Features
 
@@ -125,7 +125,7 @@ flowchart LR
 - Custom colored categories, several per video, and automatic tags from file names.
 - **Usage map**: a folder map by size you can drill into.
 - **Folder usage**: a WinDirStat-style map where folders with the same name are merged even on different drives and levels (every "Testing", for example). One click **enters the folder** and shows its whole distribution, level by level, down to the videos themselves as blocks sized by file size; generic names can be excluded from merging. A right click goes **to the catalog** or marks the folder as a **favorite** (its videos are never offered to move to another folder). Each drive's **free space** is on the map too, always in the same color, so the room left is always in view. **Instant search** (shortcut `/`) keeps only the matching blocks, ignoring case and accents, and filters the videos at the last level.
-- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed (the name also goes into its marker), emptied or, when it no longer exists, **removed** from VideoCAT.
+- Administration with physical and cataloged space per drive, paired Companions, recent activity and cleanup. Each drive can be renamed (the name also goes into its marker), emptied or, when it no longer exists, **removed** from VideoCAT, and shows its **health (SMART)** and how many files it would not let VideoCAT read.
 - Audit of grouped errors and actions, with search, filters and CSV export.
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
 
@@ -147,8 +147,8 @@ flowchart LR
 - Before deleting, it revalidates size, modification time and visual fingerprint; if the path now holds a different file, it cancels.
 - Moves **Transfers** through a local staging folder, verifying every copy with SHA-256.
 - While it works (copying, verifying, downloading, scanning or deleting), the accent chosen in the web travels around the white outline of its tray icon, and hovering it shows the task, how far it got and about how long is left.
-- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting.
-- **Drive health (SMART)**, optional: the Companion reads each connected drive with smartctl when it connects and every 6 hours. Administration shows each drive's state (good, attention, probable failure or no SMART data through its USB adapter) with its damaged sectors, errors and temperature in words, and a drive whose damaged sectors keep growing raises a dismissible notice on every section. The catalog filters these files (**With read problems**), each drive in Administration says how many it has, and **Read again** has the next scan try them.
+- A file that stops answering during a scan (bad sectors on a connected drive) does not block it: a read that gets no answer in 30 s or fails with an I/O error is not retried, the scan moves on and the file is marked **At risk**, left alone by later scans for 30 days. Transfers and deletions also give up on a drive that stops answering instead of waiting. The catalog filters these files (**With read problems**), each drive in Administration says how many it has, and **Read them again** has the next scan try them.
+- **Drive health (SMART)**, optional (Companion 0.2.23 or later): the Companion reads each connected drive with smartctl, included, when it connects and every 6 hours. Administration shows each drive's state (good, attention, probable failure or no SMART data through its USB adapter) with its damaged sectors, errors and temperature in words, and a probable failure raises a notice on every section that can be dismissed until the drive gets worse. See [Failing drives](#failing-drives).
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -293,6 +293,10 @@ Tested against MinIO, Garage and RustFS. With Garage, the region is the `s3_regi
 > [!TIP]
 > Give VideoCAT an access key just for that bucket or prefix: list and read, plus delete only if you want to delete from Review. See [Security and privacy](#security-and-privacy).
 
+### 6. Drive health (optional)
+
+In the Companion, **Configuración… › Rutas › Salud de discos › Activar…** (Settings › Paths › Drive health › Turn on) and accept Windows' administrator prompt, once. A minute later **Administration › Drives** shows the health of every connected drive. Your Windows account must be one that can become an administrator; see [Failing drives](#failing-drives).
+
 ## Everyday use
 
 ### Review and safe deletion
@@ -343,6 +347,27 @@ Guarantees at every step:
 | `J` | Ignore (not proposed again for that folder) |
 | `S` | Skip |
 | `Z` | Undo (a grouped file leaves the transfer while it is still pending) |
+
+### Failing drives
+
+Old external drives fail little by little, and the first sign is usually a file that takes forever to read. VideoCAT watches for that in two ways:
+
+**Files with a read problem.** When a read gets no answer in 30 seconds, or the drive reports an I/O error, the Companion leaves that file at once (no retries, which would only stress the drive more), goes on with the next one and marks it **At risk**: later scans leave it alone for 30 days. A deletion that cannot read the file to confirm it is the catalogued one does not delete it and says so; a transfer whose drive stops sending data gives up on that file.
+
+1. **Catalog › Filters › With read problems**, or **Show files** on the drive's notice in **Administration › Drives**, lists them.
+2. Copy what you can to another drive with Windows or a recovery tool, or check the drive with its maker's tool. If you no longer need a file, delete it by hand.
+3. **Read it again** on a file, or **Read them again** for the whole drive, takes them off the Companion's list: the next scan of that drive reads them in full. If they still fail, they go back to the list.
+
+**Drive health (SMART).** With [drive health](#6-drive-health-optional) on, each drive in Administration says:
+
+| State | When |
+| --- | --- |
+| **Good** | SMART reports nothing worrying. |
+| **Attention** | Reallocated or pending sectors, spin-up retries, transfer errors (usually the cable or USB adapter), 55 °C or more, or, on NVMe, media errors or 90 % wear. |
+| **Probable failure** | SMART says FAILED, uncorrectable sectors or read errors, an NVMe critical warning or spare blocks below the minimum, or damaged sectors that grew since the previous check. Copy what is not anywhere else. |
+| **No SMART data** | The drive's USB adapter does not let SMART through. Files with read problems still raise their notice. |
+
+A probable failure also shows a notice on every section. **Dismiss** hides it until the drive gets worse.
 
 ### Remote playback and Chromecast
 
@@ -463,7 +488,7 @@ To report a vulnerability privately, see [SECURITY.md](SECURITY.md).
 
 ## Companion configuration
 
-Everything is edited from **Configuración…**, organized in pages: Conexión, Navegador, Rutas, Archivos, Avanzado and Actualizaciones (connection, browser, paths, files, advanced and updates). It is stored in `%APPDATA%\VideoCAT Companion\.env`.
+Everything is edited from **Configuración…**, organized in pages: Conexión, Navegador, Rutas, Archivos, Avanzado and Actualizaciones (connection, browser, paths, files, advanced and updates). It is stored in `%APPDATA%\VideoCAT Companion\.env`. **Salud de discos** (drive health), on the Rutas page, is turned on and off with its own button because it needs Windows' administrator permission.
 
 <details>
 <summary>Companion variables</summary>
@@ -488,6 +513,7 @@ Everything is edited from **Configuración…**, organized in pages: Conexión, 
 | `COMPANION_DELETE_POLL_MS` | `60000` | Check for pending deletions. |
 | `COMPANION_DOWNLOAD_POLL_MS` | `60000` | Check of the download queue. |
 | `COMPANION_DOWNLOAD_STALL_MS` | `30000` | Time before a copy counts as stalled. |
+| `COMPANION_FILE_TIMEOUT_SECONDS` | `180` | Longest a scan spends on one file before leaving it at risk (30–3600). Each single read already gives up after 30 s. |
 | `COMPANION_STAGING_DIR` | — | **Transfers** staging folder; empty disables transfers. Always keeps 5 % of its drive free. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | How often pending transfers are checked (minimum 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Drive refresh in the tray menu. |

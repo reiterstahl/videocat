@@ -72,7 +72,7 @@ flowchart LR
 | **server** | API con login, catálogo, review, duplicados, auditoría y el túnel con los Companions. Aplica las migraciones al arrancar. |
 | **postgres** | Base de datos del catálogo. Solo es accesible en la red interna de Docker. |
 | **scanner** | Opcional (`--profile s3`): el código del servidor más FFmpeg. Escanea los buckets S3 y borra sus videos marcados cuando se lo pides. |
-| **Companion** | App de bandeja en Windows: detecta discos, escanea con FFmpeg, sube metadatos y miniaturas, procesa borrados y copias, y sirve reproducción remota por un túnel **saliente** (no abre puertos). |
+| **Companion** | App de bandeja en Windows: detecta discos, escanea con FFmpeg, sube metadatos y miniaturas, procesa borrados y copias, sirve reproducción remota por un túnel **saliente** (no abre puertos) y, si lo activas, lee la salud (SMART) de los discos. |
 
 ## Características
 
@@ -125,7 +125,7 @@ flowchart LR
 - Categorías propias con colores, asignables varias por video, y etiquetas automáticas a partir de los nombres.
 - **Esquema de uso** como mapa de carpetas por tamaño, navegable por niveles.
 - **Uso por carpeta**: mapa estilo WinDirStat donde las carpetas con el mismo nombre se juntan aunque estén en discos y niveles distintos (por ejemplo, todas las "Testing"). Un clic **entra en la carpeta** y muestra toda su distribución, nivel por nivel, hasta los videos mismos como bloques proporcionales a su tamaño; los nombres genéricos se pueden excluir de la agrupación. Con clic derecho: **ir al catálogo** o marcar la carpeta como **favorita** (sus videos nunca se ofrecen para moverse a otra carpeta). El **espacio libre** de cada disco también aparece en el mapa, siempre del mismo color, para saber siempre cuánto lugar queda. La **búsqueda instantánea** (atajo `/`) deja solo los bloques que coinciden, sin importar mayúsculas ni tildes, y en el último nivel filtra los videos.
-- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza. Cada disco se puede renombrar (el nombre se guarda también en su marcador), vaciar o, si ya no existe, **eliminar** de VideoCAT.
+- Administración con espacio físico y catalogado por disco, Companions emparejados, actividad reciente y limpieza. Cada disco se puede renombrar (el nombre se guarda también en su marcador), vaciar o, si ya no existe, **eliminar** de VideoCAT, y muestra su **salud (SMART)** y cuántos archivos no dejó leer.
 - Auditoría de errores agrupados y acciones, con búsqueda, filtros y exportación CSV.
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
 
@@ -147,8 +147,8 @@ flowchart LR
 - Antes de borrar, revalida tamaño, fecha y huella visual; si la ruta ya contiene otro archivo, cancela.
 - Mueve los archivos de los **Traslados** a través de una carpeta temporal local, verificando cada copia con SHA-256.
 - Mientras trabaja (copiando, verificando, descargando, escaneando o borrando), el color de acento elegido en la web recorre el borde blanco de su ícono en la bandeja, y al pasar el cursor muestra la tarea, el avance y cuánto falta.
-- Un archivo que deja de responder en un escaneo (sectores dañados con el disco conectado) no lo bloquea: una lectura que no responde en 30 s o da un error de lectura no se reintenta, el escaneo sigue y el archivo queda **En riesgo**, sin volver a leerse durante 30 días. Los traslados y los borrados también se rinden ante un disco que deja de responder en vez de esperar.
-- **Salud de discos (SMART)**, opcional: el Companion lee cada disco conectado con smartctl al conectarlo y cada 6 horas. Administración muestra el estado de cada disco (bien, atención, falla probable o sin datos SMART por su adaptador USB) con sus sectores dañados, errores y temperatura en palabras, y un disco cuyos sectores dañados siguen creciendo levanta un aviso descartable en todas las secciones. El catálogo filtra esos archivos (**Con problema de lectura**), cada disco dice en Administración cuántos tiene, y **Volver a leerlos** hace que el próximo escaneo los intente de nuevo.
+- Un archivo que deja de responder en un escaneo (sectores dañados con el disco conectado) no lo bloquea: una lectura que no responde en 30 s o da un error de lectura no se reintenta, el escaneo sigue y el archivo queda **En riesgo**, sin volver a leerse durante 30 días. Los traslados y los borrados también se rinden ante un disco que deja de responder en vez de esperar. El catálogo filtra esos archivos (**Con problema de lectura**), cada disco dice en Administración cuántos tiene, y **Volver a leerlos** hace que el próximo escaneo los intente de nuevo.
+- **Salud de discos (SMART)**, opcional (Companion 0.2.23 o posterior): el Companion lee cada disco conectado con smartctl, que viene incluido, al conectarlo y cada 6 horas. Administración muestra el estado de cada disco (bien, atención, falla probable o sin datos SMART por su adaptador USB) con sus sectores dañados, errores y temperatura en palabras, y una falla probable levanta un aviso en todas las secciones que se puede descartar hasta que el disco empeore. Más en [Discos que fallan](#discos-que-fallan).
 
 <details>
 <summary><strong>Más capturas</strong></summary>
@@ -291,6 +291,10 @@ Probado con MinIO, Garage y RustFS. Con Garage, la región es el `s3_region` de 
 > [!TIP]
 > Dale a VideoCAT una access key solo para ese bucket o prefijo: listar y leer, y borrar solo si vas a borrar desde Review. Más en [Seguridad y privacidad](#seguridad-y-privacidad).
 
+### 6. Salud de discos (opcional)
+
+En el Companion, **Configuración… › Rutas › Salud de discos › Activar…**, y acepta el permiso de administrador de Windows, una sola vez. Un minuto después, **Administración › Discos** muestra la salud de cada disco conectado. Tu cuenta de Windows tiene que poder ser administradora; más en [Discos que fallan](#discos-que-fallan).
+
 ## Uso diario
 
 ### Review y borrado seguro
@@ -341,6 +345,27 @@ Garantías en cada paso:
 | `J` | Ignorar (no vuelve a proponerse para esa carpeta) |
 | `S` | Saltar |
 | `Z` | Deshacer (un archivo agrupado sale del traslado mientras siga pendiente) |
+
+### Discos que fallan
+
+Los discos externos viejos fallan de a poco, y la primera señal suele ser un archivo que tarda una eternidad en leerse. VideoCAT lo vigila de dos formas:
+
+**Archivos con problema de lectura.** Cuando una lectura no responde en 30 segundos, o el disco da un error de lectura, el Companion deja ese archivo enseguida (sin reintentos, que solo estresarían más al disco), sigue con el siguiente y lo marca **En riesgo**: los escaneos siguientes no lo tocan durante 30 días. Un borrado que no puede leer el archivo para confirmar que es el catalogado no lo borra y lo avisa; un traslado cuyo disco deja de entregar datos abandona ese archivo.
+
+1. **Catálogo › Filtros › Con problema de lectura**, o **Administración › Discos › Ver archivos** en el aviso del disco, los muestra.
+2. Copia lo que puedas a otro disco con Windows o con una herramienta de recuperación, o revisa el disco con la herramienta de su fabricante. Si ya no necesitas un archivo, bórralo a mano.
+3. **Volver a leerlo** en un archivo, o **Volver a leerlos** para todo el disco, los saca de la lista del Companion: el próximo escaneo de ese disco los lee completos. Si vuelven a fallar, regresan a la lista.
+
+**Salud de discos (SMART).** Con la [salud de discos](#6-salud-de-discos-opcional) activa, cada disco dice en Administración:
+
+| Estado | Cuándo |
+| --- | --- |
+| **Bien** | SMART no reporta nada preocupante. |
+| **Atención** | Sectores reasignados o pendientes, reintentos al arrancar el motor, errores de transmisión (casi siempre el cable o el adaptador USB), 55 °C o más, o, en NVMe, errores del medio o 90 % de desgaste. |
+| **Falla probable** | SMART dice FAILED, hay sectores o errores de lectura incorregibles, un aviso crítico de NVMe o la reserva de bloques bajo el mínimo, o los sectores dañados aumentaron desde la revisión anterior. Copia lo que no tengas en otro lado. |
+| **Sin datos SMART** | El adaptador USB del disco no deja pasar SMART. Los archivos con problema de lectura siguen avisando. |
+
+Una falla probable también muestra un aviso en todas las secciones. **Descartar** lo oculta hasta que el disco empeore.
 
 ### Reproducción remota y Chromecast
 
@@ -461,7 +486,7 @@ Para reportar una vulnerabilidad de forma privada, consulta [SECURITY.md](SECURI
 
 ## Configuración del Companion
 
-Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Navegador, Rutas, Archivos, Avanzado y Actualizaciones. Se guarda en `%APPDATA%\VideoCAT Companion\.env`.
+Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Navegador, Rutas, Archivos, Avanzado y Actualizaciones. Se guarda en `%APPDATA%\VideoCAT Companion\.env`. **Salud de discos**, en la página Rutas, se activa y desactiva con su propio botón porque necesita el permiso de administrador de Windows.
 
 <details>
 <summary>Variables del Companion</summary>
@@ -486,6 +511,7 @@ Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Na
 | `COMPANION_DELETE_POLL_MS` | `60000` | Revisión de borrados pendientes. |
 | `COMPANION_DOWNLOAD_POLL_MS` | `60000` | Revisión de la cola de descargas. |
 | `COMPANION_DOWNLOAD_STALL_MS` | `30000` | Tiempo para dar una copia por estancada. |
+| `COMPANION_FILE_TIMEOUT_SECONDS` | `180` | Lo máximo que un escaneo dedica a un archivo antes de dejarlo en riesgo (30–3600). Cada lectura sola ya se rinde a los 30 s. |
 | `COMPANION_STAGING_DIR` | — | Carpeta temporal de **Traslados**; vacía desactiva los traslados. Siempre deja libre el 5 % de su unidad. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | Revisión de traslados pendientes (mínimo 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Refresco de discos en el menú de la bandeja. |
