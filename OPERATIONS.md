@@ -17,10 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
-## Next release (unreleased)
+## Upgrading to 0.2.48 (Companion 0.2.22)
 
 - **Files with a read problem** (a read that did not answer or failed with an I/O error on a connected drive, usually bad sectors): Companion reads have 30 s and are never retried, and a frame that does not answer leaves the whole file at once; transfers and deletions give up on a drive that stops answering. In the web, the catalog filter **Con problema de lectura**, a notice per drive in Administración › Discos with **Ver archivos** and **Volver a leerlos**, and the same notice in each file's detail.
-- **Read again** marks the files (`VideoFile.readRetryAt`, migration `0030_read_retry`); the scan index the Companion asks for at the start of each scan lists them, and it takes them off its list of files at risk. Needs the new Companion; older ones ignore the list.
+- **Read again** marks the files (`VideoFile.readRetryAt`, migration `0030_read_retry`); the scan index the Companion asks for at the start of each scan lists them, and it takes them off its list of files at risk. Needs Companion 0.2.22; older ones ignore the list.
+- Migration `0030_read_retry` runs on start; it only adds a column.
+- Server dependencies: Fastify 5.12.7 (security release 5.12.6, low severity: a `propertyNames` rule on header names; VideoCAT uses none) and @fastify/multipart 10.1.4.
+- **Companion 0.2.22** is built like 0.2.21, with the tray on Electron's Node 24.22.0 (no Electron release has the October 2026 fixes yet) and the agent on its own patched Node. Installed Companions update on their own.
 
 ## Windows Companion 0.2.21
 

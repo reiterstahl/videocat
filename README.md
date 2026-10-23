@@ -221,7 +221,7 @@ Edit `.env` and replace every `replace-with-…` value. Generate each secret wit
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.47`) and `latest`.
+Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.48`) and `latest`.
 </details>
 
 ### 2. Windows Companion
@@ -371,7 +371,7 @@ The main `.env` settings (the full, commented list is in [`.env.example`](.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Trust in the reverse proxy; preferably limited to its CIDRs. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Where the `web` container is published (default `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN and folder-name fragments to protect (for example `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.47` or `latest`). |
+| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.48` or `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Optional remux and remote playback limits. |
 | `STORAGE_SECRET_KEY` | Encrypts the secret keys of S3 buckets (64 hexadecimal characters). If it changes, each bucket's secret key has to be entered again. |
 | `S3_SCAN_INTERVAL_HOURS`, `S3_SCAN_CONCURRENCY` | How often the scanner rereads each bucket (24) and how many videos it reads at a time (2). |
@@ -436,8 +436,8 @@ VideoCAT works behind an access gateway such as Cloudflare Access. When that gat
 
 > [!IMPORTANT]
 > **Pending Node.js security fix in Electron (October 2026).** Node.js 24.22.1 fixes four high-severity issues, among them TLS certificate checks and the Brotli decoder. Every Electron release so far still embeds Node 24.22.0. Until one with the fix is out:
-> - **Companion 0.2.21** runs the agent (scans, playback tunnel, uploads, downloads, deletions, transfers and the local listener) as its own executable on Node 24.22.1. Only the tray and its windows stay on Electron's Node 24.22.0, and their only network calls are pairing and the drive identity check against your own server.
-> - **Companion 0.2.20 and earlier** run everything, agent included, on an unpatched Node (24.19.0 in 0.2.20). Update to 0.2.21: installed Companions do it on their own when restarted.
+> - **Companion 0.2.21 and later** run the agent (scans, playback tunnel, uploads, downloads, deletions, transfers and the local listener) as its own executable on Node 24.22.1. Only the tray and its windows stay on Electron's Node 24.22.0, and their only network calls are pairing and the drive identity check against your own server.
+> - **Companion 0.2.20 and earlier** run everything, agent included, on an unpatched Node (24.19.0 in 0.2.20). Update: installed Companions do it on their own when restarted.
 >
 > The next Companion moves to the first Electron with the fix, and this note goes away. The release workflow refuses this exception as soon as that Electron exists.
 
@@ -553,9 +553,9 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Docker images** (amd64 and arm64; also update `VIDEOCAT_VERSION` in `docker-compose.hub.yml` and the installers):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.47 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.47 -t reiterstahl/videocat-scanner:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.47 -t reiterstahl/videocat-web:0.2.47 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.48 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.48 -t reiterstahl/videocat-scanner:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.48 -t reiterstahl/videocat-web:0.2.48 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Verifying the Companion installer:

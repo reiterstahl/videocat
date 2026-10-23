@@ -15,7 +15,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - GitHub Sponsors: <https://github.com/sponsors/reiterstahl>
 - PayPal: <https://www.paypal.com/donate/?hosted_button_id=2A4K45LJRACCY>
 - Licencia: `AGPL-3.0-or-later`
-- Stack Docker actual: `0.2.47` (imágenes `videocat-server`, `videocat-web` y, opcional para buckets S3, `videocat-scanner`)
+- Stack Docker actual: `0.2.48` (imágenes `videocat-server`, `videocat-web` y, opcional para buckets S3, `videocat-scanner`)
 - Companion Windows actual: `0.2.20` (instalador con actualización automática); `0.2.21-beta.2` en prueba
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
