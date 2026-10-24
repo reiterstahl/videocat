@@ -22,10 +22,12 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - Security: zod 4.6.7 in the server (and the shared package) for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), high severity: validating an oversized collection could exhaust the server's memory. Zod 3 has no patched release; the schemas VideoCAT uses behave the same in 4. No migration and no new settings.
 - The Windows Companion is unchanged (0.2.23-beta.1); it picks up zod 4 in its next release.
 
-## Next release (unreleased)
+## Windows Companion 0.2.23
 
+- Drive health (SMART), described under 0.2.49 below; tried on a real PC as 0.2.23-beta.1 and beta.2 before going stable.
 - **The Companion speaks English**: its tray menu, settings and activity windows, notifications and tooltip follow Windows' display language, or **Advanced › Language** (`COMPANION_LANGUAGE`: `auto`, `es`, `en`). The agent's own log lines stay in Spanish.
 - A hidden button in the Companion settings (for example **Check now** while drive health is off) no longer shows.
+- Built like 0.2.21 and 0.2.22, with the tray on Electron's Node 24.22.0 (no Electron release has the October 2026 fixes yet) and the agent on its own patched Node. Installed Companions update on their own.
 
 ## Upgrading to 0.2.49 (Companion 0.2.23)
 
@@ -33,7 +35,7 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - Administración › Discos shows each drive's health; a probable failure (SMART FAILED, uncorrectable sectors, an NVMe critical warning or damaged sectors that grew) shows a notice on every section that can be dismissed until the drive gets worse.
 - Migration `0031_disk_health` adds the `DiskHealth` table.
 - Turn it off in the Companion before uninstalling it: the task and the Program Files folder are not removed by the uninstaller.
-- **Companion 0.2.23** is published first as `0.2.23-beta.1` (prerelease) to try the administrator prompt and the task on a real PC; without it, or with Companion 0.2.22, nothing changes and each drive says its health was not checked.
+- Drive health needs Companion 0.2.23; with 0.2.22 or earlier nothing changes and each drive says its health was not checked.
 
 ## Upgrading to 0.2.48 (Companion 0.2.22)
 
