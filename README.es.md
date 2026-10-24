@@ -139,6 +139,7 @@ flowchart LR
 
 ### Companion de Windows
 - Se instala con un Setup.exe, sin permisos de administrador, y **se actualiza solo** desde GitHub Releases.
+- En español o inglés, según el idioma de Windows o el que elijas en su configuración.
 - Emparejamiento con un código de un solo uso y credencial individual cifrada por Windows.
 - Monitorea discos con marcador y rutas añadidas a mano, y reescanea periódicamente sin repetir trabajo.
 - **Una carpeta renombrada o un archivo movido dentro del mismo disco no se vuelve a procesar**: su ficha del catálogo lo sigue con sus etiquetas, revisión, miniaturas y huella. Una copia queda como un video aparte.
@@ -515,6 +516,7 @@ Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Na
 | `COMPANION_STAGING_DIR` | — | Carpeta temporal de **Traslados**; vacía desactiva los traslados. Siempre deja libre el 5 % de su unidad. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | Revisión de traslados pendientes (mínimo 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Refresco de discos en el menú de la bandeja. |
+| `COMPANION_LANGUAGE` | `auto` | Idioma de la interfaz: `auto` (el de Windows), `es` o `en`. El registro de actividad deja las líneas del agente como están. |
 | `TRAY_CLICK_ACTION` | `open` | Qué hace el clic o doble clic en el ícono: `open` (abrir VideoCAT), `activity` (mostrar actividad) o `settings` (abrir configuración). |
 </details>
 

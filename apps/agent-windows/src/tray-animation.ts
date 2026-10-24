@@ -1,3 +1,5 @@
+import { translateTray, type TrayLanguage } from "./tray-i18n.js";
+
 // The tray icon while the Companion works: the accent chosen in the web travels around the cat's
 // white outline, fading back to white behind it. The frames come from the icon's own bitmap: only
 // the white outline pixels change color, so the cat and its silhouette stay as they are.
@@ -155,7 +157,7 @@ const phaseLabels: Record<string, string> = {
 // Windows cuts tray tooltips at 127 characters.
 export const trayTooltipLimit = 127;
 
-function bytesLabel(bytes: number): string {
+function bytesLabel(bytes: number, language: TrayLanguage = "es"): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
@@ -164,16 +166,18 @@ function bytesLabel(bytes: number): string {
     unit += 1;
   }
   const digits = value >= 100 || unit === 0 ? 0 : 1;
-  return `${value.toFixed(digits).replace(".", ",")} ${units[unit]}`;
+  const number = value.toFixed(digits);
+  return `${language === "es" ? number.replace(".", ",") : number} ${units[unit]}`;
 }
 
-export function etaLabel(seconds: number): string {
+export function etaLabel(seconds: number, language: TrayLanguage = "es"): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "";
-  if (seconds < 60) return `faltan ~${Math.max(1, Math.round(seconds))} s`;
-  if (seconds < 3600) return `faltan ~${Math.round(seconds / 60)} min`;
+  const left = (time: string) => translateTray("faltan ~{time}", language, { time });
+  if (seconds < 60) return left(`${Math.max(1, Math.round(seconds))} s`);
+  if (seconds < 3600) return left(`${Math.round(seconds / 60)} min`);
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
-  return `faltan ~${hours} h${minutes ? ` ${minutes} min` : ""}`;
+  return left(`${hours} h${minutes ? ` ${minutes} min` : ""}`);
 }
 
 function shorten(text: string, max: number): string {
@@ -183,28 +187,28 @@ function shorten(text: string, max: number): string {
 }
 
 // Tray tooltip: the process, the file, how far it got and about how long is left. Idle: the name.
-export function formatTrayTooltip(status: TrayStatus, version: string, now = Date.now()): string {
+export function formatTrayTooltip(status: TrayStatus, version: string, now = Date.now(), language: TrayLanguage = "es"): string {
   const title = `VideoCAT Companion v${version}`;
   const activity = status.busy ? status.activity : null;
   if (!activity) return title;
-  const label = phaseLabels[activity.phase] ?? "Trabajando";
+  const label = translateTray(phaseLabels[activity.phase] ?? "Trabajando", language);
   const parts: string[] = [];
   let percent: number | null = null;
   let eta = "";
   if (activity.bytesTotal && activity.bytesDone != null) {
     percent = Math.min(100, Math.round((activity.bytesDone / activity.bytesTotal) * 100));
-    parts.push(`${bytesLabel(activity.bytesDone)} de ${bytesLabel(activity.bytesTotal)}`);
+    parts.push(translateTray("{done} de {total}", language, { done: bytesLabel(activity.bytesDone, language), total: bytesLabel(activity.bytesTotal, language) }));
     if (activity.bytesPerSecond) {
-      parts.push(`${bytesLabel(activity.bytesPerSecond)}/s`);
-      eta = etaLabel((activity.bytesTotal - activity.bytesDone) / activity.bytesPerSecond);
+      parts.push(`${bytesLabel(activity.bytesPerSecond, language)}/s`);
+      eta = etaLabel((activity.bytesTotal - activity.bytesDone) / activity.bytesPerSecond, language);
     }
   } else if (activity.filesTotal && activity.filesDone != null) {
     percent = Math.min(100, Math.round((activity.filesDone / activity.filesTotal) * 100));
-    parts.push(`${activity.filesDone} de ${activity.filesTotal} archivos`);
+    parts.push(translateTray("{done} de {total} archivos", language, { done: activity.filesDone, total: activity.filesTotal }));
     // Files per second so far, for a scan that reports counts only.
     if (activity.startedAt && activity.filesDone > 0 && now > activity.startedAt) {
       const perFile = (now - activity.startedAt) / 1000 / activity.filesDone;
-      eta = etaLabel(perFile * (activity.filesTotal - activity.filesDone));
+      eta = etaLabel(perFile * (activity.filesTotal - activity.filesDone), language);
     }
   }
   if (eta) parts.push(eta);

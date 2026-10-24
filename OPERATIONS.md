@@ -22,6 +22,11 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - Security: zod 4.6.7 in the server (and the shared package) for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), high severity: validating an oversized collection could exhaust the server's memory. Zod 3 has no patched release; the schemas VideoCAT uses behave the same in 4. No migration and no new settings.
 - The Windows Companion is unchanged (0.2.23-beta.1); it picks up zod 4 in its next release.
 
+## Next release (unreleased)
+
+- **The Companion speaks English**: its tray menu, settings and activity windows, notifications and tooltip follow Windows' display language, or **Advanced › Language** (`COMPANION_LANGUAGE`: `auto`, `es`, `en`). The agent's own log lines stay in Spanish.
+- A hidden button in the Companion settings (for example **Check now** while drive health is off) no longer shows.
+
 ## Upgrading to 0.2.49 (Companion 0.2.23)
 
 - **Drive health (SMART)**: Companion › Configuración › Salud de discos installs, with one Windows administrator prompt, smartctl 7.5 (smartmontools, pinned by SHA-256) and its collector in `C:\Program Files\VideoCAT SMART`, a results folder in `C:\ProgramData\VideoCAT\smart` that users can only read, and the scheduled task `\VideoCAT\Salud de discos` (S4U, highest privileges, fixed arguments). The Companion, never elevated, starts it when a drive connects and every 6 hours and sends each drive's compact report to `POST /api/agent/disk-health`; the server evaluates it (`evaluateSmartReport`, so the rules change without a new Companion) against the previous check.

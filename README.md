@@ -139,6 +139,7 @@ flowchart LR
 
 ### Windows Companion
 - Installs with a Setup.exe, without administrator rights, and **updates itself** from GitHub Releases.
+- In Spanish or English, following Windows' display language or the one chosen in its settings.
 - Pairs with a one-time code and keeps an individual credential encrypted by Windows.
 - Monitors marked drives and manually added paths, and rescans periodically without repeating work.
 - **A renamed folder or a file moved on the same drive is not processed again**: its catalog entry follows it with its tags, review, thumbnails and fingerprint. A copy stays a separate video.
@@ -235,24 +236,24 @@ Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstah
 
 2. Download and run [**VideoCAT-Companion-win-Setup.exe**](https://github.com/reiterstahl/videocat/releases/latest/download/VideoCAT-Companion-win-Setup.exe), then open it from the Start menu. It lives in the system tray.
 3. In the web app, open **Administration › Companions** and generate a pairing code.
-4. In the Companion, open **Configuración… › Conexión**, enter the server URL, paste the code and select **Emparejar**.
-5. In **Configuración… › Navegador**, copy the local token and paste it in the web app under **Profile › Local Companion**. That browser can then open, copy and delete files on this PC.
+4. In the Companion, open **Settings… › Connection**, enter the server URL, paste the code and select **Pair**.
+5. In **Settings… › Browser**, copy the local token and paste it in the web app under **Profile › Local Companion**. That browser can then open, copy and delete files on this PC.
 
 > [!TIP]
 > If you used the portable `.exe` (0.2.2 or earlier), close it, install with Setup.exe and delete the portable file: settings and pairing are kept in `%APPDATA%\VideoCAT Companion`.
 
-The Companion's own windows are in Spanish; the names in parentheses below are their English meaning.
+The Companion follows Windows' display language (Spanish or English); **Settings… › Advanced › Language** can choose one.
 
 ### 3. Your drives
 
-From the Companion's **Configuración… › Rutas** (Settings › Paths) you can:
+From the Companion's **Settings… › Paths** you can:
 
-- **Añadir unidad…** (add a drive) and **Convertir…** (convert) on a drive without a marker: the Companion writes its `.videocat-disk.json` with the name you choose and from then on recognizes it under any letter.
-- **Añadir carpeta…** (add a folder) for a local or network folder.
+- **Add drive…** and **Convert…** on a drive without a marker: the Companion writes its `.videocat-disk.json` with the name you choose and from then on recognizes it under any letter.
+- **Add folder…** for a local or network folder.
 - See the **detected VideoCAT drives**: those with a `.videocat-disk.json` file at their root. The marker gives them a stable identity even if the drive letter changes, and lets you choose which inner folders to scan.
 
 > [!IMPORTANT]
-> Drives added by letter in Companions before 0.2.21 show **sigue la letra** (follows the letter): Windows can give that letter to another drive, and its files would land in the wrong catalog. Use **Fijar identidad…** (pin identity): the Companion compares a random sample of that catalog with the files on the drive you pick and, if it is the same drive, writes the marker keeping its catalog. If the sample shows another drive, or a catalog mixed with another drive, it tells you and offers to create a new disk instead.
+> Drives added by letter in Companions before 0.2.21 show **follows the letter**: Windows can give that letter to another drive, and its files would land in the wrong catalog. Use **Pin identity…**: the Companion compares a random sample of that catalog with the files on the drive you pick and, if it is the same drive, writes the marker keeping its catalog. If the sample shows another drive, or a catalog mixed with another drive, it tells you and offers to create a new disk instead.
 
 You can also create the marker with the [CLI agent](#cli-agent) (`init-disk` or `wizard`) or by hand at the drive root:
 
@@ -286,7 +287,7 @@ The app only stores its own code (interface, styles and icons) on the device so 
 
 1. Check that `.env` has `STORAGE_SECRET_KEY` (64 hexadecimal characters). The installers generate it from 0.2.47; on older installations add one made with `openssl rand -hex 32`, and keep it with your backups.
 2. Start the scanner: `docker compose -f docker-compose.hub.yml --profile s3 up -d`. In Portainer, add the variable `COMPOSE_PROFILES=s3` to the stack and redeploy it.
-3. In **Administración › Almacenamiento S3**, add the bucket and test the connection. The first scan starts within seconds.
+3. In **Administration › S3 storage**, add the bucket and test the connection. The first scan starts within seconds.
 
 Tested against MinIO, Garage and RustFS. With Garage, the region is the `s3_region` of its configuration (`garage` by default), not `us-east-1`; with an IP address or `localhost` as the endpoint, keep path-style addressing on.
 
@@ -295,7 +296,7 @@ Tested against MinIO, Garage and RustFS. With Garage, the region is the `s3_regi
 
 ### 6. Drive health (optional)
 
-In the Companion, **Configuración… › Rutas › Salud de discos › Activar…** (Settings › Paths › Drive health › Turn on) and accept Windows' administrator prompt, once. A minute later **Administration › Drives** shows the health of every connected drive. Your Windows account must be one that can become an administrator; see [Failing drives](#failing-drives).
+In the Companion, **Settings… › Paths › Drive health › Turn on…** and accept Windows' administrator prompt, once. A minute later **Administration › Drives** shows the health of every connected drive. Your Windows account must be one that can become an administrator; see [Failing drives](#failing-drives).
 
 ## Everyday use
 
@@ -307,7 +308,7 @@ In the Companion, **Configuración… › Rutas › Salud de discos › Activar�
 4. When the right drive is connected and the Companion is running, it deletes the pending files. It first revalidates size, modification time and visual fingerprint, and resolves the canonical path so it never follows links or junctions.
 5. The history records date, drive, path and size for every deletion or failure, and the freed-space counter updates.
 
-If you would rather the Companion not delete on its own, set **Borrar los marcados** (delete marked files) to *Solo a pedido* (on request only) in **Configuración… › Avanzado**.
+If you would rather the Companion not delete on its own, set **Delete marked files** to *Only on request* in **Settings… › Advanced**.
 
 | Key | Review action |
 | --- | --- |
@@ -327,7 +328,7 @@ In **Duplicates › Start assisted mode**: `1` or `←` keeps copy A and marks B
 
 ### Safe transfers
 
-1. In the Companion, set **Configuración… › Archivos › Carpeta temporal de traslados** (Settings › Files › Transfer staging folder), for example `D:\VideoCAT\Transfers`. Without it, transfers wait.
+1. In the Companion, set **Settings… › Files › Transfer staging folder**, for example `D:\VideoCAT\Transfers`. Without it, transfers wait.
 2. **Consolidate**: in **Folder usage › Repeated folders**, star ⭐ the location that should receive the files (the interface warns if another one is larger) and press **Consolidate on…**. **Group**: in **Transfers › Group files** (or with the search icon in the catalog folder tree), choose the folder and decide file by file.
 3. Connect the source drive: the Companion copies each file to the staging folder and removes it from the source **only after** verifying the copy.
 4. Connect the destination drive: the Companion copies from staging, verifies, updates the catalog and **only then** removes the staging copy.
@@ -374,7 +375,7 @@ A probable failure also shows a notice on every section. **Dismiss** hides it un
 The player first checks whether the browser supports the container and codecs. For H.264 videos with AAC or MP3 audio in an unsupported container, you can enable a **temporary MP4 remux**, which copies the streams without re-encoding:
 
 1. On the server, set `REMOTE_REMUX_ENABLED=true` and restart `server`.
-2. In the Companion, turn on **Remux MP4 temporal** in **Configuración… › Avanzado**.
+2. In the Companion, turn on **Temporary MP4 remux** in **Settings… › Advanced**.
 
 VideoCAT does not transcode H.265, AV1 or other codecs, because that would use a lot of CPU. Each session belongs to the user who created it, has duration, idle and concurrency limits, and closes when the player stops or the tunnel drops.
 
@@ -444,7 +445,7 @@ Release notes for each version are in [OPERATIONS.md](OPERATIONS.md#upgrade).
 
 ### Behind Cloudflare Access or another sign-in proxy
 
-VideoCAT works behind an access gateway such as Cloudflare Access. When that gateway's session expires, the app shows **Tu sesión de acceso expiró** (your access session expired) with a button to sign in again and come back to the same page. Point the Companion at the server's internal address (for example `http://192.168.1.30:8080`) or give it a service token, so it does not depend on that sign-in.
+VideoCAT works behind an access gateway such as Cloudflare Access. When that gateway's session expires, the app shows **Your access session expired** with a button to sign in again and come back to the same page. Point the Companion at the server's internal address (for example `http://192.168.1.30:8080`) or give it a service token, so it does not depend on that sign-in.
 
 ### Backups
 
@@ -488,7 +489,7 @@ To report a vulnerability privately, see [SECURITY.md](SECURITY.md).
 
 ## Companion configuration
 
-Everything is edited from **Configuración…**, organized in pages: Conexión, Navegador, Rutas, Archivos, Avanzado and Actualizaciones (connection, browser, paths, files, advanced and updates). It is stored in `%APPDATA%\VideoCAT Companion\.env`. **Salud de discos** (drive health), on the Rutas page, is turned on and off with its own button because it needs Windows' administrator permission.
+Everything is edited from **Settings…**, organized in pages: Connection, Browser, Paths, Files, Advanced and Updates. It is stored in `%APPDATA%\VideoCAT Companion\.env`. **Drive health**, on the Paths page, is turned on and off with its own button because it needs Windows' administrator permission.
 
 <details>
 <summary>Companion variables</summary>
@@ -496,7 +497,7 @@ Everything is edited from **Configuración…**, organized in pages: Conexión, 
 | Variable | Default | Use |
 | --- | --- | --- |
 | `SERVER_URL` | — | VideoCAT server URL (required). |
-| `WEB_URL` | `SERVER_URL` | URL opened by **Abrir VideoCAT**. |
+| `WEB_URL` | `SERVER_URL` | URL opened by **Open VideoCAT**. |
 | `COMPANION_NAME` | — | Optional name shown in Administration. |
 | `COMPANION_TOKEN` | Generated | Token for local actions; paste it in Profile › Local Companion. |
 | `AGENT_TOKEN` | — | Shared token, only for legacy unpaired clients. |
@@ -517,6 +518,7 @@ Everything is edited from **Configuración…**, organized in pages: Conexión, 
 | `COMPANION_STAGING_DIR` | — | **Transfers** staging folder; empty disables transfers. Always keeps 5 % of its drive free. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | How often pending transfers are checked (minimum 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Drive refresh in the tray menu. |
+| `COMPANION_LANGUAGE` | `auto` | Interface language: `auto` (Windows' display language), `es` or `en`. The activity log keeps the agent's lines as written. |
 | `TRAY_CLICK_ACTION` | `open` | What a click or double click on the icon does: `open` (open VideoCAT), `activity` (show activity) or `settings` (open settings). |
 </details>
 
