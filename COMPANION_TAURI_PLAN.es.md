@@ -11,7 +11,7 @@ Plan para bajar el instalador del Companion de Windows de **194 MB a ~45–50 MB
 | Código de VideoCAT, scripts de salud de discos | ~2 MB |
 | **Total (`Setup.exe`)** | **194 MB** |
 
-Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parchado, y el de Electron, que solo usan la bandeja y sus ventanas. Ese segundo sigue en Node 24.22.0, sin las correcciones de octubre de 2026, porque ninguna versión de Electron las trae todavía; por eso cada release estable necesita la excepción `tray_node_exception` (las betas pasan sin ella).
+Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el de Electron, que solo usan la bandeja y sus ventanas. Hasta la 0.2.23 el de Electron quedó en Node 24.22.0, sin las correcciones de octubre de 2026, y cada release estable necesitó una excepción; desde la 0.2.24 (Electron 43.8.4) los dos están parchados, pero cada parche de seguridad de Node sigue dependiendo de que Electron lo saque.
 
 ## La idea
 
@@ -19,7 +19,7 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parch
 - **El agente sigue siendo el mismo código de Node**, ya empaquetado como ejecutable propio desde la 0.2.21. El escaneo, los traslados con SHA-256, los borrados seguros, las descargas, el túnel de reproducción, los buckets S3, la salud de discos y sus tests no se reescriben.
 - **El agente pasa a ser quien manda.** Casi todo lo que hoy hace `tray.ts` pasa al agente y se expone por su API local con token (puerto 29429). El envoltorio Tauri queda fino: lo que necesita al sistema operativo (bandeja, ventanas, diálogos, notificaciones, credencial, actualizaciones) y nada más.
 - **Las ventanas son las mismas páginas HTML.** Las sirve el agente y el envoltorio las muestra; una capa de compatibilidad reemplaza al `preload` de Electron, así que casi no cambian.
-- **Un solo Node, parchado.** Al irse Electron, el único Node del Companion es el del agente: se acaba la excepción `tray_node_exception`.
+- **Un solo Node.** Al irse Electron, el único Node del Companion es el del agente: un parche de seguridad de Node llega en cuanto sale, sin esperar a que Electron lo incluya.
 
 ## Resultado esperado
 
@@ -28,7 +28,7 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parch
 | Instalador | 194 MB | ~45–50 MB |
 | Instalado | ~460 MB | ~95 MB |
 | Memoria en marcha | 238 MB (medido con la 0.2.17) | ~58 MB (medido en la fase 0) |
-| Node sin parchar | Sí (bandeja) | No |
+| Runtimes de Node | 2 (agente y bandeja; la bandeja espera los parches de Electron) | 1 (el del agente) |
 | Actualizaciones | Deltas de Velopack | Igual: deltas de Velopack |
 
 ## Inventario de la bandeja (0.2.23, `tray.ts`: ~2.500 líneas, 21 funciones expuestas a las ventanas)
@@ -97,7 +97,7 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente, parch
 ### Fase 4 · Actualizaciones y CI
 
 - **Actualizaciones:** Velopack en Rust con el **mismo `packId`** y el **mismo ejecutable** (`VideoCAT Companion.exe`). Así las instalaciones actuales pasan solas a Tauri, y los accesos directos y el arranque siguen funcionando.
-- **Workflow de release:** toolchain de Rust con caché, `cargo build --release`, el agente con `build-agent-sea.mjs` (ya existe), smartctl con `fetch-smartctl.mjs` (ya existe), `vpk pack` y `vpk upload`. Sale la excepción `tray_node_exception`: `check-node-security` vuelve a ser estricto porque solo queda el Node del agente.
+- **Workflow de release:** toolchain de Rust con caché, `cargo build --release`, el agente con `build-agent-sea.mjs` (ya existe), smartctl con `fetch-smartctl.mjs` (ya existe), `vpk pack` y `vpk upload`. `check-node-security` revisa solo el Node del agente, el único que queda.
 - **SBOM:** se mantiene y suma las dependencias de Rust.
 - **Tests:** los del agente siguen igual; tests en Rust (DPAPI, lector de la credencial vieja, cuadros de la animación); prueba de humo en el runner de Windows como en la fase 0 (instalar, actualizar desde Electron, arrancar, el agente responde `/health`, cerrar, desinstalar).
 

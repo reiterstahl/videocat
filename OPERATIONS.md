@@ -22,6 +22,11 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - Security: zod 4.6.7 in the server (and the shared package) for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), high severity: validating an oversized collection could exhaust the server's memory. Zod 3 has no patched release; the schemas VideoCAT uses behave the same in 4. No migration and no new settings.
 - The Windows Companion is unchanged (0.2.23-beta.1); it picks up zod 4 in its next release.
 
+## Windows Companion 0.2.24
+
+- **Electron 43.8.4, with Node.js 24.22.1**: the tray and its windows now carry the October 2026 Node.js security fixes too, like the agent since 0.2.21. The `tray_node_exception` input is gone from the release workflow, betas included: packaging checks both runtimes again and refuses an unpatched one.
+- No other changes; installed Companions update on their own.
+
 ## Windows Companion 0.2.23
 
 - Drive health (SMART), described under 0.2.49 below; tried on a real PC as 0.2.23-beta.1 and beta.2 before going stable.

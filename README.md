@@ -461,13 +461,7 @@ VideoCAT works behind an access gateway such as Cloudflare Access. When that gat
 
 **Companion**
 
-> [!IMPORTANT]
-> **Pending Node.js security fix in Electron (October 2026).** Node.js 24.22.1 fixes four high-severity issues, among them TLS certificate checks and the Brotli decoder. Every Electron release so far still embeds Node 24.22.0. Until one with the fix is out:
-> - **Companion 0.2.21 and later** run the agent (scans, playback tunnel, uploads, downloads, deletions, transfers and the local listener) as its own executable on Node 24.22.1. Only the tray and its windows stay on Electron's Node 24.22.0, and their only network calls are pairing and the drive identity check against your own server.
-> - **Companion 0.2.20 and earlier** run everything, agent included, on an unpatched Node (24.19.0 in 0.2.20). Update: installed Companions do it on their own when restarted.
->
-> The next Companion moves to the first Electron with the fix, and this note goes away. The release workflow refuses this exception as soon as that Electron exists.
-
+- The tray (Electron) and the agent (its own executable, Node SEA) both run on a Node.js with the latest security fixes: packaging checks both and refuses an older one. Companion 0.2.23 and earlier left the tray on an unpatched Node (24.22.0) while Electron had no release with the October 2026 fixes, and 0.2.20 and earlier ran everything on one (24.19.0): installed Companions update on their own when restarted.
 - Each installation uses an individual credential, paired with a one-time code, encrypted with the Windows user's protection and revocable from Administration. The server only stores its hash.
 - The tunnel is outbound and authenticated, and only serves reads through HTTP Range: it accepts no remote writes.
 - The local listener only answers `/health` without authentication. Opening, copying, deleting and processing queues require `COMPANION_TOKEN`.
@@ -572,7 +566,7 @@ API tests that write to PostgreSQL run with `RUN_DB_TESTS=true`. `E2E_SEED=1` lo
 
 **Companion:** bump `version` in `apps/agent-windows/package.json` and push to `main`. The [`release-companion.yml`](.github/workflows/release-companion.yml) workflow builds on Windows, packs with Velopack (Setup.exe, full package and deltas), creates the `vX.Y.Z` tag and publishes the release with notes, SHA-256, attestation and SBOM. A version that is already tagged is never published again. To start it by hand: `gh workflow run release-companion.yml -f publish=true`.
 
-**Companion beta:** `gh workflow run release-companion.yml -f publish=true -f beta=1` publishes `X.Y.Z-beta.1` as a GitHub prerelease. Installed Companions do not update to it: install it with its Setup.exe, and it moves to the next stable release on its own. Installed Companions run the agent as its own executable on a patched Node.js (Node SEA); while no Electron release carries the October 2026 Node.js fixes, only betas package, or a stable release run with `-f tray_node_exception=true` (the tray stays on Electron's Node; the check refuses it once a fixed Electron exists).
+**Companion beta:** `gh workflow run release-companion.yml -f publish=true -f beta=1` publishes `X.Y.Z-beta.1` as a GitHub prerelease. Installed Companions do not update to it: install it with its Setup.exe, and it moves to the next stable release on its own. Packaging refuses an Electron or an agent whose Node.js lacks the latest security fixes.
 
 Local build without publishing (with `dotnet tool install -g vpk --version 1.2.161` to produce Setup.exe):
 

@@ -7,10 +7,8 @@ name: Release Companion
 # apply them on restart. Manual runs build an artifact, and publish only when asked to.
 # A manual run with "beta" publishes X.Y.Z-beta.N as a GitHub prerelease for testing: installed
 # Companions never update to it (they skip prereleases), and its Setup.exe updates to the next
-# stable release on its own. While no Electron release carries the October 2026 Node.js fixes,
-# only a beta, or a manual run with "tray_node_exception", may package: the agent runs on its own
-# patched Node (Node SEA) and only the tray stays on Electron's. The packaging check refuses the
-# exception as soon as any stable Electron release has the fixes.
+# stable release on its own. Packaging checks that both Electron's Node and the agent's (Node
+# SEA) carry the October 2026 Node.js security fixes.
 on:
   push:
     branches: [main]
@@ -26,10 +24,6 @@ on:
         description: "Beta number: builds X.Y.Z-beta.N as a prerelease for testing (empty for a stable release)"
         type: string
         default: ""
-      tray_node_exception:
-        description: "Stable release whose tray runs on Electron's unpatched Node while no Electron release has the October 2026 fixes (the agent must run a patched Node)"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -100,7 +94,6 @@ jobs:
       VERSION: ${{ needs.detect.outputs.version }}
       PACK_VERSION: ${{ needs.detect.outputs.pack_version }}
       BETA: ${{ needs.detect.outputs.beta }}
-      TRAY_NODE_EXCEPTION: ${{ inputs.tray_node_exception || false }}
       PUBLISH: ${{ needs.detect.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
@@ -136,12 +129,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Companion typecheck failed" }
           npm run typecheck:tray -w @videocat/agent-windows
           if ($LASTEXITCODE -ne 0) { throw "tray typecheck failed" }
-          if ($env:BETA -eq 'true' -or $env:TRAY_NODE_EXCEPTION -eq 'true') {
-            # Lets the packaging check accept Electron's Node for the tray, only if this agent
-            # executable (built by prepackage:tray) runs a patched Node and no Electron release
-            # has the fixes yet.
-            $env:VIDEOCAT_TRAY_EXCEPTION_AGENT_EXECUTABLE = Join-Path $PWD "apps/agent-windows/release/agent-sea/videocat-agent.exe"
-          }
           npm run package:tray -w @videocat/agent-windows
           if ($LASTEXITCODE -ne 0) { throw "Electron packaging failed" }
 
@@ -214,10 +201,6 @@ jobs:
             [IO.File]::WriteAllText("release-notes.md", $warning + [IO.File]::ReadAllText("release-notes.md"))
             gh release edit $env:TAG --notes-file release-notes.md --draft=false --prerelease --latest=false
           } else {
-            if ($env:TRAY_EXCEPTION_ELECTRON_NODE) {
-              $note = "> [!NOTE]`n> No Electron release carries the October 2026 Node.js security fixes yet. The agent (scans, tunnel, playback, downloads, deletions) runs on its own patched Node; the tray and its windows run on Electron's Node $env:TRAY_EXCEPTION_ELECTRON_NODE until the next Companion moves to a fixed Electron.`n`n"
-              [IO.File]::WriteAllText("release-notes.md", $note + [IO.File]::ReadAllText("release-notes.md"))
-            }
             gh release edit $env:TAG --notes-file release-notes.md --draft=false --latest
           }
           if ($LASTEXITCODE -ne 0) { throw "Publishing the release failed." }
