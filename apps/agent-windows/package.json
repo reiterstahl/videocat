@@ -103,7 +103,7 @@
     "@electron/asar": "3.4.1",
     "@types/node": "^20.14.12",
     "electron": "43.8.4",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.18.0",
     "pngjs": "7.0.0",
     "tsx": "^4.23.15",
     "typescript": "^5.5.4"
