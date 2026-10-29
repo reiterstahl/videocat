@@ -77,6 +77,11 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Playwright's own image carries Chromium and every system library it needs: installing them
+    # with apt kept timing out on the runner's mirror. Its tag follows @playwright/test.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
     services:
       postgres:
         image: postgres:16-alpine
@@ -84,15 +89,14 @@ jobs:
           POSTGRES_DB: videocat
           POSTGRES_USER: videocat
           POSTGRES_PASSWORD: videocat
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U videocat -d videocat"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://videocat:videocat@localhost:5432/videocat
+      # Inside a container job the service is reached by its name.
+      DATABASE_URL: postgresql://videocat:videocat@postgres:5432/videocat
       JWT_SECRET: 0123456789abcdef0123456789abcdef
       AGENT_TOKEN: 0123456789abcdef0123456789abcdef
       PROTECTED_FOLDER_PIN: "5678"
@@ -122,10 +126,11 @@ jobs:
           npm run prisma:migrate
           npm run prisma:generate
           npm run build -w @videocat/shared
-      - name: Install Chromium
-        # A stuck apt mirror or browser download should fail fast instead of eating the job budget.
+      - name: Check Chromium
+        # Nothing to download while the image tag matches @playwright/test; after a bump that gets
+        # ahead of it, only the new browser is fetched (the image already has its libraries).
         timeout-minutes: 8
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Run end-to-end tests
         run: npm run test:e2e
       - name: Upload Playwright report
