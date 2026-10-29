@@ -31,7 +31,7 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el d
 | Runtimes de Node | 2 (agente y bandeja; la bandeja espera los parches de Electron) | 1 (el del agente) |
 | Actualizaciones | Deltas de Velopack | Igual: deltas de Velopack |
 
-## Inventario de la bandeja (0.2.23, `tray.ts`: ~2.500 líneas, 21 funciones expuestas a las ventanas)
+## Inventario de la bandeja (0.2.24: `tray.ts` ~1.350 líneas, `tray-pages.ts` con las dos ventanas, 25 funciones expuestas a las ventanas)
 
 | Área | Qué hace hoy | Dónde va |
 | --- | --- | --- |
@@ -43,7 +43,8 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el d
 | Salud de discos (SMART) | Estado, activar (ejecuta `smart-setup.ps1` con permiso de administrador: smartctl, la carpeta en Program Files y la tarea programada), desactivar, revisar ahora | **Agente** (la elevación es una llamada a PowerShell, igual que hoy) |
 | Actualizaciones | Velopack: buscar, descargar, aplicar al reiniciar, estado | **Envoltorio** (crate de Rust) |
 | Registro | Registro en memoria, ventana *Actividad*, limpiar | **Agente** (junta su propio registro con el del envoltorio) |
-| Ventanas | *Configuración* (con pestañas) y *Actividad*, HTML generado en `tray.ts` con 21 canales IPC | Páginas servidas por el **agente**; el envoltorio las muestra |
+| Ventanas | *Configuración* (con pestañas) y *Actividad*: desde la 0.2.23 viven en `tray-pages.ts`, sin Electron, y una prueba de navegador las recorre; 25 canales IPC | Páginas servidas por el **agente**; el envoltorio las muestra |
+| Idioma | Desde la 0.2.23 todo el Companion está en español o inglés (`COMPANION_LANGUAGE` o el idioma de Windows): `tray-i18n.ts` traduce las ventanas, el menú, los avisos y el tooltip, y el agente sus líneas de log (`agent-language.ts`, idioma que le pasa la bandeja en `VIDEOCAT_LANGUAGE`). Un solo diccionario, `tray-i18n-en.ts`, con claves en español y `{valores}` | El **agente** resuelve el idioma (es parte de la configuración); el menú y el tooltip del envoltorio Rust usan el mismo diccionario, exportado a JSON en el build |
 
 ## Fases
 
@@ -74,6 +75,16 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el d
 - Exponerlo por la API local con token, junto con las tareas a pedido (escaneo, borrados, actualizar discos).
 - La bandeja de Electron deja de hacer todo eso y le pide cada cosa al agente.
 - Se publica como un **release normal de Electron** (beta primero): se valida el cambio grande sin cambiar a la vez el envoltorio.
+
+**Detalle (2026-10-29):**
+
+- **Módulos nuevos del agente**, cada uno con sus tests: `config-store` (leer, validar y guardar el `.env`; generar `COMPANION_TOKEN`; el idioma), `pairing` (la llamada al servidor), `drive-identity` (descubrir unidades, convertir, comprobar y fijar identidad, retirar rutas por letra; parte ya vive en `disk-marker.ts`), `disk-health-control` (estado, activar y desactivar con la elevación de `smart-setup.ps1`, revisar ahora) y `activity-log` (registro en memoria con suscripción).
+- **API de la bandeja** bajo `/tray/…` en el listener local (127.0.0.1): configuración, emparejamiento, unidades, identidad, salud de discos, registro (con un flujo de eventos para la ventana *Actividad*) y tareas a pedido.
+- **Un token propio de la bandeja**, distinto del `COMPANION_TOKEN` del navegador: la bandeja lo genera al arrancar, se lo pasa al agente por el entorno y nunca se guarda en disco. Así una página web con el token del navegador puede abrir o borrar archivos, como hoy, pero no cambiar la configuración, emparejar ni activar la salud de discos.
+- **La credencial** sigue guardándose con `safeStorage` en la bandeja hasta la fase 3: el agente hace la llamada de emparejamiento y le devuelve la credencial a la bandeja, que la cifra.
+- **Guardar la configuración:** el agente escribe el `.env` y responde; la bandeja lo reinicia, como hoy.
+- **Sin cambios visibles:** las mismas ventanas, los mismos textos en los dos idiomas; los 25 canales IPC pasan a ser llamadas a la API del agente. La prueba de navegador de las ventanas y las del agente tienen que seguir en verde.
+- **Release:** Companion 0.2.25 como beta; con tu visto bueno en tu PC, estable.
 
 ### Fase 1b · Las ventanas las sirve el agente (todavía en Electron)
 
@@ -118,7 +129,7 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el d
 
 ## Cuándo empezar
 
-Después de que la **0.2.23** (salud de discos) pase de beta a estable, para que la fase 1a mueva una función ya probada en tu PC y no un blanco en movimiento.
+Después de que la **0.2.23** (salud de discos) pase de beta a estable, para que la fase 1a mueva una función ya probada en tu PC y no un blanco en movimiento. Cumplido: 0.2.23 estable el 2026-10-24 y 0.2.24 (Electron 43.8.4) el 2026-10-28.
 
 ## Riesgos y cómo se cubren
 
