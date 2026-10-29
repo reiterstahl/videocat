@@ -510,7 +510,7 @@ Todo se edita desde **Configuración…**, organizada en páginas: Conexión, Na
 | `COMPANION_STAGING_DIR` | — | Carpeta temporal de **Traslados**; vacía desactiva los traslados. Siempre deja libre el 5 % de su unidad. |
 | `COMPANION_TRANSFER_POLL_MS` | `60000` | Revisión de traslados pendientes (mínimo 15000). |
 | `TRAY_DISK_POLL_MS` | `10000` | Refresco de discos en el menú de la bandeja. |
-| `COMPANION_LANGUAGE` | `auto` | Idioma de la interfaz: `auto` (el de Windows), `es` o `en`. El registro de actividad deja las líneas del agente como están. |
+| `COMPANION_LANGUAGE` | `auto` | Idioma de la interfaz y del registro de actividad: `auto` (el de Windows), `es` o `en`. |
 | `TRAY_CLICK_ACTION` | `open` | Qué hace el clic o doble clic en el ícono: `open` (abrir VideoCAT), `activity` (mostrar actividad) o `settings` (abrir configuración). |
 </details>
 

@@ -440,6 +440,8 @@ function childEnv(): NodeJS.ProcessEnv {
     // A read stuck on a bad sector holds one of Node's I/O threads (4 by default); with more of
     // them, one stuck file never freezes the rest of the Companion.
     UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "16",
+    // The agent writes its log lines in the language the tray shows.
+    VIDEOCAT_LANGUAGE: trayLanguage(),
     // The agent leaves on its own when this tray process is gone (no orphan agents).
     VIDEOCAT_PARENT_WATCH: "1",
     ELECTRON_RUN_AS_NODE: "1"

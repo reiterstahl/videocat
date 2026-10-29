@@ -14,8 +14,19 @@ import { encodeVisualFingerprint, perceptualHashFromGray9x8, visualFingerprintVe
 const execFileAsync = promisify(execFile);
 
 export type MediaTools = { ffmpeg: string; ffprobe: string };
-export type MediaLog = { info: (message: string) => void; warn: (message: string) => void };
+// translate: shows a message in another language (the Companion's); its text is a Spanish
+// template with {name} placeholders. Without it messages stay in Spanish.
+export type MediaLog = {
+  info: (message: string) => void;
+  warn: (message: string) => void;
+  translate?: (template: string, values?: Record<string, string | number>) => string;
+};
 const consoleLog: MediaLog = { info: (message) => console.log(message), warn: (message) => console.warn(message) };
+
+function fill(log: MediaLog, template: string, values?: Record<string, string | number>): string {
+  if (log.translate) return log.translate(template, values);
+  return values ? template.replace(/\{(\w+)\}/g, (match: string, key: string) => (key in values ? String(values[key]) : match)) : template;
+}
 
 export const thumbnailPercents = Array.from({ length: 15 }, (_value, index) => {
   const frame = String(index + 1).padStart(2, "0");
@@ -107,7 +118,7 @@ export async function probeMedia(
     if (signal?.aborted) throw new Error("Lectura detenida por tiempo máximo");
     if (attempt > 1) {
       const delayMs = attempt === 2 ? 750 : 2_000;
-      log.info(`Reintentando metadatos ${attempt}/${maxAttempts} para ${options.label} en ${delayMs}ms.`);
+      log.info(fill(log, "Reintentando metadatos {attempt}/{maxAttempts} para {label} en {delayMs}ms.", { attempt, maxAttempts, label: options.label, delayMs }));
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
 
@@ -126,7 +137,7 @@ export async function probeMedia(
         source
       ], { maxBuffer: 1024 * 1024 * 20, timeout: mediaReadTimeoutMs, signal });
       stdout = result.stdout;
-      if (attempt > 1) log.info(`Metadatos recuperados en intento ${attempt}/${maxAttempts} para ${options.label}.`);
+      if (attempt > 1) log.info(fill(log, "Metadatos recuperados en intento {attempt}/{maxAttempts} para {label}.", { attempt, maxAttempts, label: options.label }));
       lastError = undefined;
       break;
     } catch (error) {
@@ -198,7 +209,7 @@ export async function extractVisualHash(
       const hash = perceptualHashFromGray9x8(pixels);
       await fs.rm(rawDestination, { force: true }).catch(() => undefined);
       if (attempt > 0) {
-        log.info(`Fotograma recuperado en posicion alternativa (${timestampSeconds.toFixed(1)}s).`);
+        log.info(fill(log, "Fotograma recuperado en posicion alternativa ({timestampSeconds}s).", { timestampSeconds: timestampSeconds.toFixed(1) }));
       }
       return { hash, timestampSeconds };
     } catch (error) {
@@ -275,14 +286,14 @@ export async function analyzeMedia(source: string, options: {
         }
       }
       if (thumbnailFailures > 0) {
-        log.warn(`Miniaturas fallidas ${thumbnailFailures}/${thumbnailPercents.length} para ${options.label}: ${compactToolError(errorMessage)}`);
+        log.warn(fill(log, "Miniaturas fallidas {thumbnailFailures}/{length} para {label}: {error}", { thumbnailFailures, length: thumbnailPercents.length, label: options.label, error: compactToolError(errorMessage) }));
       }
       if (fingerprintFailures > 0 && !createThumbnails) {
-        log.warn(`Huella visual parcial ${fingerprintFrames.length}/${thumbnailPercents.length} para ${options.label}.`);
+        log.warn(fill(log, "Huella visual parcial {length}/{length2} para {label}.", { length: fingerprintFrames.length, length2: thumbnailPercents.length, label: options.label }));
       }
     }
 
-    if (unreadable) log.warn(`Lectura sin respuesta en ${options.label}: se deja el archivo sin intentar el resto de sus fotogramas.`);
+    if (unreadable) log.warn(fill(log, "Lectura sin respuesta en {label}: se deja el archivo sin intentar el resto de sus fotogramas.", { label: options.label }));
     const visualFingerprint = createFingerprint ? encodeVisualFingerprint(fingerprintFrames) : undefined;
     return {
       status,
@@ -296,8 +307,8 @@ export async function analyzeMedia(source: string, options: {
   } catch (error) {
     const detail = boundedErrorMessage(error, 4000, "metadata_failed");
     const damaged = damagedMediaReason(detail);
-    if (damaged) log.warn(`Archivo dañado ${options.label}: ${damaged}`);
-    else log.warn(`Metadatos fallidos para ${options.label}: ${compactToolError(error)}`);
+    if (damaged) log.warn(fill(log, "Archivo dañado {label}: {damaged}", { label: options.label, damaged }));
+    else log.warn(fill(log, "Metadatos fallidos para {label}: {error}", { label: options.label, error: compactToolError(error) }));
     return {
       status: "metadata_failed",
       errorMessage: damaged ? `${damagedMediaMessage(damaged)}\nDetalle: ${detail.slice(0, 1500)}` : detail,

@@ -22,7 +22,7 @@ import {
   type VisualFingerprintFrame
 } from "@videocat/shared";
 import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
-import { analyzeMedia, compactToolError, extractVisualHash, isUnreadableMediaError, mediaReadTimeoutMs, type MediaTools } from "@videocat/shared/media";
+import { analyzeMedia, compactToolError, extractVisualHash, isUnreadableMediaError, mediaReadTimeoutMs, type MediaLog, type MediaTools } from "@videocat/shared/media";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
 import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
@@ -31,6 +31,7 @@ import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, readStallMs, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
 import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
+import { tl } from "./agent-language.js";
 import { HealthMonitor, healthForDrives, healthTaskInstalled, readCollectedHealth, runHealthTask } from "./disk-health.js";
 import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
 import { ActivityReporter } from "./activity.js";
@@ -516,7 +517,7 @@ function monitoredCompanionTargets(): CompanionTarget[] {
       }];
     });
   } catch (error) {
-    console.warn(`No pude leer COMPANION_MONITORED_TARGETS: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(tl("No pude leer COMPANION_MONITORED_TARGETS: {error}", { error: error instanceof Error ? error.message : String(error) }));
     return [];
   }
 }
@@ -553,11 +554,11 @@ async function discoverCompanionTargets(): Promise<Array<{ root: string; marker:
 async function logMountedCompanionDisks(): Promise<void> {
   const mounted = await discoverMountedMarkers();
   if (mounted.length === 0) {
-    console.log("Discos VideoCAT montados: ninguno detectado.");
+    console.log(tl("Discos VideoCAT montados: ninguno detectado."));
     return;
   }
 
-  console.log("Discos VideoCAT montados:");
+  console.log(tl("Discos VideoCAT montados:"));
   for (const { root, marker } of mounted) {
     console.log(`- ${root} -> ${marker.diskName} (${marker.diskId})`);
   }
@@ -682,7 +683,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       if (initial) {
         await logMountedCompanionDisks();
       } else if (changed) {
-        console.log("Cambio detectado en discos VideoCAT montados:");
+        console.log(tl("Cambio detectado en discos VideoCAT montados:"));
         for (const { root, marker } of mounted) {
           console.log(`- ${root} -> ${marker.diskName} (${marker.diskId})`);
         }
@@ -691,7 +692,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       for (const { root, marker } of mounted) {
         const key = `${marker.diskId}@${root}`;
         if (!initial && seen.has(key)) continue;
-        console.log(`Revision automatica de disco VideoCAT: ${root} -> ${marker.diskName}`);
+        console.log(tl("Revision automatica de disco VideoCAT: {root} -> {diskName}", { root, diskName: marker.diskName }));
         await scanTarget(root, marker, true);
         await processMarkedDeletesForDisk(root, marker);
         await processDownloadQueueForDisk(root, marker);
@@ -711,7 +712,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
     try {
       const mounted = await discoverCompanionTargets();
       for (const { root, marker } of mounted) {
-        console.log(`Revision periodica de ruta VideoCAT: ${root} -> ${marker.diskName}`);
+        console.log(tl("Revision periodica de ruta VideoCAT: {root} -> {diskName}", { root, diskName: marker.diskName }));
         await scanTarget(root, marker, true);
       }
     } finally {
@@ -747,7 +748,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
     } finally {
       downloadReviewRunning = false;
       if (downloadPriority.release()) {
-        console.log("Cola de descargas terminada o pausada: los traslados siguen.");
+        console.log(tl("Cola de descargas terminada o pausada: los traslados siguen."));
         resumeTransfers?.();
       }
     }
@@ -773,12 +774,12 @@ async function startCompanionDiskWatcher(): Promise<void> {
         let steppedAside = false;
         for (const item of work.items) {
           if (transfersStopped) {
-            console.log("Traslados detenidos desde la web: no se empieza otro archivo hasta reanudar.");
+            console.log(tl("Traslados detenidos desde la web: no se empieza otro archivo hasta reanudar."));
             steppedAside = true;
             break;
           }
           if (!downloadPriority.transfersMayRun()) {
-            console.log("Traslados en espera: hay descargas pendientes. Siguen cuando termine la cola de descargas o se pause.");
+            console.log(tl("Traslados en espera: hay descargas pendientes. Siguen cuando termine la cola de descargas o se pause."));
             steppedAside = true;
             break;
           }
@@ -812,7 +813,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
             }, item));
             if (item.stopAt === "source_removed" && reached === "source_removed") heldInStaging += 1;
           } catch (error) {
-            console.warn(`Traslado de ${item.filename} detenido: ${error instanceof Error ? error.message : String(error)}. Se reintentará.`);
+            console.warn(tl("Traslado de {filename} detenido: {error}. Se reintentará.", { filename: item.filename, error: error instanceof Error ? error.message : String(error) }));
           } finally {
             activityReporter?.clear("transfer");
             // A stop asked during this file becomes "stopped" now that it is finished.
@@ -871,10 +872,10 @@ async function startCompanionDiskWatcher(): Promise<void> {
       try {
         const result = await renameDiskMarker(root, marker.diskId, chosen.name);
         markerRenameFailures.delete(marker.diskId);
-        if (result.changed) console.log(`Nombre del disco elegido en la web: ${root} «${result.previous}» -> «${result.next}» (guardado en el marcador).`);
+        if (result.changed) console.log(tl("Nombre del disco elegido en la web: {root} «{previous}» -> «{next}» (guardado en el marcador).", { root, previous: result.previous, next: result.next }));
       } catch (error) {
         markerRenameFailures.set(marker.diskId, chosen.name);
-        console.warn(`No pude guardar el nombre «${chosen.name}» en el marcador de ${root}: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(tl("No pude guardar el nombre «{name}» en el marcador de {root}: {error}", { name: chosen.name, root, error: error instanceof Error ? error.message : String(error) }));
       }
     }
   }
@@ -904,7 +905,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       if (requestedAt > lastHandledDeleteRequestAt) {
         lastHandledDeleteRequestAt = requestedAt;
         if (Date.now() - requestedAt <= 10 * 60 * 1000) {
-          console.log("Orden web recibida: procesando borrados pendientes ahora.");
+          console.log(tl("Orden web recibida: procesando borrados pendientes ahora."));
           await reviewPendingDeletes();
         }
       }
@@ -923,10 +924,10 @@ async function startCompanionDiskWatcher(): Promise<void> {
         transferOrdersSeen = latestOrder;
         if (stopAt >= resumeAt && !transfersStopped) {
           transfersStopped = true;
-          console.log("Orden web: detener traslados. El archivo en curso termina y no se empieza otro; las descargas siguen.");
+          console.log(tl("Orden web: detener traslados. El archivo en curso termina y no se empieza otro; las descargas siguen."));
         } else if (resumeAt > stopAt && transfersStopped) {
           transfersStopped = false;
-          console.log("Orden web: reanudar traslados.");
+          console.log(tl("Orden web: reanudar traslados."));
           resumeTransfers?.();
         }
         reportTransfersMode();
@@ -935,15 +936,15 @@ async function startCompanionDiskWatcher(): Promise<void> {
       if (downloadRequestedAt > lastHandledDownloadRequestAt) {
         lastHandledDownloadRequestAt = downloadRequestedAt;
         if (Date.now() - downloadRequestedAt <= 10 * 60 * 1000) {
-          console.log("Orden web recibida: procesando descargas pendientes ahora.");
+          console.log(tl("Orden web recibida: procesando descargas pendientes ahora."));
           // In the background: a long queue must not hold the heartbeat (the server would think we left).
           void reviewPendingDownloads().catch((error) => {
-            console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
+            console.warn(tl("Fallo revisando descargas pendientes: {error}", { error: error instanceof Error ? error.message : String(error) }));
           });
         }
       }
     } catch (error) {
-      console.warn(`Fallo enviando heartbeat del companion: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo enviando heartbeat del companion: {error}", { error: error instanceof Error ? error.message : String(error) }));
     } finally {
       heartbeatRunning = false;
     }
@@ -968,7 +969,7 @@ async function startCompanionDiskWatcher(): Promise<void> {
       healthMonitor.observe(drives.map((drive) => drive.diskId));
       if (healthMonitor.shouldRun() && await runHealthTask()) {
         healthMonitor.started();
-        console.log("Revisando la salud (SMART) de los discos conectados.");
+        console.log(tl("Revisando la salud (SMART) de los discos conectados."));
       }
       const collected = await readCollectedHealth();
       if (!collected || !healthMonitor.isNew(collected) || drives.length === 0 || healthUploadUnsupported) return;
@@ -976,16 +977,16 @@ async function startCompanionDiskWatcher(): Promise<void> {
       if (disks.length > 0) {
         try {
           await companionAgentApi("/api/agent/disk-health", { method: "POST", body: JSON.stringify({ disks }) });
-          console.log(`Salud de discos enviada: ${disks.length} disco(s).`);
+          console.log(tl("Salud de discos enviada: {length} disco(s).", { length: disks.length }));
         } catch (error) {
           if (!(error instanceof Error && error.message.startsWith("404"))) throw error;
           healthUploadUnsupported = true;
-          console.log("El servidor actual no recibe la salud de los discos. Actualiza el contenedor server a 0.2.49 o posterior.");
+          console.log(tl("El servidor actual no recibe la salud de los discos. Actualiza el contenedor server a 0.2.49 o posterior."));
         }
       }
       healthMonitor.sent(collected);
     } catch (error) {
-      console.warn(`Fallo revisando la salud de los discos: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando la salud de los discos: {error}", { error: error instanceof Error ? error.message : String(error) }));
     } finally {
       healthRunning = false;
     }
@@ -1002,43 +1003,43 @@ async function startCompanionDiskWatcher(): Promise<void> {
   await checkMountedDisks(true);
   setInterval(() => {
     void checkMountedDisks(false).catch((error) => {
-      console.warn(`Fallo revisando discos conectados: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando discos conectados: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   }, pollMs);
   setInterval(() => {
     void reviewKnownTargets().catch((error) => {
-      console.warn(`Fallo reescaneando rutas monitoreadas: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo reescaneando rutas monitoreadas: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   }, scanPollMs);
   setInterval(() => {
     void reviewPendingDeletes().catch((error) => {
-      console.warn(`Fallo revisando borrados pendientes: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando borrados pendientes: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   }, deletePollMs);
   setInterval(() => {
     void reviewPendingDownloads().catch((error) => {
-      console.warn(`Fallo revisando descargas pendientes: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando descargas pendientes: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   }, downloadPollMs);
   resumeTransfers = () => {
     void reviewTransfers().catch((error) => {
-      console.warn(`Fallo revisando traslados: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando traslados: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   };
   const transferPollMs = Math.max(15_000, Number(process.env.COMPANION_TRANSFER_POLL_MS ?? 60_000) || 60_000);
   setInterval(() => {
     void reviewTransfers().catch((error) => {
-      console.warn(`Fallo revisando traslados: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(tl("Fallo revisando traslados: {error}", { error: error instanceof Error ? error.message : String(error) }));
     });
   }, transferPollMs);
-  console.log(`Detector de discos VideoCAT activo cada ${pollMs}ms.`);
-  console.log(`Reescaneo de rutas monitoreadas activo cada ${scanPollMs}ms.`);
-  console.log(`Revision de borrados pendientes activa cada ${deletePollMs}ms.`);
-  console.log(`Revision de descargas pendientes activa cada ${downloadPollMs}ms.`);
+  console.log(tl("Detector de discos VideoCAT activo cada {pollMs}ms.", { pollMs }));
+  console.log(tl("Reescaneo de rutas monitoreadas activo cada {scanPollMs}ms.", { scanPollMs }));
+  console.log(tl("Revision de borrados pendientes activa cada {deletePollMs}ms.", { deletePollMs }));
+  console.log(tl("Revision de descargas pendientes activa cada {downloadPollMs}ms.", { downloadPollMs }));
   console.log(process.env.COMPANION_STAGING_DIR?.trim()
     ? `Traslados activos cada ${transferPollMs}ms con carpeta temporal ${process.env.COMPANION_STAGING_DIR.trim()}.`
     : "Traslados inactivos: falta la carpeta temporal (COMPANION_STAGING_DIR) en la configuracion.");
-  console.log(`Heartbeat del companion activo cada ${heartbeatMs}ms.`);
+  console.log(tl("Heartbeat del companion activo cada {heartbeatMs}ms.", { heartbeatMs }));
 }
 
 async function repairMountedThumbnailsNow(diskIds: string[]): Promise<number> {
@@ -1049,7 +1050,7 @@ async function repairMountedThumbnailsNow(diskIds: string[]): Promise<number> {
       requested.size === 0 || requested.has(marker.diskId)
     );
     for (const { root, marker } of mounted) {
-      console.log(`Regeneracion manual de miniaturas: ${root} -> ${marker.diskName}`);
+      console.log(tl("Regeneracion manual de miniaturas: {root} -> {diskName}", { root, diskName: marker.diskName }));
       await runScan({
         command: "scan",
         path: root,
@@ -1073,9 +1074,9 @@ async function repairMountedThumbnailsNow(diskIds: string[]): Promise<number> {
 function requestMountedThumbnailRepair(diskIds: string[]): { accepted: boolean; busy: boolean } {
   if (companionScanRunning) return { accepted: false, busy: true };
   void repairMountedThumbnailsNow(diskIds).then((processedDisks) => {
-    console.log(`Regeneracion manual finalizada en ${processedDisks} disco(s).`);
+    console.log(tl("Regeneracion manual finalizada en {processedDisks} disco(s).", { processedDisks }));
   }).catch((error) => {
-    console.error(`Fallo en regeneracion manual de miniaturas: ${compactToolError(error)}`);
+    console.error(tl("Fallo en regeneracion manual de miniaturas: {error}", { error: compactToolError(error) }));
   });
   return { accepted: true, busy: false };
 }
@@ -1277,7 +1278,7 @@ async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Pr
       for (const index of frameIndexes) {
         const rawDestination = path.join(temporaryRoot, `${String(index).padStart(2, "0")}.raw`);
         const seconds = Math.max(0.1, file.durationSeconds * (index / 16));
-        const extracted = await extractVisualHash(target, mediaTools(), rawDestination, seconds);
+        const extracted = await extractVisualHash(target, mediaTools(), rawDestination, seconds, undefined, undefined, mediaLog);
         observedFrames.push({ index, hash: extracted.hash });
       }
     } catch (error) {
@@ -1305,7 +1306,7 @@ async function verifyDeletionIdentity(target: string, file: DeleteQueueFile): Pr
 
 async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
   if (deleteProcessingRunning) {
-    if (!options.quietWhenEmpty) console.log("Borrados pendientes omitidos: ya hay otra revision en proceso.");
+    if (!options.quietWhenEmpty) console.log(tl("Borrados pendientes omitidos: ya hay otra revision en proceso."));
     return;
   }
   deleteProcessingRunning = true;
@@ -1319,7 +1320,7 @@ async function processMarkedDeletesForDisk(root: string, marker: DiskMarker, opt
 async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
   if (process.env.COMPANION_AUTO_DELETE_MARKED === "false") return;
   if (!companionAgentApiEnabled()) {
-    console.log("Revision automatica sin borrar: faltan SERVER_URL o credenciales del agente.");
+    console.log(tl("Revision automatica sin borrar: faltan SERVER_URL o credenciales del agente."));
     return;
   }
 
@@ -1327,18 +1328,18 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
   try {
     queue = await companionAgentApi<DeleteQueueResponse>(`/api/agent/disks/${marker.diskId}/delete-queue`);
   } catch (error) {
-    console.warn(`No pude consultar marcados para borrar en ${marker.diskName}: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(tl("No pude consultar marcados para borrar en {diskName}: {error}", { diskName: marker.diskName, error: error instanceof Error ? error.message : String(error) }));
     return;
   }
 
   if (queue.files.length === 0) {
     if (!options.quietWhenEmpty) {
-      console.log(`Revision ${root} (${marker.diskName}): sin archivos marcados para borrar.`);
+      console.log(tl("Revision {root} ({diskName}): sin archivos marcados para borrar.", { root, diskName: marker.diskName }));
     }
     return;
   }
 
-  console.log(`Revision ${root} (${marker.diskName}): ${queue.files.length} archivo(s) marcados para borrar.`);
+  console.log(tl("Revision {root} ({diskName}): {length} archivo(s) marcados para borrar.", { root, diskName: marker.diskName, length: queue.files.length }));
   let deleted = 0;
   let missing = 0;
   let failed = 0;
@@ -1348,7 +1349,7 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
     if (!target) {
       failed += 1;
       await reportDeletionResult(file.id, "failed", `Ruta insegura omitida: ${file.relativePath}`).catch(() => undefined);
-      console.warn(`Ruta insegura omitida: ${file.relativePath}`);
+      console.warn(tl("Ruta insegura omitida: {relativePath}", { relativePath: file.relativePath }));
       continue;
     }
 
@@ -1359,7 +1360,7 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
         if (!canonicalTarget) {
           failed += 1;
           await reportDeletionResult(file.id, "failed", `Ruta fuera de la unidad omitida: ${file.relativePath}`).catch(() => undefined);
-          console.warn(`Ruta fuera de la unidad omitida: ${file.relativePath}`);
+          console.warn(tl("Ruta fuera de la unidad omitida: {relativePath}", { relativePath: file.relativePath }));
           continue;
         }
         const identity = await verifyDeletionIdentity(canonicalTarget, file);
@@ -1368,40 +1369,40 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
           const message = `No se borró: ${identity.reason}, así que no se pudo confirmar que es el archivo catalogado. Puede tener sectores dañados; bórralo a mano desde el Explorador si ya no lo necesitas.`;
           failed += 1;
           await reportDeletionResult(file.id, "failed", message).catch(() => undefined);
-          console.warn(`${message} Ruta: ${file.relativePath}`);
+          console.warn(tl("{message} Ruta: {relativePath}", { message, relativePath: file.relativePath }));
           continue;
         }
         if (!identity.ok) {
           const message = `Identidad del archivo modificada; borrado cancelado: ${identity.reason}`;
           failed += 1;
           await reportDeletionResult(file.id, "identity_mismatch", message).catch(() => undefined);
-          console.warn(`${message}. Ruta: ${file.relativePath}`);
+          console.warn(tl("{message}. Ruta: {relativePath}", { message, relativePath: file.relativePath }));
           continue;
         }
         activityReporter?.set(`delete:${marker.diskId}`, { kind: "delete", phase: "deleting", filename: path.basename(file.relativePath), from: marker.diskName });
         await deleteLocalFile(canonicalTarget);
         await reportDeletionResult(file.id, "deleted");
         deleted += 1;
-        console.log(`Borrado automatico: ${file.relativePath}`);
+        console.log(tl("Borrado automatico: {relativePath}", { relativePath: file.relativePath }));
       } else if (!kind) {
         await reportDeletionResult(file.id, "missing");
         missing += 1;
-        console.log(`Archivo ya no existe; catalogo limpiado: ${file.relativePath}`);
+        console.log(tl("Archivo ya no existe; catalogo limpiado: {relativePath}", { relativePath: file.relativePath }));
       } else {
         failed += 1;
         await reportDeletionResult(file.id, "failed", `No es un archivo: ${file.relativePath}`).catch(() => undefined);
-        console.warn(`No borro porque no es archivo: ${file.relativePath}`);
+        console.warn(tl("No borro porque no es archivo: {relativePath}", { relativePath: file.relativePath }));
       }
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
       await reportDeletionResult(file.id, "failed", message).catch(() => undefined);
-      console.warn(`Fallo borrando ${file.relativePath}: ${message}`);
+      console.warn(tl("Fallo borrando {relativePath}: {message}", { relativePath: file.relativePath, message }));
     }
   }
 
   activityReporter?.clear(`delete:${marker.diskId}`);
-  console.log(`Borrado automatico terminado en ${marker.diskName}: borrados ${deleted}, ya ausentes ${missing}, fallos ${failed}.`);
+  console.log(tl("Borrado automatico terminado en {diskName}: borrados {deleted}, ya ausentes {missing}, fallos {failed}.", { diskName: marker.diskName, deleted, missing, failed }));
 }
 
 async function processMarkedDeletesForMountedDisks(): Promise<{ processedDisks: number }> {
@@ -1542,7 +1543,7 @@ async function processServerDownloads(options: { quietWhenEmpty?: boolean } = {}
       try {
         queue = await companionAgentApi<DownloadQueueResponse>(`/api/agent/downloads/queue?source=server&staleMs=${staleMs}`);
       } catch (error) {
-        console.warn(`No pude consultar descargas desde buckets: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(tl("No pude consultar descargas desde buckets: {error}", { error: error instanceof Error ? error.message : String(error) }));
         return;
       }
       // An older server ignores source=server and would answer with drive downloads.
@@ -1551,7 +1552,7 @@ async function processServerDownloads(options: { quietWhenEmpty?: boolean } = {}
       if (!file) break;
       if (!claimed) {
         claimed = true;
-        await downloadPriority.claim(() => console.log("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas."));
+        await downloadPriority.claim(() => console.log(tl("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas.")));
       }
       let destination = "";
       try {
@@ -1562,16 +1563,16 @@ async function processServerDownloads(options: { quietWhenEmpty?: boolean } = {}
         if (written !== file.sizeBytes) throw new Error(`Llegaron ${written} de ${file.sizeBytes} bytes.`);
         await updateDownloadStatus(file.id, "done", { destinationPath: destination });
         copied += 1;
-        console.log(`Descarga completada desde el bucket ${file.diskName}: ${file.relativePath} -> ${destination}`);
+        console.log(tl("Descarga completada desde el bucket {diskName}: {relativePath} -> {destination}", { diskName: file.diskName, relativePath: file.relativePath, destination }));
       } catch (error) {
         failed += 1;
         const message = error instanceof Error ? error.message : String(error);
         if (destination) await fs.rm(destination, { force: true }).catch(() => undefined);
         await updateDownloadStatus(file.id, "failed", { errorMessage: message.slice(0, 1000) }).catch(() => undefined);
-        console.warn(`Fallo descargando ${file.relativePath} desde el bucket: ${message}`);
+        console.warn(tl("Fallo descargando {relativePath} desde el bucket: {message}", { relativePath: file.relativePath, message }));
       }
     }
-    if (copied + failed > 0 || !options.quietWhenEmpty) console.log(`Descargas desde buckets: copiados ${copied}, fallos ${failed}.`);
+    if (copied + failed > 0 || !options.quietWhenEmpty) console.log(tl("Descargas desde buckets: copiados {copied}, fallos {failed}.", { copied, failed }));
   } finally {
     downloadProcessingRunning = false;
   }
@@ -1579,7 +1580,7 @@ async function processServerDownloads(options: { quietWhenEmpty?: boolean } = {}
 
 async function processDownloadQueueForDisk(root: string, marker: DiskMarker, options: { quietWhenEmpty?: boolean } = {}): Promise<void> {
   if (downloadProcessingRunning) {
-    if (!options.quietWhenEmpty) console.log("Descargas automaticas omitidas: ya hay una descarga en proceso.");
+    if (!options.quietWhenEmpty) console.log(tl("Descargas automaticas omitidas: ya hay una descarga en proceso."));
     return;
   }
   downloadProcessingRunning = true;
@@ -1587,11 +1588,11 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
   try {
     const downloadDir = process.env.COMPANION_DOWNLOAD_DIR?.trim();
     if (!downloadDir) {
-      if (!options.quietWhenEmpty) console.log("Descargas automaticas inactivas: falta COMPANION_DOWNLOAD_DIR en la configuracion del companion.");
+      if (!options.quietWhenEmpty) console.log(tl("Descargas automaticas inactivas: falta COMPANION_DOWNLOAD_DIR en la configuracion del companion."));
       return;
     }
     if (!companionAgentApiEnabled()) {
-      console.log("Revision automatica sin descargar: faltan SERVER_URL o credenciales del agente.");
+      console.log(tl("Revision automatica sin descargar: faltan SERVER_URL o credenciales del agente."));
       return;
     }
 
@@ -1607,33 +1608,33 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
           `/api/agent/downloads/queue?diskId=${encodeURIComponent(marker.diskId)}&staleMs=${staleMs}`
         );
       } catch (error) {
-        console.warn(`No pude consultar descargas pendientes en ${marker.diskName}: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(tl("No pude consultar descargas pendientes en {diskName}: {error}", { diskName: marker.diskName, error: error instanceof Error ? error.message : String(error) }));
         return;
       }
 
       if (queue.paused) {
-        if (!options.quietWhenEmpty || checked > 0) console.log(`Revision ${root} (${marker.diskName}): cola de descargas pausada.`);
+        if (!options.quietWhenEmpty || checked > 0) console.log(tl("Revision {root} ({diskName}): cola de descargas pausada.", { root, diskName: marker.diskName }));
         return;
       }
 
       const file = queue.files[0];
       if (!file) {
-        if (checked === 0 && !options.quietWhenEmpty) console.log(`Revision ${root} (${marker.diskName}): sin descargas pendientes.`);
+        if (checked === 0 && !options.quietWhenEmpty) console.log(tl("Revision {root} ({diskName}): sin descargas pendientes.", { root, diskName: marker.diskName }));
         break;
       }
 
       if (!claimed) {
         claimed = true;
-        await downloadPriority.claim(() => console.log("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas."));
+        await downloadPriority.claim(() => console.log(tl("Descarga pendiente: el traslado en curso termina su archivo y después sigue la cola de descargas.")));
       }
       checked += 1;
-      console.log(`Revision ${root} (${marker.diskName}): descargando 1 archivo pendiente.`);
+      console.log(tl("Revision {root} ({diskName}): descargando 1 archivo pendiente.", { root, diskName: marker.diskName }));
 
       const source = safePathInsideRoot(root, file.relativePath);
       if (!source) {
         failed += 1;
         await updateDownloadStatus(file.id, "failed", { errorMessage: `Ruta insegura omitida: ${file.relativePath}` }).catch(() => undefined);
-        console.warn(`Descarga omitida por ruta insegura: ${file.relativePath}`);
+        console.warn(tl("Descarga omitida por ruta insegura: {relativePath}", { relativePath: file.relativePath }));
         continue;
       }
 
@@ -1643,7 +1644,7 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
         if (kind !== "file") {
           failed += 1;
           await updateDownloadStatus(file.id, "failed", { errorMessage: "Archivo no disponible en el disco conectado." }).catch(() => undefined);
-          console.warn(`No se descarga porque no esta disponible como archivo: ${file.relativePath}`);
+          console.warn(tl("No se descarga porque no esta disponible como archivo: {relativePath}", { relativePath: file.relativePath }));
           continue;
         }
 
@@ -1651,7 +1652,7 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
         if (!canonicalSource) {
           failed += 1;
           await updateDownloadStatus(file.id, "failed", { errorMessage: `Ruta fuera de la unidad omitida: ${file.relativePath}` }).catch(() => undefined);
-          console.warn(`Descarga omitida porque la ruta sale de la unidad: ${file.relativePath}`);
+          console.warn(tl("Descarga omitida porque la ruta sale de la unidad: {relativePath}", { relativePath: file.relativePath }));
           continue;
         }
 
@@ -1660,21 +1661,21 @@ async function processDownloadQueueForDisk(root: string, marker: DiskMarker, opt
         await copyFileWithProgress(canonicalSource, destination, file, marker.diskName);
         await updateDownloadStatus(file.id, "done", { destinationPath: destination });
         copied += 1;
-        console.log(`Descarga completada: ${file.relativePath} -> ${destination}`);
+        console.log(tl("Descarga completada: {relativePath} -> {destination}", { relativePath: file.relativePath, destination }));
       } catch (error) {
         failed += 1;
         const message = error instanceof Error ? error.message : String(error);
         if (destination) await fs.rm(destination, { force: true }).catch(() => undefined);
         await updateDownloadStatus(file.id, "failed", { errorMessage: message.slice(0, 1000) }).catch(() => undefined);
-        console.warn(`Fallo descargando ${file.relativePath}: ${message}`);
+        console.warn(tl("Fallo descargando {relativePath}: {message}", { relativePath: file.relativePath, message }));
       }
     }
 
-    if (checked > 0) console.log(`Descargas automaticas terminadas en ${marker.diskName}: copiados ${copied}, fallos ${failed}.`);
+    if (checked > 0) console.log(tl("Descargas automaticas terminadas en {diskName}: copiados {copied}, fallos {failed}.", { diskName: marker.diskName, copied, failed }));
   } finally {
     downloadProcessingRunning = false;
     if (claimed && downloadPriority.release()) {
-      console.log("Cola de descargas terminada o pausada: los traslados siguen.");
+      console.log(tl("Cola de descargas terminada o pausada: los traslados siguen."));
       resumeTransfers?.();
     }
   }
@@ -1714,7 +1715,7 @@ async function handleCompanionAction(action: "open-file" | "open-folder" | "dele
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     const label = action === "open-file" ? "archivo" : action === "delete-file" ? "archivo para borrar" : "carpeta";
-    console.error(`No se pudo procesar ${label} local: ${detail}`);
+    console.error(tl("No se pudo procesar {label} local: {detail}", { label, detail }));
     return { ok: false, reason: "open_failed", detail: detail.slice(0, 500) };
   }
 }
@@ -1818,7 +1819,7 @@ function watchParentTray(): void {
   if (process.env.VIDEOCAT_PARENT_WATCH !== "1") return;
   const parent = process.ppid;
   const leave = (reason: string) => {
-    console.log(`La bandeja del Companion ya no está (${reason}): el agente se cierra.`);
+    console.log(tl("La bandeja del Companion ya no está ({reason}): el agente se cierra.", { reason }));
     process.exit(0);
   };
   process.stdin.on("end", () => leave("se cerró su canal"));
@@ -1957,25 +1958,25 @@ async function runCompanion(): Promise<void> {
   } else if (firstListen === "occupied") {
     const healthOk = await companionHealthCheck(requestedPort);
     if (healthOk) {
-      console.log(`El puerto ${requestedPort} pertenece a otro Companion. Intentando reemplazarlo...`);
+      console.log(tl("El puerto {requestedPort} pertenece a otro Companion. Intentando reemplazarlo...", { requestedPort }));
       await shutdownExistingCompanion(requestedPort);
       await new Promise((resolve) => setTimeout(resolve, 450));
       const pids = await windowsListeningPids(requestedPort);
       if (pids.length > 0) {
-        console.log(`Cerrando Companion anterior en puerto ${requestedPort}: PID ${pids.join(", ")}`);
+        console.log(tl("Cerrando Companion anterior en puerto {requestedPort}: PID {pids}", { requestedPort, pids: pids.join(", ") }));
         await killWindowsPids(pids);
         await new Promise((resolve) => setTimeout(resolve, 450));
       }
       if (await tryPort(requestedPort) === "listening") selectedPort = requestedPort;
     } else {
-      console.warn(`El puerto ${requestedPort} esta ocupado por otra aplicacion; se dejara intacta.`);
+      console.warn(tl("El puerto {requestedPort} esta ocupado por otra aplicacion; se dejara intacta.", { requestedPort }));
     }
   } else {
-    console.warn(`Windows no permitio abrir el puerto ${requestedPort}.`);
+    console.warn(tl("Windows no permitio abrir el puerto {requestedPort}.", { requestedPort }));
   }
 
   if (selectedPort == null) {
-    console.log("Buscando un puerto local alternativo...");
+    console.log(tl("Buscando un puerto local alternativo..."));
     for (const fallbackPort of companionPortCandidates(requestedPort)) {
       if (fallbackPort === requestedPort) continue;
       if (await tryPort(fallbackPort) === "listening") {
@@ -1986,12 +1987,12 @@ async function runCompanion(): Promise<void> {
   }
 
   if (selectedPort == null) {
-    console.error(`No pude iniciar el companion. Puertos probados: ${companionPortCandidates(requestedPort).join(", ")}.`);
+    console.error(tl("No pude iniciar el companion. Puertos probados: {value}.", { value: companionPortCandidates(requestedPort).join(", ") }));
     return;
   }
 
-  console.log(`VideoCAT Companion escuchando en http://${host}:${selectedPort}${selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})`}.`);
-  console.log(`Origenes permitidos: ${[...allowedOrigins].join(", ")}`);
+  console.log(tl("VideoCAT Companion escuchando en http://{host}:{selectedPort}{value}.", { host, selectedPort, value: selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})` }));
+  console.log(tl("Origenes permitidos: {value}", { value: [...allowedOrigins].join(", ") }));
   console.log(process.env.COMPANION_TOKEN?.trim()
     ? "Token local requerido por este companion; configúralo en Perfil del navegador, no en el servidor."
     : "COMPANION_TOKEN no configurado: el listener local solo responde /health y rechaza todas las acciones.");
@@ -2011,14 +2012,14 @@ async function runCompanion(): Promise<void> {
       resolveStreamFile: resolveCompanionStreamFile
     });
   } else {
-    console.log("Canal remoto no iniciado: empareja este Companion con una credencial individual para habilitarlo.");
+    console.log(tl("Canal remoto no iniciado: empareja este Companion con una credencial individual para habilitarlo."));
   }
 }
 
 async function runProcessDeletes(): Promise<void> {
   const result = await processMarkedDeletesForMountedDisks();
   if (result.processedDisks === 0) {
-    console.log(`No encontre discos o rutas monitoreadas disponibles.`);
+    console.log(tl("No encontre discos o rutas monitoreadas disponibles."));
   }
 }
 
@@ -2028,7 +2029,7 @@ async function resolveDisk(args: Args): Promise<{ diskRoot: string; marker: Disk
     const marker = await readMarkerAtRoot(diskRoot);
     const diskName = args.diskName ?? marker?.diskName;
     if (!diskName) {
-      console.error(`No encontre ${markerFileName} en ${diskRoot} y tampoco recibí --disk-name.`);
+      console.error(tl("No encontre {markerFileName} en {diskRoot} y tampoco recibí --disk-name.", { markerFileName, diskRoot }));
       printUsage();
       process.exit(1);
     }
@@ -2049,9 +2050,9 @@ async function resolveDisk(args: Args): Promise<{ diskRoot: string; marker: Disk
 
   if (matches.length !== 1) {
     if (matches.length > 1) {
-      console.error("Hay mas de un disco montado que coincide. Usa --disk-id para desambiguar.");
+      console.error(tl("Hay mas de un disco montado que coincide. Usa --disk-id para desambiguar."));
     } else {
-      console.error("No encontre un disco montado que coincida. Ejecuta npm run discover para ver marcadores disponibles.");
+      console.error(tl("No encontre un disco montado que coincida. Ejecuta npm run discover para ver marcadores disponibles."));
     }
     process.exit(1);
   }
@@ -2076,7 +2077,7 @@ function scanTargetsFor(args: Args, diskRoot: string, marker: DiskMarker | null)
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    console.error(`Falta variable de entorno ${name}`);
+    console.error(tl("Falta variable de entorno {name}", { name }));
     process.exit(1);
   }
   return value;
@@ -2085,7 +2086,7 @@ function requiredEnv(name: string): string {
 function authHeaders(): HeadersInit {
   const credential = agentCredential();
   if (!credential) {
-    console.error("Falta una credencial emparejada o AGENT_TOKEN");
+    console.error(tl("Falta una credencial emparejada o AGENT_TOKEN"));
     process.exit(1);
   }
   const headers: Record<string, string> = {
@@ -2121,7 +2122,7 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
       lastError = error;
       if (error instanceof AgentAuthError || (error instanceof AgentRequestError && !error.retryable)) throw error;
       const waitMs = 800 * attempt;
-      console.warn(`Intento ${attempt}/${retries} falló para ${url} (${boundedText(error instanceof Error ? error.message : String(error), 200)}). Reintentando en ${waitMs}ms.`);
+      console.warn(tl("Intento {attempt}/{retries} falló para {url} ({error}). Reintentando en {waitMs}ms.", { attempt, retries, url, error: boundedText(error instanceof Error ? error.message : String(error), 200), waitMs }));
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
   }
@@ -2169,7 +2170,7 @@ async function* walkVideos(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
-      console.warn(`Omitiendo carpeta no accesible: ${root}`);
+      console.warn(tl("Omitiendo carpeta no accesible: {root}", { root }));
       errors?.push(auditError(error, "walk", root, diskRoot));
       if (completeness) completeness.complete = false;
       return;
@@ -2181,7 +2182,7 @@ async function* walkVideos(
     const absolute = path.join(root, entry.name);
     if (entry.isDirectory()) {
       if (shouldSkipDirectory(entry.name)) {
-        console.log(`Omitiendo carpeta de sistema: ${absolute}`);
+        console.log(tl("Omitiendo carpeta de sistema: {absolute}", { absolute }));
         continue;
       }
       yield* walkVideos(absolute, errors, diskRoot, completeness);
@@ -2200,7 +2201,7 @@ async function loadState(statePath: string, legacyPaths: string[] = []): Promise
       try {
         const legacyState = JSON.parse(await fs.readFile(legacyPath, "utf8")) as State;
         await saveState(statePath, legacyState);
-        console.log(`Estado anterior del agente migrado a ${statePath}`);
+        console.log(tl("Estado anterior del agente migrado a {statePath}", { statePath }));
         return legacyState;
       } catch {
         // Try the next legacy location.
@@ -2311,9 +2312,9 @@ async function reportMediaToolAvailability(): Promise<void> {
     }
     if (selected) {
       process.env[environmentKey] = selected;
-      console.log(`${fallback} disponible: ${selected}`);
+      console.log(tl("{fallback} disponible: {selected}", { fallback, selected }));
     } else {
-      console.error(`${fallback} no disponible: ${compactToolError(lastError)}. Configura ${environmentKey} en Configuracion.`);
+      console.error(tl("{fallback} no disponible: {error}. Configura {environmentKey} en Configuracion.", { fallback, error: compactToolError(lastError), environmentKey }));
     }
   }
 }
@@ -2340,7 +2341,7 @@ async function countVideos(
   let skipped = 0;
 
   for (const target of targets) {
-    console.log(`Contando videos en ${target.scanPath}`);
+    console.log(tl("Contando videos en {scanPath}", { scanPath: target.scanPath }));
     for await (const filePath of walkVideos(target.scanPath, errors, diskRoot, completeness)) {
       total += 1;
       try {
@@ -2354,7 +2355,7 @@ async function countVideos(
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
-          console.warn(`Omitiendo archivo no accesible durante conteo: ${filePath}`);
+          console.warn(tl("Omitiendo archivo no accesible durante conteo: {filePath}", { filePath }));
           errors.push(auditError(error, "count", filePath, diskRoot));
           completeness.complete = false;
           continue;
@@ -2440,7 +2441,8 @@ async function processFile(
     createFingerprint,
     thumbnailPath: (kind) => path.join(agentStateRoot(), "temporary-thumbnails", scanId, thumbnailTempName(rel, kind)),
     rawPath: (kind) => path.join(agentStateRoot(), "temporary-thumbnails", scanId, fingerprintTempName(rel, kind)),
-    signal
+    signal,
+    log: mediaLog
   });
   if (analyzed.unreadable) throw new UnreadableFileError();
   return {
@@ -2455,6 +2457,9 @@ async function processFile(
     thumbnails: analyzed.thumbnails
   };
 }
+
+// The video pipeline's messages, in the Companion's language.
+const mediaLog: MediaLog = { info: (message) => console.log(message), warn: (message) => console.warn(message), translate: tl };
 
 // A read of the file did not answer in mediaReadTimeoutMs or failed with an I/O error: the file
 // goes at risk right away instead of waiting for its whole deadline.
@@ -2492,7 +2497,7 @@ async function uploadBatch(
       } catch (error) {
         uploadFailures += 1;
         const message = boundedErrorMessage(error);
-        console.warn(`Falló la subida de la miniatura ${thumb.kind} para ${compactFileLabel(item.record.absolutePath)} (${boundedText(message, 200)}); continuando con el siguiente archivo.`);
+        console.warn(tl("Falló la subida de la miniatura {kind} para {value} ({value2}); continuando con el siguiente archivo.", { kind: thumb.kind, value: compactFileLabel(item.record.absolutePath), value2: boundedText(message, 200) }));
         errors.push({
           category: auditCategory(error, "thumbnail"),
           phase: "thumbnail_upload",
@@ -2530,7 +2535,7 @@ async function thumbnailRepairPaths(diskId: string): Promise<Set<string>> {
     });
     return new Set(response.files.map((file) => file.relativePath));
   } catch (error) {
-    console.warn(`No se pudo consultar la reparacion de miniaturas; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(tl("No se pudo consultar la reparacion de miniaturas; el escaneo normal continuara: {error}", { error: error instanceof Error ? error.message : String(error) }));
     return new Set();
   }
 }
@@ -2547,10 +2552,10 @@ async function fingerprintRepairPaths(diskId: string): Promise<Set<string>> {
   } catch (error) {
     if (error instanceof AgentRequestError && error.statusCode === 404) {
       fingerprintRepairEndpointAvailable = false;
-      console.log("El servidor actual no incluye la reparacion de huellas visuales. Actualiza el contenedor server y reinicia el Companion para activarla.");
+      console.log(tl("El servidor actual no incluye la reparacion de huellas visuales. Actualiza el contenedor server y reinicia el Companion para activarla."));
       return new Set();
     }
-    console.warn(`No se pudo consultar la cola de huellas visuales; el escaneo normal continuara: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(tl("No se pudo consultar la cola de huellas visuales; el escaneo normal continuara: {error}", { error: error instanceof Error ? error.message : String(error) }));
     return new Set();
   }
 }
@@ -2579,10 +2584,10 @@ async function hydrateStateFromServer(diskId: string, state: State): Promise<num
       delete state.completed[rel];
       restored += 1;
     }
-    if (response.readRetry?.length) console.log(`Se vuelven a leer ${response.readRetry.length} archivo(s) con problema de lectura, a pedido de la web.`);
+    if (response.readRetry?.length) console.log(tl("Se vuelven a leer {length} archivo(s) con problema de lectura, a pedido de la web.", { length: response.readRetry.length }));
     return restored;
   } catch (error) {
-    console.warn(`No se pudo reconstruir el estado desde el servidor; se usara el estado local: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(tl("No se pudo reconstruir el estado desde el servidor; se usara el estado local: {error}", { error: error instanceof Error ? error.message : String(error) }));
     return 0;
   }
 }
@@ -2646,11 +2651,11 @@ function parseSelection(input: string, count: number): number[] {
 async function runWizard(args: Args): Promise<void> {
   const disks = await discoverMountedDisks();
   if (disks.length === 0) {
-    console.log("No encontre discos montados accesibles.");
+    console.log(tl("No encontre discos montados accesibles."));
     return;
   }
 
-  console.log("Discos detectados:");
+  console.log(tl("Discos detectados:"));
   disks.forEach((disk, index) => {
     const label = disk.marker
       ? `${disk.marker.diskName}  diskId=${disk.marker.diskId}  scanRoots=${disk.marker.scanRoots.join(",")}`
@@ -2663,7 +2668,7 @@ async function runWizard(args: Args): Promise<void> {
     const answer = await rl.question("Cuales quieres indexar? Usa numeros separados por coma o 'todos': ");
     const selectedIndexes = parseSelection(answer, disks.length);
     if (selectedIndexes.length === 0) {
-      console.log("No se seleccionaron discos.");
+      console.log(tl("No se seleccionaron discos."));
       return;
     }
 
@@ -2674,7 +2679,7 @@ async function runWizard(args: Args): Promise<void> {
       if (!marker) {
         const diskName = (await rl.question(`Nombre amigable para ${disk.root}: `)).trim();
         if (!diskName) {
-          console.log(`Omitiendo ${disk.root}; no se indico nombre.`);
+          console.log(tl("Omitiendo {root}; no se indico nombre.", { root: disk.root }));
           continue;
         }
 
@@ -2691,7 +2696,7 @@ async function runWizard(args: Args): Promise<void> {
           scanRoots
         };
         await writeMarker(disk.root, marker);
-        console.log(`Marcador creado en ${markerPathForRoot(disk.root)}`);
+        console.log(tl("Marcador creado en {value}", { value: markerPathForRoot(disk.root) }));
       }
 
       await runScan({
@@ -2749,7 +2754,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   const restoredStateEntries = await hydrateStateFromServer(disk.id, state);
   if (restoredStateEntries > 0) {
     await saveState(statePath, state);
-    console.log(`Estado de escaneo reconstruido desde el servidor: ${restoredStateEntries} archivo(s).`);
+    console.log(tl("Estado de escaneo reconstruido desde el servidor: {restoredStateEntries} archivo(s).", { restoredStateEntries }));
   }
   const repairPaths = args.thumbnails && args.repairThumbnails !== false
     ? await thumbnailRepairPaths(disk.id)
@@ -2758,10 +2763,10 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   const processingPaths = new Set([...repairPaths, ...fingerprintPaths]);
 
   if (repairPaths.size > 0) {
-    console.log(`Reparacion automatica: ${repairPaths.size} video(s) tienen miniaturas faltantes y se volveran a procesar.`);
+    console.log(tl("Reparacion automatica: {size} video(s) tienen miniaturas faltantes y se volveran a procesar.", { size: repairPaths.size }));
   }
   if (fingerprintPaths.size > 0) {
-    console.log(`Analisis de duplicados: ${fingerprintPaths.size} video(s) necesitan una huella visual.`);
+    console.log(tl("Analisis de duplicados: {size} video(s) necesitan una huella visual.", { size: fingerprintPaths.size }));
   }
 
   const { scan } = await api<{ scan: { id: string } }>("/api/agent/scan/start", {
@@ -2777,13 +2782,13 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     await uploadAuditErrors(scan.id, disk.id, auditErrors.splice(0, auditErrors.length));
   }
 
-  console.log(`Escaneo iniciado: ${scan.id}`);
-  console.log(`Raiz del disco: ${resolved.diskRoot}`);
-  console.log(`Rutas: ${scanTargets.map((target) => target.scanPath).join(", ")}`);
-  console.log(`Disco: ${resolved.diskName}`);
-  if (resolved.marker) console.log(`diskId marcador: ${resolved.marker.diskId}`);
-  console.log(`Concurrencia: ${concurrency}`);
-  console.log(`Videos encontrados: ${counts.total}. Pendientes: ${counts.pending}. Ya omitidos por estado local: ${counts.skipped}.`);
+  console.log(tl("Escaneo iniciado: {id}", { id: scan.id }));
+  console.log(tl("Raiz del disco: {diskRoot}", { diskRoot: resolved.diskRoot }));
+  console.log(tl("Rutas: {scanTargets}", { scanTargets: scanTargets.map((target) => target.scanPath).join(", ") }));
+  console.log(tl("Disco: {diskName}", { diskName: resolved.diskName }));
+  if (resolved.marker) console.log(tl("diskId marcador: {diskId}", { diskId: resolved.marker.diskId }));
+  console.log(tl("Concurrencia: {concurrency}", { concurrency }));
+  console.log(tl("Videos encontrados: {total}. Pendientes: {pending}. Ya omitidos por estado local: {skipped}.", { total: counts.total, pending: counts.pending, skipped: counts.skipped }));
 
   let pendingPaths: PendingScanFile[] = [];
   let batch: ProcessedFile[] = [];
@@ -2814,7 +2819,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     markRisky(state.risky!, rel, message);
     // Written at once: if the Companion is closed now, the next start still leaves this file alone.
     void saveState(statePath, state).catch(() => undefined);
-    console.warn(`Archivo en riesgo ${compactFileLabel(filePath)}: no respondió en ${seconds} s con el disco conectado. Se sigue con el siguiente y no se vuelve a leer por ${riskyRetryDays} días.`);
+    console.warn(tl("Archivo en riesgo {value}: no respondió en {seconds} s con el disco conectado. Se sigue con el siguiente y no se vuelve a leer por {riskyRetryDays} días.", { value: compactFileLabel(filePath), seconds, riskyRetryDays }));
     if (audit) auditErrors.push({ category: "at_risk_file", phase, code: "read_timeout", message, absolutePath: filePath, relativePath: rel });
     return message;
   }
@@ -2868,7 +2873,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     const processed = await Promise.all(paths.map((item) => {
       processedPending += 1;
       const remaining = Math.max(counts.pending - processedPending, 0);
-      console.log(`Procesando ${processedPending}/${counts.pending} (faltan ${remaining}): ${compactFileLabel(item.filePath)}`);
+      console.log(tl("Procesando {processedPending}/{pending} (faltan {remaining}): {value}", { processedPending, pending: counts.pending, remaining, value: compactFileLabel(item.filePath) }));
       activityReporter?.set(activityKey, {
         kind: "scan",
         phase: "scanning",
@@ -2892,7 +2897,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
         );
       }
       uploaded += batch.length;
-      console.log(`Subidos ${uploaded} archivos. Fallos acumulados: ${failed}. Ultimo lote: ${formatBytes(processed.reduce((sum, item) => sum + item.record.sizeBytes, 0))}.`);
+      console.log(tl("Subidos {uploaded} archivos. Fallos acumulados: {failed}. Ultimo lote: {value}.", { uploaded, failed, value: formatBytes(processed.reduce((sum, item) => sum + item.record.sizeBytes, 0)) }));
       batch = [];
       await saveState(statePath, state);
       if (auditErrors.length > 0) {
@@ -2949,11 +2954,11 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
       } catch (error) {
         if (error instanceof AgentRequestError && error.statusCode === 404 && error.message.includes("Route")) {
           relocateAvailable = false;
-          console.log("El servidor actual no reconoce carpetas renombradas: esos videos se procesan como nuevos. Actualiza el contenedor server a la 0.2.45 o posterior.");
+          console.log(tl("El servidor actual no reconoce carpetas renombradas: esos videos se procesan como nuevos. Actualiza el contenedor server a la 0.2.45 o posterior."));
         } else {
           // Left for the next scan: the old path is still gone then and the move is tried again.
           for (const { to } of chunk) deferred.add(to);
-          console.warn(`No se pudieron mover en el catálogo ${chunk.length} archivo(s); se intentará en el próximo escaneo: ${error instanceof Error ? error.message : String(error)}`);
+          console.warn(tl("No se pudieron mover en el catálogo {length} archivo(s); se intentará en el próximo escaneo: {error}", { length: chunk.length, error: error instanceof Error ? error.message : String(error) }));
         }
       }
     }
@@ -2966,7 +2971,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
     counts.pending = Math.max(counts.pending - relocated.size - deferred.size, 0);
     if (relocated.size > 0) {
       await saveState(statePath, state);
-      console.log(`Movidos en el catálogo sin volver a procesarlos: ${relocated.size} archivo(s).`);
+      console.log(tl("Movidos en el catálogo sin volver a procesarlos: {size} archivo(s).", { size: relocated.size }));
     }
     // Everything else (ambiguous, rejected, old server): read as a new file, as before.
     for (const { to, item } of moveProposals) {
@@ -2980,7 +2985,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   }
 
   for (const target of scanTargets) {
-    console.log(`Escaneando ${target.scanPath}`);
+    console.log(tl("Escaneando {scanPath}", { scanPath: target.scanPath }));
     for await (const filePath of walkVideos(target.scanPath, auditErrors, resolved.diskRoot, completeness)) {
       discovered += 1;
       const riskyRel = relativePath(resolved.diskRoot, filePath);
@@ -3004,7 +3009,7 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "EPERM" || code === "EACCES" || code === "ENOENT") {
-          console.warn(`Omitiendo archivo no accesible: ${filePath}`);
+          console.warn(tl("Omitiendo archivo no accesible: {filePath}", { filePath }));
           auditErrors.push(auditError(error, "stat", filePath, resolved.diskRoot));
           completeness.complete = false;
           continue;
@@ -3074,14 +3079,14 @@ async function runScanUnreported(args: Args, activityKey: string): Promise<void>
   });
   await fs.rm(path.join(agentStateRoot(), "temporary-thumbnails", scan.id), { recursive: true, force: true }).catch(() => undefined);
 
-  console.log("Escaneo finalizado.");
-  console.log(`Detectados: ${discovered}. Omitidos por estado local: ${skipped}. Subidos: ${uploaded}. Fallos: ${failed}.`);
-  if (relocatedCount > 0) console.log(`Movidos o en carpetas renombradas (sin volver a procesarlos): ${relocatedCount}.`);
-  if (riskySkipped > 0) console.log(`Archivos en riesgo omitidos sin leerlos: ${riskySkipped}.`);
+  console.log(tl("Escaneo finalizado."));
+  console.log(tl("Detectados: {discovered}. Omitidos por estado local: {skipped}. Subidos: {uploaded}. Fallos: {failed}.", { discovered, skipped, uploaded, failed }));
+  if (relocatedCount > 0) console.log(tl("Movidos o en carpetas renombradas (sin volver a procesarlos): {relocatedCount}.", { relocatedCount }));
+  if (riskySkipped > 0) console.log(tl("Archivos en riesgo omitidos sin leerlos: {riskySkipped}.", { riskySkipped }));
   if (completeness.complete) {
-    console.log(`Conciliacion terminada: ${finished.reconciliation.markedAbsent} ausente(s), ${reactivated} reactivado(s).`);
+    console.log(tl("Conciliacion terminada: {markedAbsent} ausente(s), {reactivated} reactivado(s).", { markedAbsent: finished.reconciliation.markedAbsent, reactivated }));
   } else {
-    console.warn("Conciliacion omitida: la pasada tuvo errores de acceso y no es seguro declarar archivos ausentes.");
+    console.warn(tl("Conciliacion omitida: la pasada tuvo errores de acceso y no es seguro declarar archivos ausentes."));
   }
 }
 
@@ -3096,7 +3101,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === "init-disk") {
     if (!args.path || !args.diskName) {
-      console.error('Uso: npm run init-disk -- --path "E:" --disk-name "WD 6TB Video 01" --scan-root "Videos"');
+      console.error(tl("Uso: npm run init-disk -- --path \"E:\" --disk-name \"WD 6TB Video 01\" --scan-root \"Videos\""));
       process.exit(1);
     }
 
@@ -3109,22 +3114,22 @@ async function main() {
       scanRoots: args.scanRoots.length > 0 ? args.scanRoots.map(normalizeScanRoot) : ["."]
     };
     await writeMarker(diskRoot, marker);
-    console.log(`Marcador creado en ${markerPathForRoot(diskRoot)}`);
-    console.log(`diskId: ${marker.diskId}`);
-    console.log(`scanRoots: ${marker.scanRoots.join(", ")}`);
+    console.log(tl("Marcador creado en {value}", { value: markerPathForRoot(diskRoot) }));
+    console.log(tl("diskId: {diskId}", { diskId: marker.diskId }));
+    console.log(tl("scanRoots: {scanRoots}", { scanRoots: marker.scanRoots.join(", ") }));
     return;
   }
 
   if (args.command === "add-root") {
     if (!args.path || args.scanRoots.length === 0) {
-      console.error('Uso: npm run add-root -- --path "E:" --scan-root "Proyectos/2024"');
+      console.error(tl("Uso: npm run add-root -- --path \"E:\" --scan-root \"Proyectos/2024\""));
       process.exit(1);
     }
 
     const diskRoot = volumeRootFromPath(args.path);
     const marker = await readMarkerAtRoot(diskRoot);
     if (!marker) {
-      console.error(`No encontre ${markerFileName} en ${diskRoot}. Ejecuta init-disk primero.`);
+      console.error(tl("No encontre {markerFileName} en {diskRoot}. Ejecuta init-disk primero.", { markerFileName, diskRoot }));
       process.exit(1);
     }
 
@@ -3132,20 +3137,20 @@ async function main() {
     for (const root of args.scanRoots) nextRoots.add(normalizeScanRoot(root));
     marker.scanRoots = [...nextRoots];
     await saveMarker(diskRoot, marker);
-    console.log(`Marcador actualizado en ${markerPathForRoot(diskRoot)}`);
-    console.log(`scanRoots: ${marker.scanRoots.join(", ")}`);
+    console.log(tl("Marcador actualizado en {value}", { value: markerPathForRoot(diskRoot) }));
+    console.log(tl("scanRoots: {scanRoots}", { scanRoots: marker.scanRoots.join(", ") }));
     return;
   }
 
   if (args.command === "discover") {
     const mounted = await discoverCompanionTargets();
     if (mounted.length === 0) {
-      console.log(`No encontre discos o rutas monitoreadas disponibles.`);
+      console.log(tl("No encontre discos o rutas monitoreadas disponibles."));
       return;
     }
 
     for (const { root, marker } of mounted) {
-      console.log(`${root}  ${marker.diskName}  ${marker.diskId}  scanRoots=${marker.scanRoots.join(",")}`);
+      console.log(tl("{root}  {diskName}  {diskId}  scanRoots={scanRoots}", { root, diskName: marker.diskName, diskId: marker.diskId, scanRoots: marker.scanRoots.join(",") }));
     }
     return;
   }
@@ -3156,7 +3161,7 @@ async function main() {
   }
 
   if (args.command === "companion") {
-    console.log(`Agente con Node ${process.versions.node} (${path.basename(process.execPath)}).`);
+    console.log(tl("Agente con Node {node} ({path}).", { node: process.versions.node, path: path.basename(process.execPath) }));
     watchParentTray();
     await runCompanion();
     return;

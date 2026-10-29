@@ -2,6 +2,7 @@
 // Invariant: a file is only removed from a place after a verified copy (SHA-256, re-read from
 // disk) exists somewhere else and the server has recorded that step. Every step can be
 // re-run after a crash: the server state plus what is on disk tell where to continue.
+import { tl } from "./agent-language.js";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -227,7 +228,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         await fs.mkdir(context.stagingDir, { recursive: true });
         const local = await space(context.stagingDir);
         if (local.freeBytes - item.sizeBytes < local.totalBytes * stagingReserveRatio) {
-          log("warn", `Carpeta temporal sin espacio para ${item.filename}: hay que dejar libre el 5 % del disco local.`);
+          log("warn", tl("Carpeta temporal sin espacio para {filename}: hay que dejar libre el 5 % del disco local.", { filename: item.filename }));
           await move("pending", { error: "La carpeta temporal no tiene espacio (se reserva el 5 % del disco local)." });
           return item.state;
         }
@@ -246,7 +247,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         }
         let digest: string;
         try {
-          log("info", `Copiando ${item.filename} a la carpeta temporal.`);
+          log("info", tl("Copiando {filename} a la carpeta temporal.", { filename: item.filename }));
           digest = await copyVerified(source, staging, (phase, done) =>
             context.progress?.({ item, phase: phase === "copy" ? "staging" : "verifying_staging", bytesDone: done, bytesTotal: item.sizeBytes }));
         } catch (error) {
@@ -279,7 +280,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
             await fs.rm(staging, { force: true });
             await move("pending", { error: "La copia temporal no superó la verificación; se repetirá." });
           } else {
-            log("warn", `ATENCIÓN: ${item.filename} no tiene copia temporal válida ni archivo de origen. No se toca nada.`);
+            log("warn", tl("ATENCIÓN: {filename} no tiene copia temporal válida ni archivo de origen. No se toca nada.", { filename: item.filename }));
           }
           return item.state;
         }
@@ -292,7 +293,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
             return item.state;
           }
           await fs.rm(source);
-          log("info", `${item.filename} quedó a salvo en la carpeta temporal y se quitó de ${item.source.name}.`);
+          log("info", tl("{filename} quedó a salvo en la carpeta temporal y se quitó de {name}.", { filename: item.filename, name: item.source.name }));
         }
         await checkpoint("source:removed");
         if (!(await move("source_removed"))) return item.state;
@@ -305,7 +306,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         const root = context.resolveRoot(item.target.identifiers);
         if (!root) return item.state;
         if (!item.sha256 || !(await exists(staging))) {
-          log("warn", `ATENCIÓN: falta la copia temporal de ${item.filename}. No se toca nada.`);
+          log("warn", tl("ATENCIÓN: falta la copia temporal de {filename}. No se toca nada.", { filename: item.filename }));
           return item.state;
         }
         const folderRelative = cleanRelativePath(item.target.folder);
@@ -330,7 +331,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
               // Identical file already there: nothing to copy, the staging copy can go.
               if (!(await move("duplicate"))) return item.state;
               await fs.rm(staging, { force: true });
-              log("info", `${item.filename} ya existía idéntico en ${item.target.name}; se descartó la copia temporal.`);
+              log("info", tl("{filename} ya existía idéntico en {name}; se descartó la copia temporal.", { filename: item.filename, name: item.target.name }));
               return item.state;
             }
             continue;
@@ -363,7 +364,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
           }
         } else {
           try {
-            log("info", `Llevando ${item.filename} a ${item.target.name}.`);
+            log("info", tl("Llevando {filename} a {name}.", { filename: item.filename, name: item.target.name }));
             const digest = await copyVerified(staging, destination, (phase, done) =>
               context.progress?.({ item, phase: phase === "copy" ? "delivering" : "verifying_target", bytesDone: done, bytesTotal: item.sizeBytes }));
             if (digest !== item.sha256) {
@@ -385,7 +386,7 @@ export async function processTransferItem(context: TransferContext, workItem: Tr
         await fs.rm(staging, { force: true });
         await checkpoint("staging:removed");
         if (!(await move("done"))) return item.state;
-        log("info", `${item.filename} llegó a ${item.target.name}.`);
+        log("info", tl("{filename} llegó a {name}.", { filename: item.filename, name: item.target.name }));
         return item.state;
       }
 
