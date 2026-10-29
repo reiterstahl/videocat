@@ -451,6 +451,7 @@ export const trayEnglish: Record<string, string> = {
 
   // Settings and drives, from the agent (tray API)
   "{key} es obligatorio.": "{key} is required.",
+  "El Companion no responde: reinícialo desde el menú de la bandeja.": "The Companion does not answer: restart it from the tray menu.",
   "{root} ahora es el disco VideoCAT «{name}» y conserva su catálogo ({matched} de {checked} archivos de la muestra presentes).": "{root} is now the VideoCAT drive «{name}» and keeps its catalog ({matched} of {checked} sample files present).",
   "{root} ahora es el disco VideoCAT «{name}» ({diskId}).": "{root} is now the VideoCAT drive «{name}» ({diskId})."
 };

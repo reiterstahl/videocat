@@ -131,8 +131,13 @@ jobs:
         # ahead of it, only the new browser is fetched (the image already has its libraries).
         timeout-minutes: 8
         run: npx playwright install chromium
+      - name: Build the Companion
+        # Its tray runs in the suite too (companion-tray.spec.ts), in Electron under a virtual display.
+        run: |
+          npm run build -w @videocat/agent-windows
+          npm run build:tray -w @videocat/agent-windows
       - name: Run end-to-end tests
-        run: npm run test:e2e
+        run: xvfb-run -a npm run test:e2e
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
