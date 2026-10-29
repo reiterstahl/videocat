@@ -86,6 +86,10 @@ Desde la 0.2.21 el Companion trae **dos runtimes de Node**: el del agente y el d
 - **Sin cambios visibles:** las mismas ventanas, los mismos textos en los dos idiomas; los 25 canales IPC pasan a ser llamadas a la API del agente. La prueba de navegador de las ventanas y las del agente tienen que seguir en verde.
 - **Release:** Companion 0.2.25 como beta; con tu visto bueno en tu PC, estable.
 
+**Hecho (2026-10-29, `504a55c` + `add503f`):** el agente tiene `config-store`, `drive-identity`, `pairing`, `disk-health-control` y `tray-api` (rutas `/tray/…`, token propio de la bandeja, rechazo de pedidos con `Origin`, puerto anunciado con `@@videocat-api`); la bandeja de Electron solo cifra la credencial y le pide todo lo demás. Probado con el agente real (`tray-api-agent.test.ts`) y con la bandeja real de Electron bajo una pantalla virtual (`companion-tray.spec.ts`, en la CI). `tray.ts` pasó de 1.338 a ~940 líneas.
+
+Dos ajustes al detalle, por diseño: **el registro de actividad sigue en la bandeja** (tiene que verse cuando el agente se cae, que es cuando más se lo necesita; pasa al agente en la 1b, con las ventanas) y **las tareas a pedido siguen como procesos aparte** (un escaneo puede durar horas y no debe vivir dentro de una petición HTTP; al pasar al agente van como trabajo en cola con su avance).
+
 ### Fase 1b · Las ventanas las sirve el agente (todavía en Electron)
 
 - *Configuración* y *Actividad* se sirven desde el agente (`/ui/…`, abiertas con un enlace de un solo uso para no exponer el token).

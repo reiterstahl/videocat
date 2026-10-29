@@ -26,6 +26,7 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 
 - **The Companion's activity log follows its language too**: the agent's own lines (scans, downloads, deletions, transfers, drive health, the video pipeline) are written in Spanish or English like the rest of the Companion. Error details that come from the system or the server stay as they arrive.
 - CI runs the browser tests in Playwright's image, so a slow apt mirror no longer fails pull requests.
+- **The agent owns the Companion's settings, drives, pairing call and drive health** (phase 1a of the move to Tauri, `COMPANION_TAURI_PLAN.es.md`). The Electron tray asks for them through the agent's local API under `/tray/`, with a token it makes at each start and never stores; the browser's `COMPANION_TOKEN` cannot reach that API, and neither can any request carrying an `Origin` header. Nothing changes on screen. The tray keeps encrypting the credential, the activity log and the on-demand tasks.
 
 ## Windows Companion 0.2.24
 
