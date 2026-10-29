@@ -585,7 +585,7 @@ Después adjunta los documentos VEX de [`docker/vex`](docker/vex) a las imágene
 ```bash
 for image in videocat-server videocat-scanner; do
   for vex in docker/vex/*.vex.json; do
-    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "registry://reiterstahl/$image:0.2.50"
+    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "reiterstahl/$image:0.2.50"
   done
 done
 ```
