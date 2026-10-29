@@ -22,7 +22,7 @@ The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volum
 - Security: zod 4.6.7 in the server (and the shared package) for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), high severity: validating an oversized collection could exhaust the server's memory. Zod 3 has no patched release; the schemas VideoCAT uses behave the same in 4. No migration and no new settings.
 - The Windows Companion is unchanged (0.2.23-beta.1); it picks up zod 4 in its next release.
 
-## Next release (unreleased)
+## Windows Companion 0.2.25 (beta)
 
 - **The Companion's activity log follows its language too**: the agent's own lines (scans, downloads, deletions, transfers, drive health, the video pipeline) are written in Spanish or English like the rest of the Companion. Error details that come from the system or the server stay as they arrive.
 - CI runs the browser tests in Playwright's image, so a slow apt mirror no longer fails pull requests.

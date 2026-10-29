@@ -237,7 +237,7 @@ const skippedDirectoryNames = new Set(["$recycle.bin", "system volume informatio
 const loadedEnvFiles: string[] = [];
 const envSources = new Map<string, string>();
 const companionAppName = "videocat-companion";
-const companionVersion = 24;
+const companionVersion = 25;
 let downloadProcessingRunning = false;
 // Downloads come before transfers; see work-priority.ts.
 const downloadPriority = new DownloadPriority();
