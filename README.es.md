@@ -580,6 +580,16 @@ docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/a
 docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.50 -t reiterstahl/videocat-web:0.2.50 -t reiterstahl/videocat-web:latest --push .
 ```
 
+Después adjunta los documentos VEX de [`docker/vex`](docker/vex) a las imágenes nuevas del servidor y del escáner, para que Docker Scout muestre las vulnerabilidades que declaran como no aplicables a VideoCAT, con su motivo (necesita el plugin `docker scout`):
+
+```bash
+for image in videocat-server videocat-scanner; do
+  for vex in docker/vex/*.vex.json; do
+    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "registry://reiterstahl/$image:0.2.50"
+  done
+done
+```
+
 Verificación del instalador del Companion:
 
 ```powershell
