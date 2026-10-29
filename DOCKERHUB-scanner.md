@@ -11,7 +11,7 @@ Optional S3 scanner for **VideoCAT**, a private, self-hosted catalog for videos 
 
 - Scans the buckets added in **Administration › S3 storage**: lists each bucket under its prefix, reads new or changed videos by ranges through short-lived signed URLs (never downloading them whole), and writes metadata, 15 thumbnails and a perceptual fingerprint to the catalog. An object copied to another key keeps its catalog entry.
 - Rescans every `S3_SCAN_INTERVAL_HOURS` (24) and when **Scan now** is pressed.
-- Deletes the bucket videos marked in Review when *Procesar pendientes* asks for it, after checking each object's size and ETag.
+- Deletes the bucket videos marked in Review when *Process pending* asks for it, after checking each object's size and ETag.
 - Serves nothing over HTTP and needs no session, Companion or admin secrets.
 
 It is only needed for S3 buckets. The server image stays without FFmpeg.
