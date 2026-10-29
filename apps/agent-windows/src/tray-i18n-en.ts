@@ -447,5 +447,10 @@ export const trayEnglish: Record<string, string> = {
   "Huella visual parcial {length}/{length2} para {label}.": "Partial visual fingerprint {length}/{length2} for {label}.",
   "Lectura sin respuesta en {label}: se deja el archivo sin intentar el resto de sus fotogramas.": "No answer reading {label}: the file is left without trying the rest of its frames.",
   "Archivo dañado {label}: {damaged}": "Damaged file {label}: {damaged}",
-  "Metadatos fallidos para {label}: {error}": "Metadata failed for {label}: {error}"
+  "Metadatos fallidos para {label}: {error}": "Metadata failed for {label}: {error}",
+
+  // Settings and drives, from the agent (tray API)
+  "{key} es obligatorio.": "{key} is required.",
+  "{root} ahora es el disco VideoCAT «{name}» y conserva su catálogo ({matched} de {checked} archivos de la muestra presentes).": "{root} is now the VideoCAT drive «{name}» and keeps its catalog ({matched} of {checked} sample files present).",
+  "{root} ahora es el disco VideoCAT «{name}» ({diskId}).": "{root} is now the VideoCAT drive «{name}» ({diskId})."
 };

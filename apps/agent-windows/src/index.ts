@@ -32,6 +32,7 @@ import { processTransferItem, readStallMs, staleStagingFiles, statfsSpace, type 
 import { DownloadPriority } from "./work-priority.js";
 import { trayStatusLine } from "./tray-animation.js";
 import { tl } from "./agent-language.js";
+import { handleTrayRequest, trayApiLine, type TrayApiContext } from "./tray-api.js";
 import { HealthMonitor, healthForDrives, healthTaskInstalled, readCollectedHealth, runHealthTask } from "./disk-health.js";
 import { clearRisky, fileTimeoutSeconds, isRiskyNow, markRisky, riskyRetryDays, withDeadline, type RiskyFiles } from "./scan-watchdog.js";
 import { ActivityReporter } from "./activity.js";
@@ -1840,6 +1841,13 @@ async function runCompanion(): Promise<void> {
     ? configuredPort
     : companionDefaultPort;
   const allowedOrigins = companionAllowedOrigins();
+  // The tray's API (tray-api.ts): settings, pairing, drives and drive health.
+  const trayApiContext: TrayApiContext = {
+    configPath: process.env.VIDEOCAT_CONFIG_PATH?.trim() ?? "",
+    defaultStateRoot: agentStateRoot(),
+    version: companionVersion,
+    log: (message) => console.log(message)
+  };
 
   let activeServer: http.Server | null = null;
   const requestHandler: http.RequestListener = (request, response) => {
@@ -1854,6 +1862,11 @@ async function runCompanion(): Promise<void> {
 
       if (request.url === "/health" && request.method === "OPTIONS") {
         jsonResponse(response, 204, {}, responseOrigin);
+        return;
+      }
+
+      if (request.url?.startsWith("/tray/") && trayApiContext.configPath) {
+        await handleTrayRequest(request, response, trayApiContext);
         return;
       }
 
@@ -1993,6 +2006,7 @@ async function runCompanion(): Promise<void> {
 
   console.log(tl("VideoCAT Companion escuchando en http://{host}:{selectedPort}{value}.", { host, selectedPort, value: selectedPort === requestedPort ? "" : ` (puerto alternativo; el solicitado fue ${requestedPort})` }));
   console.log(tl("Origenes permitidos: {value}", { value: [...allowedOrigins].join(", ") }));
+  console.log(trayApiLine(selectedPort));
   console.log(process.env.COMPANION_TOKEN?.trim()
     ? "Token local requerido por este companion; configúralo en Perfil del navegador, no en el servidor."
     : "COMPANION_TOKEN no configurado: el listener local solo responde /health y rechaza todas las acciones.");

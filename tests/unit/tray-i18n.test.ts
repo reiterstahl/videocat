@@ -32,6 +32,8 @@ test("every text the Companion's code translates, log lines included, has its En
     // The agent's log lines and those of the transfers and the video pipeline.
     ["index.ts", /\btl\("((?:[^"\\]|\\.)*)"/g],
     ["transfer-engine.ts", /\btl\("((?:[^"\\]|\\.)*)"/g],
+    ...(["config-store.ts", "drive-identity.ts", "pairing.ts", "disk-health-control.ts", "tray-api.ts"].map((file) => [file, /\btl\("((?:[^"\\]|\\.)*)"/g] as const)),
+    ...(["config-store.ts"].map((file) => [file, /translate\("((?:[^"\\]|\\.)*)"/g] as const)),
     ["../media.ts", /fill\(log, "((?:[^"\\]|\\.)*)"/g]
   ] as const) {
     for (const match of source(file).matchAll(pattern)) used.add(unescape(match[1]));
