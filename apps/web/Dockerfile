@@ -22,7 +22,7 @@ ARG VITE_VIDEOCAT_VERSION=0.2.50
 ENV VITE_VIDEOCAT_VERSION=$VITE_VIDEOCAT_VERSION
 RUN npm run build -w @videocat/shared && npm run build -w @videocat/web
 
-FROM nginxinc/nginx-unprivileged:1.31.6-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine AS runtime
 # Security updates for the base packages on every build, then back to the unprivileged user.
 USER root
 RUN apk upgrade --no-cache
