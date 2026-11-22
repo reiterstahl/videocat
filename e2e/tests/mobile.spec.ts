@@ -13,6 +13,18 @@ test("every section fits the phone width without horizontal scrolling", async ({
   }
 });
 
+test("the full-screen detail stacks on a phone without horizontal scrolling", async ({ page }) => {
+  await openView(page, "/catalogo", { "videocat-detail-open": "full" });
+  await page.locator(".vc-card-open").first().click();
+  const full = page.locator(".vc-detail-full");
+  await expect(full).toBeVisible();
+  await full.locator(".vc-detail-full-side").scrollIntoViewIfNeeded();
+  await expect(full.locator(".vc-detail-full-side .vc-detail-title h2")).toBeVisible();
+  const overflow = await full.locator(".vc-detail-full-body").evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await expectNoHorizontalScroll(page);
+});
+
 test("tab bar and More sheet navigate between sections", async ({ page }) => {
   await openView(page, "/catalogo", { "videocat-catalog-filters-open": "true" });
   const tabs = page.getByRole("navigation", { name: "Secciones" });

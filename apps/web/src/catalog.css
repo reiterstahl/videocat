@@ -727,7 +727,7 @@
   font-size: 0.7rem;
 }
 
-:root .vc-detail .thumb-strip {
+:root :is(.vc-detail, .vc-detail-full) .thumb-strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
   gap: 6px;
@@ -737,7 +737,7 @@
   overflow: visible;
 }
 
-:root .vc-detail .thumb-button {
+:root :is(.vc-detail, .vc-detail-full) .thumb-button {
   overflow: hidden;
   aspect-ratio: 16 / 9;
   border: 0;
@@ -745,7 +745,7 @@
   padding: 0;
 }
 
-:root .vc-detail .thumb-button img {
+:root :is(.vc-detail, .vc-detail-full) .thumb-button img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -771,7 +771,7 @@
   word-break: break-all;
 }
 
-:root .vc-detail .detail-primary-actions {
+:root :is(.vc-detail, .vc-detail-full) .detail-primary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -783,14 +783,14 @@
   gap: 8px;
 }
 
-:root .vc-detail .curation-actions {
+:root :is(.vc-detail, .vc-detail-full) .curation-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
   gap: 6px;
 }
 
-:root .vc-detail .detail-primary-action {
+:root :is(.vc-detail, .vc-detail-full) .detail-primary-action {
   width: 48px;
   height: 42px;
   border-radius: 10px;
@@ -841,22 +841,22 @@
   cursor: pointer;
 }
 
-:root .vc-detail .detail-grid {
+:root :is(.vc-detail, .vc-detail-full) .detail-grid {
   grid-template-columns: minmax(0, 1fr);
   margin: 10px 0;
   padding: 0;
 }
 
-:root .vc-detail .remote-player,
-:root .vc-detail .remote-playback-hint,
-:root .vc-detail .remote-playback-feedback,
-:root .vc-detail .stream-compatibility-notice,
-:root .vc-detail .companion-status,
-:root .vc-detail .duplicates {
+:root :is(.vc-detail, .vc-detail-full) .remote-player,
+:root :is(.vc-detail, .vc-detail-full) .remote-playback-hint,
+:root :is(.vc-detail, .vc-detail-full) .remote-playback-feedback,
+:root :is(.vc-detail, .vc-detail-full) .stream-compatibility-notice,
+:root :is(.vc-detail, .vc-detail-full) .companion-status,
+:root :is(.vc-detail, .vc-detail-full) .duplicates {
   margin: 0;
 }
 
-:root .vc-detail .remote-player {
+:root :is(.vc-detail, .vc-detail-full) .remote-player {
   border-radius: 12px;
 }
 
@@ -873,6 +873,200 @@
 
 .vc-detail-scrim {
   display: none;
+}
+
+/* Full-screen detail: the whole window, with the video and its captures on the left and the
+   actions, categories and every fact on the right. Opened from the catalog's «Abrir en» or with F. */
+
+.vc-detail-full {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--vc-bg);
+  animation: vc-detail-full-in 160ms ease-out;
+}
+
+@keyframes vc-detail-full-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.vc-detail-full-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--vc-border);
+  background: var(--vc-surface);
+  padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+}
+
+.vc-detail-full-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.vc-detail-full-where {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 1px;
+}
+
+.vc-detail-full-where strong,
+.vc-detail-full-where span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-detail-full-where strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.vc-detail-full-where span {
+  color: var(--vc-muted);
+  font-size: 0.78rem;
+}
+
+.vc-detail-full-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+}
+
+.vc-detail-full-main,
+.vc-detail-full-side {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 20px;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.vc-detail-full-main > *,
+.vc-detail-full-side > * {
+  flex-shrink: 0;
+}
+
+.vc-detail-full-side {
+  border-left: 1px solid var(--vc-border);
+  background: var(--vc-surface);
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+.vc-catalog.has-detail .vc-open-in > span {
+  display: none;
+}
+
+.vc-detail-full-count {
+  margin-left: 6px;
+  color: var(--vc-subtle);
+}
+
+.vc-detail-full .vc-detail-hero {
+  width: min(100%, calc(64dvh * 16 / 9));
+  margin-inline: auto;
+  border-radius: 14px;
+}
+
+.vc-detail-full .vc-detail-play {
+  width: 76px;
+  height: 76px;
+}
+
+:root .vc-detail-full .remote-player {
+  min-height: 0;
+  border-radius: 14px;
+}
+
+:root .vc-detail-full .remote-player video {
+  max-height: 64dvh;
+}
+
+:root .vc-detail-full .thumb-strip {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+:root .vc-detail-full .thumb-button {
+  border-radius: 10px;
+}
+
+:root .vc-detail-full .detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+:root .vc-detail-full .info-row {
+  min-height: 0;
+}
+
+:root .vc-detail-full .duplicates {
+  padding: 0;
+}
+
+/* Same heading as the other sections of this view. */
+:root .vc-detail-full .duplicates h3 {
+  margin: 0 0 8px;
+  color: var(--vc-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 960px) {
+  .vc-detail-full-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .vc-detail-full-main,
+  .vc-detail-full-side {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .vc-detail-full-side {
+    border-top: 1px solid var(--vc-border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .vc-detail-full-main,
+  .vc-detail-full-side {
+    padding: 14px max(14px, env(safe-area-inset-right)) 14px max(14px, env(safe-area-inset-left));
+  }
+
+  .vc-detail-full-side {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .vc-detail-full-bar .vc-button span {
+    display: none;
+  }
+
+  :root .vc-detail-full .thumb-strip {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-detail-full {
+    animation: none;
+  }
 }
 
 @media (max-width: 1180px) {

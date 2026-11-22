@@ -1,5 +1,5 @@
-import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, SetStateAction } from "react";
-import { ChevronDown, ChevronRight, Download, Filter, FolderOpen, FolderSearch, Image, LayoutGrid, List, Lock, Search, Trash2, X } from "lucide-react";
+import { useEffect, useState, type CSSProperties, type Dispatch, type FormEvent, type PointerEvent as ReactPointerEvent, type SetStateAction } from "react";
+import { ChevronDown, ChevronRight, Download, Filter, FolderOpen, FolderSearch, Image, LayoutGrid, List, Lock, Maximize2, PanelRight, Search, Trash2, X } from "lucide-react";
 import { formatBytes, formatDuration } from "@videocat/shared";
 import { CatalogCard } from "../components/CatalogCard";
 import { CategoryBadges } from "../components/CategoryBadges";
@@ -103,10 +103,30 @@ export type CatalogViewProps = {
   visibleSelectedCount: number;
 };
 
+type DetailView = "panel" | "full";
+
 export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBulkCategory, beginFilterResize, bulkBusy, bulkCategoryKey, bulkMessage, canOpenNext, canOpenPrevious, catalogView, categoryError, categorySubmitting, changeSort, clearCatalogFilters, clearFileSelection, compactLayout, companionLocalOnline, companionMountedDiskIds, companionOnline, createCategory, curationStatus, deleteCategory, duplicateOnly, duplicates, extension, extensions, facets, files, filterWidth, folderSearch, groupFolderFiles, handlePageInput, handlePageSizeChange, loading, locale, maxTagCount, newCategoryColor, newCategoryLabel, openAdjacentDetail, openDetail, openRandomConnectedDetail, page, pageCount, pageSize, profileSecurity, queueSelectedDownloads, regenerateSelectedThumbnails, removeDeletedFile, selected, selectedFileIdSet, selectedFileIds, selectedFolders, selectedTags, setBulkCategoryKey, setCatalogView, setCurationStatus, setDuplicateOnly, setExtension, readProblemOnly, setReadProblemOnly, setFiltersOpen, setFolderSearch, setNewCategoryColor, setNewCategoryLabel, setPage, setSelected, setSortBy, setSortDirection, showCatalogFilters, sortBy, sortDirection, toggleFileCategory, toggleFileSelection, toggleFolder, toggleFolderExpansion, toggleTag, toggleVisibleSelection, total, totalBytes, visibleFolders, visibleSelectedCount }: CatalogViewProps) {
+  // Where a video opens: the side panel or the full-screen view. Kept per browser, so a phone and a
+  // PC can differ. The open video can switch for itself (button or F) without changing it.
+  const [detailOpenMode, setDetailOpenMode] = useState<DetailView>(() =>
+    localStorage.getItem("videocat-detail-open") === "full" ? "full" : "panel"
+  );
+  const [detailView, setDetailView] = useState<DetailView>(detailOpenMode);
+  const detailPanelOpen = Boolean(selected) && detailView === "panel";
+
+  useEffect(() => {
+    if (!selected) setDetailView(detailOpenMode);
+  }, [selected, detailOpenMode]);
+
+  function chooseDetailOpenMode(mode: DetailView) {
+    localStorage.setItem("videocat-detail-open", mode);
+    setDetailOpenMode(mode);
+    setDetailView(mode);
+  }
+
   return (
     <section
-      className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${selected ? "has-detail" : ""}`}
+      className={`vc-catalog ${showCatalogFilters ? "has-filters" : ""} ${detailPanelOpen ? "has-detail" : ""}`}
       style={{ "--filter-width": `${filterWidth}px` } as CSSProperties}
     >
       {showCatalogFilters && compactLayout ? (
@@ -362,6 +382,17 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
               ))}
             </select>
           </label>
+          <div className="vc-inline-field vc-open-in">
+            <span>Abrir en</span>
+            <div className="vc-segmented is-icons" role="group" aria-label="Abrir los videos en">
+              <button type="button" aria-pressed={detailOpenMode === "panel"} onClick={() => chooseDetailOpenMode("panel")} title="Abrir los videos en el panel lateral" aria-label="Panel lateral">
+                <PanelRight size={16} />
+              </button>
+              <button type="button" aria-pressed={detailOpenMode === "full"} onClick={() => chooseDetailOpenMode("full")} title="Abrir los videos a pantalla completa" aria-label="Pantalla completa">
+                <Maximize2 size={16} />
+              </button>
+            </div>
+          </div>
           <div className="vc-segmented is-icons" role="group" aria-label="Vista">
             <button type="button" aria-pressed={catalogView === "grid"} onClick={() => setCatalogView("grid")} title="Cuadrícula" aria-label="Cuadrícula">
               <LayoutGrid size={16} />
@@ -556,9 +587,12 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
 
       {selected ? (
         <>
-          <button className="vc-detail-scrim" type="button" aria-label="Cerrar detalle" onClick={() => setSelected(null)} />
+          {detailView === "panel" ? (
+            <button className="vc-detail-scrim" type="button" aria-label="Cerrar detalle" onClick={() => setSelected(null)} />
+          ) : null}
           <FileDetail
-            variant="panel"
+            variant={detailView}
+            onChangeView={setDetailView}
             file={selected}
             duplicates={duplicates}
             locale={locale}

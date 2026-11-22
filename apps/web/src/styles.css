@@ -2392,6 +2392,11 @@ tbody tr.curation-row {
   right: 46px;
 }
 
+/* Two buttons (open and copy): the value must not run under the first one. */
+.info-row:has(.open-button) {
+  padding-right: 88px;
+}
+
 .open-button:disabled {
   cursor: wait;
   opacity: 0.58;

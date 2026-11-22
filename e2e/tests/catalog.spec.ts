@@ -45,6 +45,46 @@ test("detail panel navigates with buttons and arrows, ignores arrows while typin
   await expect(page.locator(".vc-filters")).toBeVisible();
 });
 
+test("videos open full screen when chosen, switch with F or the button, and the choice is remembered", async ({ page }) => {
+  const openIn = page.getByRole("group", { name: "Abrir los videos en" });
+  await openIn.getByRole("button", { name: "Pantalla completa" }).click();
+  await expect(openIn.getByRole("button", { name: "Pantalla completa" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.locator(".vc-card-open").first().click();
+  const full = page.locator(".vc-detail-full");
+  await expect(full).toBeVisible();
+  await expect(page.locator(".vc-detail")).toHaveCount(0);
+  const title = full.locator(".vc-detail-title h2");
+  const first = await title.textContent();
+  await expect(full.locator(".vc-detail-full-where strong")).toHaveText(first ?? "");
+  // Every fact is on screen: location and technical details, not behind «Más información».
+  await expect(full.getByText("Ruta relativa")).toBeVisible();
+  await expect(full.getByText("Bitrate")).toBeVisible();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(title).not.toHaveText(first ?? "");
+  const second = await title.textContent();
+
+  // F moves the open video to the side panel and back; the preference stays.
+  await page.keyboard.press("f");
+  await expect(full).toHaveCount(0);
+  await expect(page.locator(".vc-detail .vc-detail-title h2")).toHaveText(second ?? "");
+  await page.getByRole("button", { name: "Ver a pantalla completa" }).click();
+  await expect(full).toBeVisible();
+  await full.getByRole("button", { name: "Ver en panel" }).click();
+  await expect(page.locator(".vc-detail")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".vc-detail")).toHaveCount(0);
+
+  // The next video opens full screen again, also after reloading.
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Abrir los videos en" }).getByRole("button", { name: "Pantalla completa" })).toHaveAttribute("aria-pressed", "true");
+  await page.locator(".vc-card-open").nth(2).click();
+  await expect(full).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(full).toHaveCount(0);
+});
+
 test("bulk selection survives switching to the list view and sorting works", async ({ page }) => {
   await page.locator(".vc-card").first().hover();
   await page.locator(".vc-card-check").first().click();

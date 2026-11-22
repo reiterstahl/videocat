@@ -10,7 +10,9 @@ import {
   FolderOpen,
   Image,
   Maximize,
+  Maximize2,
   MonitorPlay,
+  PanelRight,
   Pause,
   Play,
   RotateCcw,
@@ -66,6 +68,7 @@ export function FileDetail({
   chromecastEnabled,
   onToggleCategory,
   onDeleted,
+  onChangeView,
   variant = "modal"
 }: {
   file: VideoFile;
@@ -84,7 +87,9 @@ export function FileDetail({
   chromecastEnabled: boolean;
   onToggleCategory: (categoryKey: string, enabled: boolean) => Promise<void> | void;
   onDeleted: (fileId: string) => void;
-  variant?: "modal" | "panel";
+  // The catalog's side panel and its full-screen view switch between each other (button or F).
+  onChangeView?: (view: "panel" | "full") => void;
+  variant?: "modal" | "panel" | "full";
 }) {
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [companionBusy, setCompanionBusy] = useState<CompanionAction | null>(null);
@@ -436,6 +441,12 @@ export function FileDetail({
 
   async function requestRemoteFullscreen(automatic = false) {
     if (automatic && remoteFullscreenAttemptedRef.current) return;
+    // The full-screen view already shows the video large: it never takes the browser's fullscreen on
+    // its own, and neither does the panel after switching from it (the button still does).
+    if (automatic && variant === "full") {
+      remoteFullscreenAttemptedRef.current = true;
+      return;
+    }
     const video = remoteVideoRef.current;
     const player = remotePlayerRef.current;
     if (!player) return;
@@ -633,11 +644,22 @@ export function FileDetail({
         event.preventDefault();
         void moveDetail(1);
       }
+      if (onChangeView && (event.key === "f" || event.key === "F") && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        switchView(variant === "full" ? "panel" : "full");
+      }
     }
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [canOpenNext, canOpenNextImage, canOpenPrevious, canOpenPreviousImage, deletePromptOpen, galleryIndex, onClose, onNext, onPrevious]);
+  }, [canOpenNext, canOpenNextImage, canOpenPrevious, canOpenPreviousImage, deletePromptOpen, galleryIndex, onChangeView, onClose, onNext, onPrevious, remoteUrl, variant]);
+
+  function switchView(view: "panel" | "full") {
+    if (!onChangeView || view === variant) return;
+    const video = remoteVideoRef.current;
+    if (video && remoteUrl) remoteResumeTimeRef.current = video.currentTime;
+    onChangeView(view);
+  }
 
   function requestDeleteFile() {
     setDeleteConfirmText("");
@@ -981,8 +1003,8 @@ export function FileDetail({
     </div>
 
   );
-  const detailGrid = (
-    <div className="detail-grid">
+  const locationInfo = (
+    <>
       <Info label="Ruta relativa" value={file.relativePath} copy />
       <Info
         label="Ruta absoluta escaneada"
@@ -1000,6 +1022,10 @@ export function FileDetail({
         openBusy={companionBusy === "open-folder"}
         onOpen={objectStorage ? undefined : () => void callCompanion("open-folder")}
       />
+    </>
+  );
+  const technicalInfo = (
+    <>
       <Info label="Tamano exacto" value={`${file.sizeBytes} bytes (${formatBytes(file.sizeBytes)})`} />
       <Info label="Tamano del folder" value={file.folderSizeBytes != null ? formatBytes(file.folderSizeBytes) : "-"} />
       <Info label="Duracion" value={formatDuration(file.durationSeconds)} />
@@ -1014,8 +1040,13 @@ export function FileDetail({
         value={categoryKeysForFile(file).map((key) => categoryLabel(key, categories)).join(", ") || "Sin marcar"}
       />
       <Info label="Estado" value={isDamagedMediaMessage(file.errorMessage) || isRiskyMediaMessage(file.errorMessage) ? (file.errorMessage ?? "").split("\n")[0] : file.scanStatus} />
+    </>
+  );
+  const detailGrid = (
+    <div className="detail-grid">
+      {locationInfo}
+      {technicalInfo}
     </div>
-
   );
   const companionStatus = (
     <>
@@ -1080,8 +1111,102 @@ export function FileDetail({
     </>
   );
 
+  const heroThumbnail = mainThumbnail(file);
+  const detailHero = (
+    <div className="vc-detail-hero">
+      {heroThumbnail ? <img src={heroThumbnail} alt="" /> : <Image size={34} aria-hidden="true" />}
+      <button
+        className={`vc-detail-play ${canStreamRemotely && playbackSupport.result !== "" ? "" : "is-unavailable"}`}
+        onClick={() => requestRemotePlayback()}
+        title={remoteAvailabilityMessage || "Reproducir remotamente"}
+        aria-label="Reproducir remotamente"
+        type="button"
+      >
+        <Play size={26} />
+      </button>
+      {file.durationSeconds ? <span className="vc-detail-duration">{formatDuration(file.durationSeconds)}</span> : null}
+    </div>
+  );
+  const detailFacts = (
+    <dl className="vc-detail-facts">
+      <div><dt>Resolución</dt><dd>{resolution(file)}</dd></div>
+      <div><dt>Duración</dt><dd>{formatDuration(file.durationSeconds)}</dd></div>
+      <div><dt>Tamaño</dt><dd>{formatBytes(file.sizeBytes)}</dd></div>
+      <div><dt>Formato</dt><dd>{[file.extension.toUpperCase(), file.videoCodec, file.audioCodec].filter(Boolean).join(" · ")}</dd></div>
+      <div><dt>Carpeta</dt><dd>{file.folderSizeBytes != null ? formatBytes(file.folderSizeBytes) : "-"}</dd></div>
+      <div><dt>Indexado</dt><dd>{dateLabel(file.lastIndexedAt, locale)}</dd></div>
+    </dl>
+  );
+
+  if (variant === "full") {
+    return (
+      <div className="vc-detail-full" role="dialog" aria-modal="true" aria-label="Detalle del video">
+        <header className="vc-detail-full-bar">
+          <div className="vc-detail-full-nav">
+            <button className="vc-icon-button is-small" onClick={() => void moveDetail(-1)} disabled={!canOpenPrevious} type="button" title="Video anterior" aria-label="Video anterior">
+              <ChevronLeft size={16} />
+            </button>
+            <button className="vc-icon-button is-small" onClick={() => void moveDetail(1)} disabled={!canOpenNext} type="button" title="Video siguiente" aria-label="Video siguiente">
+              <ChevronRight size={16} />
+            </button>
+          </div>
+          <div className="vc-detail-full-where">
+            <strong title={file.filename}>{file.filename}</strong>
+            <span>{file.disk?.name}</span>
+          </div>
+          {onChangeView ? (
+            <button className="vc-button is-small" onClick={() => switchView("panel")} type="button" title="Ver en el panel lateral (F)">
+              <PanelRight size={15} aria-hidden="true" />
+              <span>Ver en panel</span>
+            </button>
+          ) : null}
+          <button className="vc-icon-button is-small is-ghost" onClick={onClose} type="button" title="Cerrar" aria-label="Cerrar detalle">
+            <X size={17} />
+          </button>
+        </header>
+        <div className="vc-detail-full-body">
+          <div className="vc-detail-full-main">
+            {hasRemotePlayer ? remotePlayer : detailHero}
+            {playbackNotices}
+            {readProblemNotice}
+            {transitNotice}
+            {compatibilityNotice}
+            <section className="vc-detail-section">
+              <span className="vc-overline">Capturas{file.thumbnails.length > 0 ? <span className="vc-detail-full-count">{file.thumbnails.length}</span> : null}</span>
+              {thumbStrip}
+            </section>
+            {duplicatesSection}
+          </div>
+          <aside className="vc-detail-full-side">
+            <div className="vc-detail-title">
+              <h2>{file.filename}</h2>
+              <span>{file.relativePath}</span>
+            </div>
+            {primaryActions}
+            <div className="vc-detail-section">
+              <span className="vc-overline">Categorías</span>
+              {categoryActions}
+            </div>
+            {detailFacts}
+            {companionStatus}
+            <section className="vc-detail-section">
+              <span className="vc-overline">Ubicación</span>
+              <div className="detail-grid">{locationInfo}</div>
+            </section>
+            <section className="vc-detail-section">
+              <span className="vc-overline">Técnico</span>
+              <div className="detail-grid">{technicalInfo}</div>
+            </section>
+            {jsonBlock}
+            <p className="vc-detail-keys"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>F</kbd> ver en panel · <kbd>Esc</kbd> cerrar</p>
+          </aside>
+        </div>
+        {overlays}
+      </div>
+    );
+  }
+
   if (variant === "panel") {
-    const heroThumbnail = mainThumbnail(file);
     return (
       <aside className="vc-detail" aria-label="Detalle del video">
         <div className="vc-detail-toolbar">
@@ -1092,25 +1217,16 @@ export function FileDetail({
             <ChevronRight size={16} />
           </button>
           <span className="vc-detail-disk">{file.disk?.name}</span>
+          {onChangeView ? (
+            <button className="vc-icon-button is-small" onClick={() => switchView("full")} type="button" title="Ver a pantalla completa (F)" aria-label="Ver a pantalla completa">
+              <Maximize2 size={15} />
+            </button>
+          ) : null}
           <button className="vc-icon-button is-small is-ghost" onClick={onClose} type="button" title="Cerrar" aria-label="Cerrar detalle">
             <X size={17} />
           </button>
         </div>
-        {hasRemotePlayer ? remotePlayer : (
-          <div className="vc-detail-hero">
-            {heroThumbnail ? <img src={heroThumbnail} alt="" /> : <Image size={34} aria-hidden="true" />}
-            <button
-              className={`vc-detail-play ${canStreamRemotely && playbackSupport.result !== "" ? "" : "is-unavailable"}`}
-              onClick={() => requestRemotePlayback()}
-              title={remoteAvailabilityMessage || "Reproducir remotamente"}
-              aria-label="Reproducir remotamente"
-              type="button"
-            >
-              <Play size={26} />
-            </button>
-            {file.durationSeconds ? <span className="vc-detail-duration">{formatDuration(file.durationSeconds)}</span> : null}
-          </div>
-        )}
+        {hasRemotePlayer ? remotePlayer : detailHero}
         {playbackNotices}
         {readProblemNotice}
         {transitNotice}
@@ -1125,14 +1241,7 @@ export function FileDetail({
           <span className="vc-overline">Categorías</span>
           {categoryActions}
         </div>
-        <dl className="vc-detail-facts">
-          <div><dt>Resolución</dt><dd>{resolution(file)}</dd></div>
-          <div><dt>Duración</dt><dd>{formatDuration(file.durationSeconds)}</dd></div>
-          <div><dt>Tamaño</dt><dd>{formatBytes(file.sizeBytes)}</dd></div>
-          <div><dt>Formato</dt><dd>{[file.extension.toUpperCase(), file.videoCodec, file.audioCodec].filter(Boolean).join(" · ")}</dd></div>
-          <div><dt>Carpeta</dt><dd>{file.folderSizeBytes != null ? formatBytes(file.folderSizeBytes) : "-"}</dd></div>
-          <div><dt>Indexado</dt><dd>{dateLabel(file.lastIndexedAt, locale)}</dd></div>
-        </dl>
+        {detailFacts}
         {companionStatus}
         {duplicatesSection}
         <details className="vc-detail-more">
@@ -1140,7 +1249,9 @@ export function FileDetail({
           {detailGrid}
           {jsonBlock}
         </details>
-        <p className="vc-detail-keys"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>Esc</kbd> cerrar</p>
+        <p className="vc-detail-keys">
+          <kbd>←</kbd> <kbd>→</kbd> navegar · {onChangeView ? <><kbd>F</kbd> pantalla completa · </> : null}<kbd>Esc</kbd> cerrar
+        </p>
         {overlays}
       </aside>
     );
