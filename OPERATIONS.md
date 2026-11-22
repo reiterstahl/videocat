@@ -17,6 +17,11 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.51
+
+- **Videos can open full screen**: the catalog's new **Open in** control (next to grid/list) chooses between the side panel and a full-screen view that shows the video large with all its captures, and every detail at once (location, technical data, duplicates). Each browser remembers its choice, so a phone and a PC can differ. On an open video, the full-screen button or `F` switches between both without changing the choice. In the full-screen view a remote video plays in place, without taking the browser's fullscreen; its fullscreen button still does.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.50
 
 - Security: zod 4.6.7 in the server (and the shared package) for [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), high severity: validating an oversized collection could exhaust the server's memory. Zod 3 has no patched release; the schemas VideoCAT uses behave the same in 4. No migration and no new settings.

@@ -77,7 +77,7 @@ flowchart LR
 ## Características
 
 ### Catálogo
-- Cuadrícula o lista, búsqueda con `Ctrl K` tolerante a acentos, chips de filtros activos y panel de detalle; el conteo de resultados muestra el tamaño total de todas las coincidencias.
+- Cuadrícula o lista, búsqueda con `Ctrl K` tolerante a acentos, chips de filtros activos y un detalle del video que se abre en un panel lateral o a pantalla completa (**Abrir en**, o `F` con el video abierto); el conteo de resultados muestra el tamaño total de todas las coincidencias.
 - Filtros por disco, extensión, carpeta (árbol con carga bajo demanda), etiquetas, categorías y duplicados.
 - Tira de discos con capacidad y uso, y **Mostrar conectados** para trabajar solo con lo que está enchufado; los discos conectados aparecen siempre primero.
 - Discos identificados por `.videocat-disk.json`: se reconocen aunque Windows cambie la letra de la unidad.
@@ -223,7 +223,7 @@ Edita `.env` y reemplaza todos los valores `replace-with-…`. Genera cada secre
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.50`) y `latest`.
+Imágenes oficiales (amd64 y arm64): `reiterstahl/videocat-server` y `reiterstahl/videocat-web`, con etiqueta de versión (`0.2.51`) y `latest`.
 </details>
 
 ### 2. Companion en Windows
@@ -396,7 +396,7 @@ Las principales de `.env` (la lista completa, con comentarios, está en [`.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Confianza en el reverse proxy; mejor limitarla a sus CIDR. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Dónde publica el contenedor `web` (por defecto `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN y fragmentos de nombre de carpeta protegidos (por ejemplo `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.50` o `latest`). |
+| `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.51` o `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Remux opcional y límites de la reproducción remota. |
 | `STORAGE_SECRET_KEY` | Cifra las secret keys de los buckets S3 (64 caracteres hexadecimales). Si cambia, hay que volver a escribir la secret key de cada bucket. |
 | `S3_SCAN_INTERVAL_HOURS`, `S3_SCAN_CONCURRENCY` | Cada cuánto el escáner vuelve a leer cada bucket (24) y cuántos videos lee a la vez (2). |
@@ -575,9 +575,9 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Imágenes Docker** (amd64 y arm64; actualiza también `VIDEOCAT_VERSION` en `docker-compose.hub.yml` y en los instaladores):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.50 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.50 -t reiterstahl/videocat-scanner:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.50 -t reiterstahl/videocat-web:0.2.50 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.51 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.51 -t reiterstahl/videocat-scanner:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.51 -t reiterstahl/videocat-web:0.2.51 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Después adjunta los documentos VEX de [`docker/vex`](docker/vex) a las imágenes nuevas del servidor y del escáner, para que Docker Scout muestre las vulnerabilidades que declaran como no aplicables a VideoCAT, con su motivo (necesita el plugin `docker scout`):
@@ -585,7 +585,7 @@ Después adjunta los documentos VEX de [`docker/vex`](docker/vex) a las imágene
 ```bash
 for image in videocat-server videocat-scanner; do
   for vex in docker/vex/*.vex.json; do
-    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "reiterstahl/$image:0.2.50"
+    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "reiterstahl/$image:0.2.51"
   done
 done
 ```

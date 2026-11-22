@@ -77,7 +77,7 @@ flowchart LR
 ## Features
 
 ### Catalog
-- Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a detail panel; the result count shows the total size of every match.
+- Grid or list view, accent-insensitive search with `Ctrl K`, active filter chips and a video detail that opens in a side panel or full screen (**Open in**, or `F` on an open video); the result count shows the total size of every match.
 - Filters by drive, extension, folder (lazy-loaded tree), tags, categories and duplicates.
 - Drive strip with capacity and usage, plus **Show connected** to work only with what is plugged in; connected drives are always listed first.
 - Drives are identified by `.videocat-disk.json`, so they are recognized even when Windows changes the drive letter.
@@ -223,7 +223,7 @@ Edit `.env` and replace every `replace-with-…` value. Generate each secret wit
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.50`) and `latest`.
+Official images (amd64 and arm64): `reiterstahl/videocat-server` and `reiterstahl/videocat-web`, tagged by version (`0.2.51`) and `latest`.
 </details>
 
 ### 2. Windows Companion
@@ -398,7 +398,7 @@ The main `.env` settings (the full, commented list is in [`.env.example`](.env.e
 | `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Trust in the reverse proxy; preferably limited to its CIDRs. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Where the `web` container is published (default `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN and folder-name fragments to protect (for example `Private,Protected`). |
-| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.50` or `latest`). |
+| `VIDEOCAT_VERSION` | Image version used by `docker-compose.hub.yml` (`0.2.51` or `latest`). |
 | `REMOTE_REMUX_ENABLED`, `REMOTE_STREAM_*` | Optional remux and remote playback limits. |
 | `STORAGE_SECRET_KEY` | Encrypts the secret keys of S3 buckets (64 hexadecimal characters). If it changes, each bucket's secret key has to be entered again. |
 | `S3_SCAN_INTERVAL_HOURS`, `S3_SCAN_CONCURRENCY` | How often the scanner rereads each bucket (24) and how many videos it reads at a time (2). |
@@ -577,9 +577,9 @@ powershell -ExecutionPolicy Bypass -File .\package-companion.ps1
 **Docker images** (amd64 and arm64; also update `VIDEOCAT_VERSION` in `docker-compose.hub.yml` and the installers):
 
 ```bash
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.50 -t reiterstahl/videocat-server:latest --push .
-docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.50 -t reiterstahl/videocat-scanner:latest --push .
-docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.50 -t reiterstahl/videocat-web:0.2.50 -t reiterstahl/videocat-web:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile -t reiterstahl/videocat-server:0.2.51 -t reiterstahl/videocat-server:latest --push .
+docker buildx build --pull --no-cache-filter base --platform linux/amd64,linux/arm64 -f apps/server/Dockerfile --target scanner -t reiterstahl/videocat-scanner:0.2.51 -t reiterstahl/videocat-scanner:latest --push .
+docker buildx build --pull --no-cache-filter runtime --platform linux/amd64,linux/arm64 -f apps/web/Dockerfile --build-arg VITE_VIDEOCAT_VERSION=0.2.51 -t reiterstahl/videocat-web:0.2.51 -t reiterstahl/videocat-web:latest --push .
 ```
 
 Then attach the VEX documents in [`docker/vex`](docker/vex) to the new server and scanner images, so Docker Scout shows the vulnerabilities they declare as not affecting VideoCAT, with their reason (needs the `docker scout` plugin):
@@ -587,7 +587,7 @@ Then attach the VEX documents in [`docker/vex`](docker/vex) to the new server an
 ```bash
 for image in videocat-server videocat-scanner; do
   for vex in docker/vex/*.vex.json; do
-    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "reiterstahl/$image:0.2.50"
+    docker scout attestation add --file "$vex" --predicate-type https://openvex.dev/ns/v0.2.0 "reiterstahl/$image:0.2.51"
   done
 done
 ```
