@@ -1,0 +1,152 @@
+name: Release Android app
+
+# Builds the Android app (apps/android) signed with the release key: an APK for GitHub Releases
+# (installable directly or kept up to date with Obtainium) and an AAB for Google Play, which is
+# uploaded by hand from the run's artifacts. Runs only by hand. With "publish" it creates the
+# release android-vX.Y.Z when that tag does not exist yet. Android releases are never marked as
+# the repository's latest release: README links and Companions look for the Companion there.
+#
+# The key comes from four repository secrets (ANDROID_APP_PLAN.es.md explains how to create it):
+#   ANDROID_KEYSTORE_BASE64     the keystore file, base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD   its password
+#   ANDROID_KEY_ALIAS           the key's alias inside it
+#   ANDROID_KEY_PASSWORD        the key's password
+# Every build must be signed with the same key: Android refuses an update signed with another one.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish android-vX.Y.Z as a GitHub release if that tag does not exist yet"
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the release as a prerelease (a version still being tested)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Java
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Read the version
+        id: version
+        run: |
+          name=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
+          code=$(sed -n 's/^ *versionCode = \([0-9]*\)/\1/p' app/build.gradle.kts)
+          if [ -z "$name" ] || [ -z "$code" ]; then
+            echo "::error::Could not read versionName and versionCode from apps/android/app/build.gradle.kts."
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "VideoCAT Android $name (versionCode $code)"
+
+      - name: Restore the release key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::The release key is missing. Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD as repository secrets (see ANDROID_APP_PLAN.es.md)."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Test, lint and build the signed APK and AAB
+        env:
+          VIDEOCAT_ANDROID_KEYSTORE: ${{ runner.temp }}/release.jks
+          VIDEOCAT_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VIDEOCAT_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          VIDEOCAT_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon testDebugUnitTest lintRelease assembleRelease bundleRelease
+
+      - name: Check the signature and name the files
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          rm -f "$RUNNER_TEMP/release.jks"
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/VideoCAT-Android-$VERSION.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "dist/VideoCAT-Android-$VERSION.aab"
+          "$apksigner" verify --print-certs "dist/VideoCAT-Android-$VERSION.apk" | tee dist/signature.txt
+          grep -q "SHA-256 digest" dist/signature.txt
+          cd dist
+          sha256sum "VideoCAT-Android-$VERSION.apk" > "VideoCAT-Android-$VERSION.apk.sha256"
+          {
+            echo "### VideoCAT Android $VERSION"
+            echo
+            echo "Signing certificate (it must be the same in every release):"
+            echo
+            echo '```'
+            grep "SHA-256 digest" signature.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            apps/android/dist/*.apk
+            apps/android/dist/*.aab
+
+      - name: Upload APK and AAB
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: videocat-android-${{ steps.version.outputs.name }}
+          path: |
+            apps/android/dist/*.apk
+            apps/android/dist/*.apk.sha256
+            apps/android/dist/*.aab
+          retention-days: 30
+
+      - name: Publish the GitHub release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.name }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          tag="android-v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::notice::$tag already exists; raise versionName and versionCode to publish a new one."
+            exit 0
+          fi
+          flags=(--latest=false)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          cat > notes.md <<EOF
+          VideoCAT for Android $VERSION. It opens your own VideoCAT server: install the APK, type the address you use in the browser and sign in.
+
+          - **VideoCAT-Android-$VERSION.apk**: install it directly, or follow this repository with [Obtainium](https://github.com/ImranR98/Obtainium) (filter tags with \`android-v\`) to get updates.
+          - Signing certificate SHA-256: \`$(grep -m1 "SHA-256 digest" dist/signature.txt | sed 's/.*: //')\`
+          EOF
+          gh release create "$tag" --target "$GITHUB_SHA" --title "VideoCAT Android $VERSION" --notes-file notes.md "${flags[@]}" \
+            "dist/VideoCAT-Android-$VERSION.apk" "dist/VideoCAT-Android-$VERSION.apk.sha256"

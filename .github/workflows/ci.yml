@@ -223,6 +223,35 @@ jobs:
           if (Get-ScheduledTask -TaskPath '\VideoCAT\' -TaskName 'Salud de discos' -ErrorAction SilentlyContinue) { throw 'The task is still there' }
           if (Test-Path (Join-Path $env:ProgramFiles 'VideoCAT SMART')) { throw 'Program Files\VideoCAT SMART is still there' }
 
+  android:
+    # The Android app (apps/android): unit tests, lint and an unsigned release build, so R8 and
+    # resource shrinking are checked on every change. Signed builds come from release-android.yml.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Java
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: Test, lint and build
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease
+      - name: Upload lint report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-reports
+          path: |
+            apps/android/app/build/reports/
+          retention-days: 7
+
   docker:
     # Build the images without pushing, so dependency or Dockerfile changes cannot break a release.
     runs-on: ubuntu-latest
