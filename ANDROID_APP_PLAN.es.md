@@ -24,10 +24,11 @@ La app inyecta `window.VideoCatAndroid` antes de que corra la página (`@Javascr
 | Método | Devuelve | Desde |
 | --- | --- | --- |
 | `version()` | Versión del puente (entero ≥ 1) | Versión 1 |
-| `capabilities()` | Lista JSON de lo que la app hace nativo: `"play"` desde la app 0.2.0; `"cast"` más adelante. | Versión 1 |
+| `capabilities()` | Lista JSON de lo que la app hace nativo: `"play"` desde la app 0.2.0, `"settings"` desde la 0.3.0; `"cast"` más adelante. | Versión 1 |
 | `themeColor(css)` | Uso interno: un script de la propia app le pasa el `theme-color` de la página para teñir las barras del sistema. | Versión 1 |
 | `play(json)` | Reproduce en el reproductor nativo una sesión de streaming que abrió la página: `{url, title, subtitle, position, shuffle, canNext, canRandom}` (posición en segundos). Solo acepta `/api/streams/<id>/content` del servidor de la app, sin parámetros. | Versión 2 |
 | `stop()` | Cierra el reproductor nativo cuando la página detiene el video. | Versión 2 |
+| `openSettings()` | Abre los ajustes de la app (bloqueo con huella, servidor). La web lo ofrece en Perfil cuando la app anuncia `"settings"`. | Versión 3 |
 
 Lo que la app hace de forma nativa lo anuncia en `capabilities()`, y la web solo le pasa lo que la app declara. Sin el puente, o con un puente roto, la página se comporta como en un navegador. La web lo lee en `apps/web/src/lib/android-app.ts`, y la app lo define en `apps/android/app/src/main/kotlin/app/videocat/android/WebBridge.kt`.
 
@@ -86,8 +87,16 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
    - **Segundo plano.** Sigue con la pantalla apagada, con notificación y controles en la pantalla de bloqueo (`PlaybackService`, servicio en primer plano de tipo `mediaPlayback`).
    - **La sesión de siempre.** El reproductor pide el video con la cookie del WebView, y solo al servidor de la app.
    - **El MP4 temporal, solo si hace falta.** Dentro de la app no aparece su botón: el teléfono prueba el original y, si no puede con el formato, la página pide el MP4 temporal sola.
-   - **Pendiente.** Los audios AC3/DTS, frecuentes en MKV, dependen del teléfono: muchos no los traen y el video sale sin sonido. La extensión FFmpeg de Media3 lo resolvería, a costa de compilar código nativo.
+   - **Audio AC3, E-AC3, DTS y TrueHD** (app 0.3.0). Primero los decodificadores del teléfono; para lo que no trae entra FFmpeg, con el decodificador ya compilado que publica Jellyfin (`org.jellyfin.media3:media3-ffmpeg-decoder`, GPL v3, compatible con la AGPL; ver NOTICE). Está compilado contra Media3 1.9.0; antes de adoptarlo se comprobó que cada método y campo de Media3 que usa existe igual en la 1.11. El renderer se agrega por nombre en `PlayerHolder` (`WithFfmpegAudio`): por reflexión, como lo hace Media3, R8 lo borraba del build de release. Suma unos 5 MB al APK (ARM y x86_64).
 4. **Chromecast nativo.**
+
+**Bloqueo con huella** (app 0.3.0, fuera de las fases):
+- En **Ajustes de la app**, que se abren desde Perfil en la web o manteniendo pulsado el ícono: «Pedir mi huella para abrir VideoCAT». Acepta también el rostro, o el PIN, patrón o contraseña del teléfono.
+- Activarlo o desactivarlo pide la huella primero.
+- **Cuándo pide:** al abrir la app y al volver después de salir, enseguida, al minuto o a los 5 minutos. No la pide al girar el teléfono ni con el video en imagen en imagen.
+- Con el bloqueo activado, la vista de apps recientes no muestra el catálogo (Android 13+).
+- Si el teléfono se queda sin bloqueo de pantalla, la app lo desactiva y avisa.
+- Es un bloqueo de privacidad: la sesión sigue en el teléfono como antes.
 5. **Google Play.**
    - Ficha, política de privacidad y formulario de seguridad de datos. La app no recopila nada: todo va al servidor de cada persona.
    - Una cuenta personal nueva necesita una prueba cerrada antes de publicar (hoy, 12 testers durante 14 días).

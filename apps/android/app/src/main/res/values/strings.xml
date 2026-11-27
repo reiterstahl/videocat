@@ -34,4 +34,24 @@
     <string name="player_gave_up">The video could not continue. Close the player and try again.</string>
     <string name="player_seek_back" translatable="false">−10 s</string>
     <string name="player_seek_forward" translatable="false">+10 s</string>
+
+    <string name="settings_title">App settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_lock">Ask for my fingerprint to open VideoCAT</string>
+    <string name="settings_lock_detail">Or your face, or the phone\'s PIN, pattern or password. It keeps whoever picks up your unlocked phone out of your catalog.</string>
+    <string name="settings_lock_unavailable">Set up a screen lock on the phone (Settings › Security) to use this.</string>
+    <string name="settings_lock_confirm_on">Turn on the lock</string>
+    <string name="settings_lock_confirm_off">Turn off the lock</string>
+    <string name="settings_delay">Lock again after leaving the app</string>
+    <string name="settings_delay_now">Right away</string>
+    <string name="settings_delay_1">After 1 minute</string>
+    <string name="settings_delay_5">After 5 minutes</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_version">VideoCAT for Android %1$s</string>
+    <string name="shortcut_settings">App settings</string>
+    <string name="lock_title">VideoCAT is locked</string>
+    <string name="lock_detail">Confirm it is you to see your catalog.</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_prompt_title">Unlock VideoCAT</string>
+    <string name="lock_no_screen_lock">The phone no longer has a screen lock, so the app lock was turned off.</string>
 </resources>

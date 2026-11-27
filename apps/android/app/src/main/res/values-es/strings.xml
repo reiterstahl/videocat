@@ -30,4 +30,24 @@
     <string name="player_loading_next">Cargando el siguiente video…</string>
     <string name="player_reconnecting">Reconectando…</string>
     <string name="player_gave_up">El video no pudo continuar. Cierra el reproductor y vuelve a intentarlo.</string>
+
+    <string name="settings_title">Ajustes de la app</string>
+    <string name="settings_back">Volver</string>
+    <string name="settings_lock">Pedir mi huella para abrir VideoCAT</string>
+    <string name="settings_lock_detail">O tu rostro, o el PIN, patrón o contraseña del teléfono. Así nadie que tome tu teléfono desbloqueado entra a tu catálogo.</string>
+    <string name="settings_lock_unavailable">Configura un bloqueo de pantalla en el teléfono (Ajustes › Seguridad) para usarlo.</string>
+    <string name="settings_lock_confirm_on">Activar el bloqueo</string>
+    <string name="settings_lock_confirm_off">Desactivar el bloqueo</string>
+    <string name="settings_delay">Volver a bloquear al salir de la app</string>
+    <string name="settings_delay_now">Enseguida</string>
+    <string name="settings_delay_1">Después de 1 minuto</string>
+    <string name="settings_delay_5">Después de 5 minutos</string>
+    <string name="settings_server">Servidor</string>
+    <string name="settings_version">VideoCAT para Android %1$s</string>
+    <string name="shortcut_settings">Ajustes de la app</string>
+    <string name="lock_title">VideoCAT está bloqueado</string>
+    <string name="lock_detail">Confirma que eres tú para ver tu catálogo.</string>
+    <string name="lock_unlock">Desbloquear</string>
+    <string name="lock_prompt_title">Desbloquear VideoCAT</string>
+    <string name="lock_no_screen_lock">El teléfono ya no tiene bloqueo de pantalla, así que se desactivó el bloqueo de la app.</string>
 </resources>

@@ -47,6 +47,10 @@
         </service>
 
         <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ConnectActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

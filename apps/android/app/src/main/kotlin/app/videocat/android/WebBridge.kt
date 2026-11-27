@@ -13,7 +13,8 @@ import android.webkit.JavascriptInterface
 class WebBridge(
     private val onThemeColor: (Int) -> Unit,
     private val onPlay: (String) -> Unit,
-    private val onStop: () -> Unit
+    private val onStop: () -> Unit,
+    private val onOpenSettings: () -> Unit
 ) {
     @JavascriptInterface
     fun version(): Int = VERSION
@@ -37,6 +38,12 @@ class WebBridge(
         onStop()
     }
 
+    /** Opens the app's own settings (the fingerprint lock, the server). */
+    @JavascriptInterface
+    fun openSettings() {
+        onOpenSettings()
+    }
+
     /** The app's own script reports the page's theme-color here to tint the system bars. */
     @JavascriptInterface
     fun themeColor(css: String) {
@@ -44,8 +51,8 @@ class WebBridge(
     }
 
     companion object {
-        const val VERSION = 2
-        const val CAPABILITIES = "[\"play\"]"
+        const val VERSION = 3
+        const val CAPABILITIES = "[\"play\",\"settings\"]"
         const val NAME = "VideoCatAndroid"
 
         /**

@@ -9,3 +9,12 @@ project license and preserve required copyright and attribution notices.
 Project author profile:
 https://github.com/reiterstahl
 
+
+Third-party components in the Android app (apps/android)
+
+The Android app includes the FFmpeg audio decoder for AndroidX Media3 as built
+and published by the Jellyfin project (org.jellyfin.media3:media3-ffmpeg-decoder),
+under the GNU General Public License v3.0, with FFmpeg under its own license.
+Source: https://github.com/jellyfin/jellyfin-androidx-media and https://ffmpeg.org.
+The GPL v3 and the AGPL v3 that covers VideoCAT allow combining both (section 13
+of each license).

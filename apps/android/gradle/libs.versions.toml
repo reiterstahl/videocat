@@ -4,6 +4,10 @@ activity = "1.13.0"
 core = "1.18.0"
 splashscreen = "1.2.0"
 media3 = "1.11.1"
+# Prebuilt FFmpeg audio decoder (AC3, E-AC3, DTS, TrueHD...), built against Media3 1.9.0: every
+# Media3 API it calls exists unchanged in 1.11 (checked member by member before adopting it).
+jellyfinFfmpeg = "1.9.0+1"
+biometric = "1.1.0"
 junit = "4.13.2"
 json = "20260814"
 
@@ -14,6 +18,8 @@ androidx-splashscreen = { module = "androidx.core:core-splashscreen", version.re
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+media3-ffmpeg = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "jellyfinFfmpeg" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 junit = { module = "junit:junit", version.ref = "junit" }
 json = { module = "org.json:json", version.ref = "json" }
 

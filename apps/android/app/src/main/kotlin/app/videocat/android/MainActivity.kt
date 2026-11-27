@@ -16,6 +16,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -32,7 +33,6 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.net.toUri
@@ -42,13 +42,14 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 
 /**
  * The person's VideoCAT in a WebView: the web is the app, served by their own server, so it is
  * always the version that server runs. Around it, only what a WebView does not do by itself.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var origin: String
     private lateinit var root: FrameLayout
     private lateinit var webHolder: FrameLayout
@@ -57,6 +58,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var errorDetail: TextView
     private var webView: WebView? = null
     private lateinit var nativePlayer: NativePlayer
+    private lateinit var lockPanel: View
+    private var locked = false
+    private var prompting = false
 
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -92,6 +96,8 @@ class MainActivity : ComponentActivity() {
         errorDetail = findViewById(R.id.error_detail)
         findViewById<Button>(R.id.error_retry).setOnClickListener { retry() }
         findViewById<Button>(R.id.error_change_server).setOnClickListener { startActivity(ConnectActivity.intent(this)) }
+        lockPanel = findViewById(R.id.lock_panel)
+        findViewById<Button>(R.id.lock_unlock).setOnClickListener { promptUnlock() }
 
         nativePlayer = NativePlayer(this, root, ::sendPlayerEvent) { open ->
             hideSystemBars(open)
@@ -132,6 +138,56 @@ class MainActivity : ComponentActivity() {
         CookieManager.getInstance().flush()
     }
 
+    override fun onStart() {
+        super.onStart()
+        val now = SystemClock.elapsedRealtime()
+        if (AppLock.shouldLock(AppLock.isEnabled(this), !unlockedInThisProcess, backgroundSince, now, AppLock.delaySeconds(this))) {
+            lock()
+        }
+        backgroundSince = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // With the lock on, the recent apps screen shows no picture of the catalog.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!AppLock.isEnabled(this))
+        if (locked && !prompting) promptUnlock()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // A rotation or the small video window are not leaving the app.
+        if (!isChangingConfigurations && !isInPictureInPictureMode) backgroundSince = SystemClock.elapsedRealtime()
+    }
+
+    private fun lock() {
+        locked = true
+        keepSplash = false
+        lockPanel.visibility = View.VISIBLE
+    }
+
+    private fun unlock() {
+        locked = false
+        unlockedInThisProcess = true
+        lockPanel.visibility = View.GONE
+    }
+
+    private fun promptUnlock() {
+        if (!locked || prompting) return
+        // The phone's screen lock was removed: there is nothing left to confirm with.
+        if (!AppLock.canAuthenticate(this)) {
+            AppLock.setEnabled(this, false)
+            Toast.makeText(this, R.string.lock_no_screen_lock, Toast.LENGTH_LONG).show()
+            unlock()
+            return
+        }
+        prompting = true
+        AppLock.authenticate(this, getString(R.string.lock_prompt_title), null) { confirmed, _ ->
+            prompting = false
+            if (confirmed) unlock()
+        }
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
         if (::nativePlayer.isInitialized) nativePlayer.close(notifyPage = false)
@@ -159,7 +215,8 @@ class MainActivity : ComponentActivity() {
         val bridge = WebBridge(
             onThemeColor = { color -> runOnUiThread { applyBarColor(color) } },
             onPlay = { json -> runOnUiThread { playFromPage(json) } },
-            onStop = { runOnUiThread { nativePlayer.close(notifyPage = false) } }
+            onStop = { runOnUiThread { nativePlayer.close(notifyPage = false) } },
+            onOpenSettings = { runOnUiThread { startActivity(SettingsActivity.intent(this)) } }
         )
         web.addJavascriptInterface(bridge, WebBridge.NAME)
         web.webViewClient = PageClient()
@@ -200,6 +257,9 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
             if (isServer(url)) errorPanel.visibility = View.GONE
+            // A new page load (a reload, an update of the web) drops the page that drove the
+            // player: nobody would answer its Next or close its stream session.
+            if (nativePlayer.isOpen) nativePlayer.close(notifyPage = false)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
@@ -295,6 +355,7 @@ class MainActivity : ComponentActivity() {
     // Back: out of full screen, then whatever the page has open on top, then the previous section.
     private val backCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
+            if (locked) return leaveApp()
             if (fullscreenView != null) return leaveFullscreen()
             if (nativePlayer.isOpen) return nativePlayer.close(notifyPage = true)
             val web = webView ?: return leaveApp()
@@ -410,9 +471,19 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, getString(R.string.download_started, name), Toast.LENGTH_SHORT).show()
     }
 
-    // Long-pressing the icon offers "Change server".
+    // Long-pressing the icon offers the app's settings and "Change server".
     private fun publishShortcuts() {
         val manager = getSystemService(ShortcutManager::class.java) ?: return
+        val settings = ShortcutInfo.Builder(this, "settings")
+            .setShortLabel(getString(R.string.shortcut_settings))
+            .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntents(
+                arrayOf(
+                    Intent(Intent.ACTION_MAIN, null, this, MainActivity::class.java),
+                    Intent(Intent.ACTION_VIEW, null, this, SettingsActivity::class.java)
+                )
+            )
+            .build()
         val shortcut = ShortcutInfo.Builder(this, "change-server")
             .setShortLabel(getString(R.string.shortcut_change_server))
             .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
@@ -425,7 +496,7 @@ class MainActivity : ComponentActivity() {
             .build()
         try {
             @Suppress("ReportShortcutUsage") // A single fixed shortcut: there is no usage to rank.
-        manager.dynamicShortcuts = listOf(shortcut)
+        manager.dynamicShortcuts = listOf(settings, shortcut)
         } catch (_: IllegalStateException) {
             // Rate-limited by the launcher; the next start publishes it.
         }
@@ -434,5 +505,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val STATE_WEB = "web"
         private const val SPLASH_MAX_MS = 2_500L
+
+        // For the lock, per process: a new process (a fresh start) always asks.
+        private var unlockedInThisProcess = false
+        private var backgroundSince: Long? = null
     }
 }

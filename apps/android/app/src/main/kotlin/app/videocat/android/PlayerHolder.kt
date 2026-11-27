@@ -1,6 +1,7 @@
 package app.videocat.android
 
 import android.content.Context
+import android.os.Handler
 import android.webkit.CookieManager
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -10,7 +11,14 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
 /**
@@ -43,7 +51,8 @@ object PlayerHolder {
             val cookie = if (ServerAddress.origin(url) == serverOrigin) CookieManager.getInstance().getCookie(url) else null
             if (cookie.isNullOrEmpty()) spec else spec.withAdditionalHeaders(mapOf("Cookie" to cookie))
         }
-        val exo = ExoPlayer.Builder(context.applicationContext)
+        val renderers = WithFfmpegAudio(context.applicationContext)
+        val exo = ExoPlayer.Builder(context.applicationContext, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(withSession))
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
@@ -54,6 +63,8 @@ object PlayerHolder {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+        // Tracks, decoders and errors in logcat (tag EventLogger), for debugging only.
+        if (BuildConfig.DEBUG) exo.addAnalyticsListener(EventLogger())
         return AdvancingPlayer(exo).also { player = it }
     }
 
@@ -102,3 +113,26 @@ class AdvancingPlayer(player: ExoPlayer) : ForwardingPlayer(player) {
         PlayerHolder.onShuffleChanged?.invoke(shuffleModeEnabled)
     }
 }
+
+/**
+ * The phone's own decoders first, then FFmpeg for the audio it lacks: usually the AC3, E-AC3 and
+ * DTS of MKV files, which would otherwise play without sound. Added here by name rather than
+ * through Media3's reflection, which R8 cannot see and strips from the release build.
+ */
+@OptIn(UnstableApi::class)
+private class WithFfmpegAudio(context: Context) : DefaultRenderersFactory(context) {
+    override fun buildAudioRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        audioSink: AudioSink,
+        eventHandler: Handler,
+        eventListener: AudioRendererEventListener,
+        out: ArrayList<Renderer>
+    ) {
+        super.buildAudioRenderers(context, EXTENSION_RENDERER_MODE_OFF, mediaCodecSelector, enableDecoderFallback, audioSink, eventHandler, eventListener, out)
+        out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink))
+    }
+}
+
