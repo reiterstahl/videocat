@@ -5,6 +5,7 @@ import { env } from "./env.js";
 import { prisma } from "./prisma.js";
 import { clearRateLimit, rateLimit } from "./security.js";
 import { constantTimeHashEqual, hashAgentSecret } from "./agent-credentials.js";
+import { isSessionRevoked, revokeSession } from "./session-revocation.js";
 
 const cookieName = "videocat_session";
 const protectedFolderCookieName = "videocat_protected_folder";
@@ -47,14 +48,33 @@ export function isValidAdminLogin(username: string, password: string): boolean {
   return constantTimeEqual(username, env.ADMIN_USER) && constantTimeEqual(password, env.ADMIN_PASSWORD);
 }
 
+// Ties a session to the admin password it was opened with: changing ADMIN_PASSWORD closes every
+// open session. Derived with JWT_SECRET, so the token does not reveal anything about the password.
+function passwordFingerprint(): string {
+  return crypto.createHmac("sha256", env.JWT_SECRET).update(`${env.ADMIN_USER}\n${env.ADMIN_PASSWORD}`).digest("base64url").slice(0, 22);
+}
+
 export function signSession(username: string): string {
-  return jwt.sign({ role: "admin" }, env.JWT_SECRET, {
+  return jwt.sign({ role: "admin", pw: passwordFingerprint() }, env.JWT_SECRET, {
     subject: username,
     issuer: jwtIssuer,
     audience: webAudience,
     algorithm: "HS256",
-    expiresIn: "12h"
+    expiresIn: "12h",
+    jwtid: crypto.randomUUID()
   });
+}
+
+// Salir: the session's token stops working everywhere, not only in this browser.
+export async function revokeWebSession(request: FastifyRequest): Promise<void> {
+  const token = request.cookies[cookieName];
+  if (!token) return;
+  try {
+    const payload = verifyJwt(token, webAudience);
+    if (payload.jti && payload.exp) await revokeSession(payload.jti, new Date(payload.exp * 1000));
+  } catch {
+    // An invalid or expired token needs nothing more than clearing the cookie.
+  }
 }
 
 export function isValidProtectedFolderPin(pin: string): boolean {
@@ -116,7 +136,9 @@ export function authenticatedWebUsername(request: FastifyRequest): string | null
   if (!token) return null;
   try {
     const payload = verifyJwt(token, webAudience);
-    return payload.role === "admin" && payload.sub === env.ADMIN_USER ? payload.sub : null;
+    if (payload.role !== "admin" || payload.sub !== env.ADMIN_USER) return null;
+    if (payload.pw !== passwordFingerprint() || isSessionRevoked(payload.jti)) return null;
+    return payload.sub;
   } catch {
     return null;
   }

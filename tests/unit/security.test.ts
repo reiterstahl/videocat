@@ -12,9 +12,10 @@ process.env.WEB_ORIGIN ??= "http://localhost:5173";
 process.env.TRUST_PROXY ??= "false";
 process.env.COOKIE_SECURE ??= "false";
 
-const { applySecurityHeaders, clearRateLimit, rateLimit, requireTrustedOrigin } = await import("../../apps/server/src/lib/security.ts");
+const { applySecurityHeaders, clearRateLimit, rateLimit, redactUrlSecrets, requireTrustedOrigin } = await import("../../apps/server/src/lib/security.ts");
 const {
   authenticatedCastStreamUsername,
+  authenticatedWebUsername,
   isValidAdminLogin,
   signCastStreamAccess,
   signSession
@@ -87,6 +88,21 @@ test("admin login and session tokens use the expected credentials and claims", (
     algorithms: ["HS256"]
   });
   assert.equal(typeof payload === "string" ? undefined : payload.role, "admin");
+});
+
+test("a session only works with the admin password it was opened with", () => {
+  const withToken = (token: string) => ({ cookies: { videocat_session: token }, headers: {} }) as never;
+  assert.equal(authenticatedWebUsername(withToken(signSession("admin"))), "admin");
+  const claims = { subject: "admin", issuer: "videocat", audience: "videocat-web", algorithm: "HS256" as const, expiresIn: "1h" as const };
+  // Signed before 0.2.52 (no password fingerprint), or while ADMIN_PASSWORD was another one.
+  assert.equal(authenticatedWebUsername(withToken(jwt.default.sign({ role: "admin" }, process.env.JWT_SECRET!, claims))), null);
+  assert.equal(authenticatedWebUsername(withToken(jwt.default.sign({ role: "admin", pw: "x".repeat(22) }, process.env.JWT_SECRET!, claims))), null);
+});
+
+test("a Chromecast's access token never reaches the server log", () => {
+  assert.equal(redactUrlSecrets("/api/streams/abc/content?castToken=eyJhbGci.x.y"), "/api/streams/abc/content?castToken=[redacted]");
+  assert.equal(redactUrlSecrets("/api/streams/abc/content?a=1&castToken=t&b=2"), "/api/streams/abc/content?a=1&castToken=[redacted]&b=2");
+  assert.equal(redactUrlSecrets("/api/files?q=castToken"), "/api/files?q=castToken");
 });
 
 test("cast tokens are short-lived and scoped to one stream session", () => {

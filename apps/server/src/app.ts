@@ -3,8 +3,10 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { ZodError } from "zod";
-import { env, trustedProxyCidrs } from "./lib/env.js";
-import { applySecurityHeaders, requireTrustedOrigin } from "./lib/security.js";
+import { env } from "./lib/env.js";
+import { trustProxySetting } from "./lib/trust-proxy.js";
+import { loadRevokedSessions } from "./lib/session-revocation.js";
+import { applySecurityHeaders, redactUrlSecrets, requireTrustedOrigin } from "./lib/security.js";
 import { agentRoutes } from "./routes/agent.js";
 import { authRoutes } from "./routes/auth.js";
 import { catalogRoutes } from "./routes/catalog.js";
@@ -20,11 +22,21 @@ import { installCompanionControlTunnel } from "./lib/companion-control-tunnel.js
 
 export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: options.logger ?? true,
+    logger: options.logger === false ? false : {
+      serializers: {
+        req: (request) => ({
+          method: request.method,
+          url: redactUrlSecrets(request.url),
+          host: request.host,
+          remoteAddress: request.ip,
+          remotePort: request.socket?.remotePort
+        })
+      }
+    },
     bodyLimit: 1024 * 1024 * 25,
     connectionTimeout: 10_000,
     requestTimeout: 120_000,
-    trustProxy: trustedProxyCidrs.length > 0 ? trustedProxyCidrs : env.TRUST_PROXY
+    trustProxy: trustProxySetting(env.TRUST_PROXY, env.TRUST_PROXY_CIDRS).trust
   });
 
   await app.register(cors, {
@@ -58,6 +70,12 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
     return reply.code(statusCode).send({ message: typeof errorLike.message === "string" ? errorLike.message : "Request failed" });
   });
+
+  try {
+    await loadRevokedSessions();
+  } catch (error) {
+    app.log.warn({ err: error }, "Closed sessions could not be loaded; sessions closed before this start stay valid until they expire");
+  }
 
   installCompanionControlTunnel(app);
   app.get("/api/health", async () => ({ ok: true }));

@@ -462,6 +462,15 @@ function isProtectedPath(relativePath: string): boolean {
   });
 }
 
+// An audit error inside a protected folder, seen without the PIN: what failed and where (disk,
+// category, code) stays, the path and the message (which often names the file) do not.
+const protectedAuditDetail = "Detalle oculto: carpeta protegida. Desbloquéala con el PIN para verlo.";
+function maskProtectedAuditError<T extends { message: string; absolutePath: string | null; relativePath: string | null }>(error: T, unlocked: boolean): T {
+  if (unlocked) return error;
+  const inProtected = [error.relativePath, error.absolutePath].some((value) => value != null && isProtectedPath(value));
+  return inProtected ? { ...error, message: protectedAuditDetail, absolutePath: null, relativePath: null } : error;
+}
+
 function firstProtectedFolderPath(pathValue: string): string | null {
   const parts = pathSegments(pathValue);
   const index = parts.findIndex((segment) => {
@@ -1487,7 +1496,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         })
       })
     ]);
-    const page = grouped ? errors : errors.slice(0, query.limit);
+    const unlocked = isProtectedFolderUnlocked(request);
+    const page = (grouped ? errors : errors.slice(0, query.limit)).map((error) => maskProtectedAuditError(error, unlocked));
     const rows = page.map((error) => ({
       id: error.id,
       diskName: error.disk.name,
@@ -1557,9 +1567,10 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: maximumAuditExportRows
       });
+      const unlocked = isProtectedFolderUnlocked(request);
       csv = toCsv(
         ["createdAt", "disk", "category", "phase", "code", "message", "relativePath"],
-        errors.map((error) => [error.createdAt, error.disk.name, error.category, error.phase, error.code, error.message, error.relativePath])
+        errors.map((error) => maskProtectedAuditError(error, unlocked)).map((error) => [error.createdAt, error.disk.name, error.category, error.phase, error.code, error.message, error.relativePath])
       );
     } else {
       const actions = await prisma.actionAudit.findMany({

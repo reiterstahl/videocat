@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The backup holds the database, which keeps the S3 secret keys sealed, next to the .env with the key
+# that opens them: only the owner may read any of it.
+umask 077
 
 # Creates a portable backup of PostgreSQL, thumbnails and the local .env file.
 # Usage: ./scripts/backup.sh [destination-directory]
@@ -17,8 +20,8 @@ thumbnail_volume="$(docker volume ls -q --filter "label=com.docker.compose.proje
 test -n "$thumbnail_volume" || { echo "Could not locate the thumbnails_data volume for project ${project}." >&2; exit 1; }
 
 docker compose exec -T postgres pg_dump -U "${POSTGRES_USER:-videocat}" -d "${POSTGRES_DB:-videocat}" | gzip -9 > "$destination/database.sql.gz"
-docker run --rm -v "${thumbnail_volume}:/source:ro" -v "$(cd "$destination" && pwd):/backup" alpine:3.21 \
-  tar -C /source -czf /backup/thumbnails.tar.gz .
+# Written here rather than inside the container, so the file is this user's and follows the umask.
+docker run --rm -v "${thumbnail_volume}:/source:ro" alpine:3.21 tar -C /source -czf - . > "$destination/thumbnails.tar.gz"
 
 if [[ -f .env ]]; then
   cp .env "$destination/.env"

@@ -1,6 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { env } from "./env.js";
 
+// Request lines in the server log: a Chromecast's stream link carries its access token.
+export function redactUrlSecrets(url: string): string {
+  return url.replace(/([?&]castToken=)[^&#]*/gi, "$1[redacted]");
+}
+
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 type RateBucket = {

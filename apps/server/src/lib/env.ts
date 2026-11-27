@@ -66,11 +66,6 @@ env.WEB_ORIGIN = configuredWebOrigins.map((origin) => {
   }
 }).join(",");
 
-export const trustedProxyCidrs = env.TRUST_PROXY_CIDRS
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
-
 function assertProductionSecret(name: string, value: string, minimumLength: number, blockedValues: string[]): void {
   if (process.env.NODE_ENV !== "production") return;
   const normalized = value.trim().toLowerCase();

@@ -67,6 +67,17 @@ test("login sets a secure session cookie and authenticated routes accept it", as
   assert.deepEqual(me.json(), { user: { username: "admin" } });
 });
 
+test("Salir closes the session for good, not only in this browser", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const sessionCookie = await authenticatedCookie();
+  const other = await authenticatedCookie();
+  const logout = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: sessionCookie, origin: "http://localhost:5173" } });
+  assert.equal(logout.statusCode, 200);
+  // The same token, copied before Salir, no longer opens anything; another session stays open.
+  assert.equal((await app.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: sessionCookie } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "GET", url: "/api/files", headers: { cookie: sessionCookie } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: other } })).statusCode, 200);
+});
+
 test("foreign origins are rejected for state-changing web requests", async () => {
   const response = await app.inject({
     method: "POST",
@@ -1739,6 +1750,36 @@ test("a drive keeps the name chosen in the web across scans, until it is reset",
     assert.equal((await prisma.disk.findUniqueOrThrow({ where: { id: registered.id } })).name, "Detectado", "after a reset the detected name comes back");
   } finally {
     await prisma.disk.delete({ where: { id: registered.id } }).catch(() => undefined);
+  }
+});
+
+test("audit errors inside a protected folder hide their path and message until the PIN is entered", { skip: process.env.RUN_DB_TESTS !== "true" }, async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const disk = await prisma.disk.create({ data: { name: `Audit protected ${suffix}`, volumeId: `audit-p-${suffix}` } });
+  try {
+    const cookie = await authenticatedCookie();
+    await prisma.agentError.createMany({
+      data: [
+        { diskId: disk.id, category: "metadata", phase: "ffprobe", code: "E1", message: `ffprobe failed on Private/secret-${suffix}.mp4`, relativePath: `Private/secret-${suffix}.mp4`, absolutePath: `X:/Private/secret-${suffix}.mp4` },
+        { diskId: disk.id, category: "metadata", phase: "ffprobe", code: "E1", message: `ffprobe failed on Familia/open-${suffix}.mp4`, relativePath: `Familia/open-${suffix}.mp4` }
+      ]
+    });
+    const locked = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${disk.id}`, headers: { cookie } });
+    const rows = locked.json().errors as Array<{ code: string; message: string; relativePath: string | null; absolutePath: string | null }>;
+    assert.equal(rows.length, 2);
+    assert.ok(!locked.body.includes("secret-"), "nothing of the protected file shows");
+    assert.ok(rows.some((row) => row.message.startsWith("Detalle oculto") && row.relativePath === null && row.absolutePath === null && row.code === "E1"));
+    assert.ok(rows.some((row) => row.relativePath === `Familia/open-${suffix}.mp4`));
+    const exported = await app.inject({ method: "GET", url: `/api/audit/export?type=errors&diskIds=${disk.id}`, headers: { cookie } });
+    assert.ok(!exported.body.includes("secret-"));
+
+    const unlock = await app.inject({ method: "POST", url: "/api/protected-folder/unlock", headers: { cookie, origin: "http://localhost:5173" }, payload: { pin: "5678" } });
+    assert.equal(unlock.statusCode, 200);
+    const pinCookie = String(unlock.headers["set-cookie"]).split(";", 1)[0];
+    const unlocked = await app.inject({ method: "GET", url: `/api/audit/errors?diskIds=${disk.id}`, headers: { cookie: `${cookie}; ${pinCookie}` } });
+    assert.ok(unlocked.body.includes(`Private/secret-${suffix}.mp4`));
+  } finally {
+    await prisma.disk.delete({ where: { id: disk.id } }).catch(() => undefined);
   }
 });
 

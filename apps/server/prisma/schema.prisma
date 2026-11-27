@@ -266,6 +266,14 @@ model AppMetric {
   updatedAt   DateTime @updatedAt
 }
 
+// Sessions closed with Salir, until their token would have expired (lib/session-revocation.ts).
+model RevokedSession {
+  id        String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model AppSetting {
   key       String   @id
   value     String

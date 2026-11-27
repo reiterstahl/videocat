@@ -11,6 +11,7 @@ import {
   isProtectedFolderUnlocked,
   isValidAdminLogin,
   requireWebAuth,
+  revokeWebSession,
   setProtectedFolderCookie,
   setSessionCookie,
   signProtectedFolderUnlock,
@@ -54,7 +55,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return { user: { username: body.username } };
   });
 
-  app.post("/api/auth/logout", async (_request, reply) => {
+  app.post("/api/auth/logout", async (request, reply) => {
+    await revokeWebSession(request);
     clearSessionCookie(reply);
     return { ok: true };
   });
