@@ -26,4 +26,12 @@
     <string name="download_started">Downloading %1$s</string>
     <string name="download_unsupported">This download cannot be done from the app.</string>
     <string name="no_app_for_link">No app on this phone can open this link.</string>
+
+    <string name="player_close">Close the player</string>
+    <string name="player_pip">Picture in picture</string>
+    <string name="player_loading_next">Loading the next video…</string>
+    <string name="player_reconnecting">Reconnecting…</string>
+    <string name="player_gave_up">The video could not continue. Close the player and try again.</string>
+    <string name="player_seek_back" translatable="false">−10 s</string>
+    <string name="player_seek_forward" translatable="false">+10 s</string>
 </resources>

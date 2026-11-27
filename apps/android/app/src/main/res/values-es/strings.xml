@@ -24,4 +24,10 @@
     <string name="download_started">Descargando %1$s</string>
     <string name="download_unsupported">Esta descarga no se puede hacer desde la app.</string>
     <string name="no_app_for_link">Ninguna app del teléfono puede abrir este enlace.</string>
+
+    <string name="player_close">Cerrar el reproductor</string>
+    <string name="player_pip">Imagen en imagen</string>
+    <string name="player_loading_next">Cargando el siguiente video…</string>
+    <string name="player_reconnecting">Reconectando…</string>
+    <string name="player_gave_up">El video no pudo continuar. Cierra el reproductor y vuelve a intentarlo.</string>
 </resources>

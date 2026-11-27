@@ -10,13 +10,32 @@ import android.webkit.JavascriptInterface
  * Every page the WebView shows can call it, so nothing here may read data or act on the person's
  * behalf without checking where the call comes from.
  */
-class WebBridge(private val onThemeColor: (Int) -> Unit) {
+class WebBridge(
+    private val onThemeColor: (Int) -> Unit,
+    private val onPlay: (String) -> Unit,
+    private val onStop: () -> Unit
+) {
     @JavascriptInterface
     fun version(): Int = VERSION
 
-    /** A JSON list of what the app does natively. Empty until the native player and Cast exist. */
+    /** A JSON list of what the app does natively. */
     @JavascriptInterface
-    fun capabilities(): String = "[]"
+    fun capabilities(): String = CAPABILITIES
+
+    /**
+     * Plays a stream session of the server in the native player (PlaybackRequest has the fields).
+     * Only that server's /api/streams/<id>/content is accepted, from a page of that server.
+     */
+    @JavascriptInterface
+    fun play(json: String) {
+        onPlay(json)
+    }
+
+    /** Closes the native player when the page stops the video itself. */
+    @JavascriptInterface
+    fun stop() {
+        onStop()
+    }
 
     /** The app's own script reports the page's theme-color here to tint the system bars. */
     @JavascriptInterface
@@ -25,7 +44,8 @@ class WebBridge(private val onThemeColor: (Int) -> Unit) {
     }
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
+        const val CAPABILITIES = "[\"play\"]"
         const val NAME = "VideoCatAndroid"
 
         /**

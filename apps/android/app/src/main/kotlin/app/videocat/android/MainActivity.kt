@@ -5,6 +5,7 @@ import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ShortcutInfo
+import android.content.res.Configuration
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.net.Uri
@@ -41,6 +42,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
 
 /**
  * The person's VideoCAT in a WebView: the web is the app, served by their own server, so it is
@@ -54,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var errorPanel: View
     private lateinit var errorDetail: TextView
     private var webView: WebView? = null
+    private lateinit var nativePlayer: NativePlayer
 
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -90,10 +93,15 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.error_retry).setOnClickListener { retry() }
         findViewById<Button>(R.id.error_change_server).setOnClickListener { startActivity(ConnectActivity.intent(this)) }
 
+        nativePlayer = NativePlayer(this, root, ::sendPlayerEvent) { open ->
+            hideSystemBars(open)
+            ViewCompat.requestApplyInsets(root)
+        }
+
         barColor = getColor(R.color.surface)
         applyBarColor(barColor)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            if (fullscreenView != null) {
+            if (fullscreenView != null || nativePlayer.isOpen) {
                 view.setPadding(0, 0, 0, 0)
             } else {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -126,6 +134,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        if (::nativePlayer.isInitialized) nativePlayer.close(notifyPage = false)
         webView?.let { destroyWebView(it) }
         webView = null
         super.onDestroy()
@@ -147,7 +156,12 @@ class MainActivity : ComponentActivity() {
             userAgentString = "$userAgentString VideoCATAndroid/${BuildConfig.VERSION_NAME}"
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false)
-        web.addJavascriptInterface(WebBridge { color -> runOnUiThread { applyBarColor(color) } }, WebBridge.NAME)
+        val bridge = WebBridge(
+            onThemeColor = { color -> runOnUiThread { applyBarColor(color) } },
+            onPlay = { json -> runOnUiThread { playFromPage(json) } },
+            onStop = { runOnUiThread { nativePlayer.close(notifyPage = false) } }
+        )
+        web.addJavascriptInterface(bridge, WebBridge.NAME)
         web.webViewClient = PageClient()
         web.webChromeClient = ChromeClient()
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
@@ -207,6 +221,8 @@ class MainActivity : ComponentActivity() {
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             // The page's process died (out of memory, usually). Start a new WebView instead of closing the app.
             if (view == webView) {
+                // The page that drove the player is gone with it.
+                nativePlayer.close(notifyPage = false)
                 val url = view.url?.takeIf(::isServer) ?: "$origin/"
                 destroyWebView(view)
                 webView = null
@@ -229,10 +245,7 @@ class MainActivity : ComponentActivity() {
             fullscreenCallback = callback
             fullscreenHolder.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             fullscreenHolder.visibility = View.VISIBLE
-            WindowCompat.getInsetsController(window, root).apply {
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                hide(WindowInsetsCompat.Type.systemBars())
-            }
+            hideSystemBars(true)
             ViewCompat.requestApplyInsets(root)
         }
 
@@ -273,7 +286,7 @@ class MainActivity : ComponentActivity() {
         fullscreenHolder.removeView(view)
         fullscreenHolder.visibility = View.GONE
         fullscreenView = null
-        WindowCompat.getInsetsController(window, root).show(WindowInsetsCompat.Type.systemBars())
+        hideSystemBars(nativePlayer.isOpen)
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
         ViewCompat.requestApplyInsets(root)
@@ -283,12 +296,52 @@ class MainActivity : ComponentActivity() {
     private val backCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
             if (fullscreenView != null) return leaveFullscreen()
+            if (nativePlayer.isOpen) return nativePlayer.close(notifyPage = true)
             val web = webView ?: return leaveApp()
             if (errorPanel.isVisible) return leaveApp()
             web.evaluateJavascript(WebBridge.BACK_SCRIPT) { handled ->
                 if (handled == "true") return@evaluateJavascript
                 if (web.canGoBack()) web.goBack() else leaveApp()
             }
+        }
+    }
+
+    // The page hands a stream session to the native player; only from the server's own page.
+    private fun playFromPage(json: String) {
+        if (!isServer(webView?.url)) return
+        val request = PlaybackRequest.parse(json, origin) ?: return
+        nativePlayer.play(request, origin)
+    }
+
+    private fun sendPlayerEvent(event: String) {
+        webView?.evaluateJavascript(PlayerEvent.script(event), null)
+    }
+
+    private fun hideSystemBars(on: Boolean) {
+        WindowCompat.getInsetsController(window, root).apply {
+            if (on) {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    // Leaving the app while a video plays: picture in picture (Android 12+ enters it on its own).
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && nativePlayer.isOpen && nativePlayer.isPlaying) {
+            nativePlayer.enterPictureInPicture()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        nativePlayer.onPictureInPictureChanged(isInPictureInPictureMode)
+        // Closing the small window leaves the activity stopped: the video stops with it.
+        if (!isInPictureInPictureMode && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            nativePlayer.close(notifyPage = true)
         }
     }
 

@@ -24,8 +24,10 @@ La app inyecta `window.VideoCatAndroid` antes de que corra la página (`@Javascr
 | Método | Devuelve | Desde |
 | --- | --- | --- |
 | `version()` | Versión del puente (entero ≥ 1) | Versión 1 |
-| `capabilities()` | Lista JSON de lo que la app hace nativo: `"play"`, `"cast"`. Hoy vacía. | Versión 1 |
+| `capabilities()` | Lista JSON de lo que la app hace nativo: `"play"` desde la app 0.2.0; `"cast"` más adelante. | Versión 1 |
 | `themeColor(css)` | Uso interno: un script de la propia app le pasa el `theme-color` de la página para teñir las barras del sistema. | Versión 1 |
+| `play(json)` | Reproduce en el reproductor nativo una sesión de streaming que abrió la página: `{url, title, subtitle, position, shuffle, canNext, canRandom}` (posición en segundos). Solo acepta `/api/streams/<id>/content` del servidor de la app, sin parámetros. | Versión 2 |
+| `stop()` | Cierra el reproductor nativo cuando la página detiene el video. | Versión 2 |
 
 Lo que la app hace de forma nativa lo anuncia en `capabilities()`, y la web solo le pasa lo que la app declara. Sin el puente, o con un puente roto, la página se comporta como en un navegador. La web lo lee en `apps/web/src/lib/android-app.ts`, y la app lo define en `apps/android/app/src/main/kotlin/app/videocat/android/WebBridge.kt`.
 
@@ -34,6 +36,18 @@ En sentido contrario, la página expone una función a la app:
 | Función de la página | La app la llama | Devuelve |
 | --- | --- | --- |
 | `window.videocatAndroidBack()` | Con el botón atrás de Android | `true` si cerró lo que estaba abierto encima (el detalle de un video, un diálogo, un menú); `false` si no había nada. Con `false`, o con un servidor anterior al 0.2.54 que no la tiene, la app vuelve a la sección anterior o sale. |
+
+El reproductor nativo le avisa a la página con `window.videocatAndroidPlayer(evento)` y espera su respuesta (`play()` con la sesión siguiente, o `stop()`):
+
+| Evento | Cuándo | Qué hace la página |
+| --- | --- | --- |
+| `{"type":"next"}` | Se pulsó siguiente | Abre el siguiente video, o uno al azar con aleatorio activado, y le pasa la sesión nueva |
+| `{"type":"ended"}` | El video terminó | Con aleatorio, otro al azar; si no, detiene |
+| `{"type":"shuffle","enabled":true}` | Se cambió aleatorio en el reproductor | Guarda la preferencia, la misma que usa la web |
+| `{"type":"closed","position":12.3}` | Se cerró el reproductor (X, atrás, al cerrar la ventana de imagen en imagen) | Cierra la sesión de streaming |
+| `{"type":"error","position":12.3,"format":true}` | Falló la reproducción; `format`: el teléfono no pudo leer o decodificar el archivo | Pide el MP4 temporal si sirve; si no, reintenta una vez desde esa posición; si vuelve a fallar, detiene y lo explica |
+
+Cada video avisa una sola vez que terminó o falló, para que la página nunca salte un video de más.
 
 Cualquier página que muestre el WebView puede llamar al puente, también un inicio de sesión de otro sitio delante del servidor. Por eso ningún método puede leer datos ni actuar en nombre de la persona sin comprobar desde qué página lo llaman.
 
@@ -64,7 +78,15 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
    - **Builds.**
      - CI compila, prueba y pasa lint en cada cambio.
      - `release-android.yml` firma el APK y el AAB. Se lanza a mano y, si se pide, publica la release `android-vX.Y.Z` sin marcarla como la última del repositorio.
-3. **Reproductor nativo.** Play, ±10 s, siguiente y aleatorio como en la web, imagen en imagen y segundo plano. Toma la sesión de streaming que ya existe (`/api/streams/:id/content`, con la cookie de la sesión).
+3. **Reproductor nativo.** Hecho en la app 0.2.0; la parte web va en el stack 0.2.54.
+   - **Media3 (ExoPlayer) 1.11.** Lee MKV, MP4, WebM, AVI y TS; el códec depende del teléfono (HEVC casi siempre). Las pistas de audio y subtítulos del archivo se eligen en el reproductor.
+   - **Controles.** ±10 s (también con doble toque a cada lado), barra de tiempo, siguiente o aleatorio como en la web, velocidad, y al cerrar se vuelve al detalle.
+   - **Pantalla.** Gira sola a horizontal o vertical según el video, a pantalla completa sin barras.
+   - **Imagen en imagen.** Entra sola al salir de la app con el video sonando, y también con su botón. Cerrar la ventana detiene el video, y si el video termina en ella, la ventana se va.
+   - **Segundo plano.** Sigue con la pantalla apagada, con notificación y controles en la pantalla de bloqueo (`PlaybackService`, servicio en primer plano de tipo `mediaPlayback`).
+   - **La sesión de siempre.** El reproductor pide el video con la cookie del WebView, y solo al servidor de la app.
+   - **El MP4 temporal, solo si hace falta.** Dentro de la app no aparece su botón: el teléfono prueba el original y, si no puede con el formato, la página pide el MP4 temporal sola.
+   - **Pendiente.** Los audios AC3/DTS, frecuentes en MKV, dependen del teléfono: muchos no los traen y el video sale sin sonido. La extensión FFmpeg de Media3 lo resolvería, a costa de compilar código nativo.
 4. **Chromecast nativo.**
 5. **Google Play.**
    - Ficha, política de privacidad y formulario de seguridad de datos. La app no recopila nada: todo va al servidor de cada persona.
@@ -106,6 +128,8 @@ Hace falta JDK 21 y el SDK de Android (plataforma 36). En `apps/android`:
 El APK de depuración (`app.videocat.android.debug`) se instala al lado del de release y permite inspeccionar el WebView desde `chrome://inspect`. `gradle.properties` limita Gradle a 2 GB y 4 procesos.
 
 ## A tener en cuenta
+
+- **Google Play y el servicio de reproducción.** Un servicio en primer plano de tipo `mediaPlayback` se declara en la ficha de Play (fase 5), con un video corto que lo muestre.
 
 - **El servidor exige HTTPS fuera de `localhost`.** Con `NODE_ENV=production`, `WEB_ORIGIN` con una dirección que no sea localhost obliga a `COOKIE_SECURE=true`, y el navegador no guarda una cookie `Secure` por `http://`. Por eso en la app, como en el navegador, `http://192.168.x.x` abre la página pero no deja iniciar sesión: hace falta un dominio con certificado o un túnel. La app sí acepta `http://`, por si el servidor lo permite algún día.
 - **Inicios de sesión de Google delante del servidor.** Si Cloudflare Access usa Google como proveedor, Google bloquea su inicio de sesión dentro de un WebView. El código de un solo uso por correo sí funciona.
