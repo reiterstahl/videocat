@@ -558,6 +558,7 @@ const en: Record<string, string> = {
   "Carpeta": "Folder",
   "Más información": "More information",
   "Ver en panel": "Show in panel",
+  "No se pudo copiar el código: cópialo a mano.": "The code could not be copied: copy it by hand.",
   "Detalle oculto: carpeta protegida. Desbloquéala con el PIN para verlo.": "Detail hidden: protected folder. Unlock it with the PIN to see it.",
   "Ver en el panel lateral (F)": "Show in the side panel (F)",
   "Ver a pantalla completa (F)": "Show full screen (F)",

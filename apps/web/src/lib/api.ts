@@ -1,3 +1,5 @@
+import { randomId } from "./random-id";
+
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 function apiUrl(path: string): string {
@@ -49,7 +51,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   // A browser retry must not repeat a destructive request. The same key travels
   // with the request; callers that implement their own retry can pass one too.
   if (!headers.has("Idempotency-Key") && !["GET", "HEAD", "OPTIONS"].includes(method)) {
-    headers.set("Idempotency-Key", `videocat:${method}:${crypto.randomUUID()}`);
+    headers.set("Idempotency-Key", `videocat:${method}:${randomId()}`);
   }
 
   let response: Response;

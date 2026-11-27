@@ -6,6 +6,7 @@ import { dateLabel, formatCount } from "../lib/app-helpers";
 import type { AdminDiskOverview, AdminPurgeResponse, DiskHealthSummary, AdminRemoveDiskResponse, CompanionAdminItem, CompanionPairingCode } from "../lib/app-types";
 import type { Disk } from "../types";
 import { StorageBucketsSection } from "../components/StorageBucketsSection";
+import { copyText } from "../lib/clipboard";
 
 type MaintenanceResponse = {
   retentionDays: { agentErrors: number; auditActions: number; scans: number };
@@ -229,8 +230,7 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
               <button
                 className="vc-icon-button"
                 onClick={() => {
-                  void navigator.clipboard.writeText(pairingCode.code);
-                  setMessage("Código de emparejamiento copiado.");
+                  void copyText(pairingCode.code).then((copied) => setMessage(copied ? "Código de emparejamiento copiado." : "No se pudo copiar el código: cópialo a mano."));
                 }}
                 aria-label="Copiar código"
                 title="Copiar código"

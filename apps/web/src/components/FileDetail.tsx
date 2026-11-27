@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { formatBytes, formatDuration, isDamagedMediaMessage, isRiskyMediaMessage } from "@videocat/shared";
 import { DeleteFileConfirmModal } from "./DeleteFileConfirmModal";
+import { canCastHere } from "../lib/android-app";
 import { FullscreenGallery } from "./FullscreenGallery";
 import { Info } from "./Info";
 import { translateText } from "../i18n";
@@ -695,7 +696,7 @@ export function FileDetail({
       >
         <MonitorPlay size={20} />
       </button>
-      {chromecastEnabled ? (
+      {chromecastEnabled && canCastHere() ? (
         <button
           className={`detail-primary-action is-cast ${canStreamRemotely ? "" : "is-unavailable"}`}
           disabled={remoteState === "preparing"}

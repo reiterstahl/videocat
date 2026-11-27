@@ -1,4 +1,5 @@
 import { Copy, FileVideo, FolderOpen } from "lucide-react";
+import { copyText } from "../lib/clipboard";
 
 export function Info({
   label,
@@ -31,7 +32,7 @@ export function Info({
         </button>
       ) : null}
       {copy ? (
-        <button className="copy-button" onClick={() => void navigator.clipboard.writeText(value)} title="Copiar">
+        <button className="copy-button" onClick={() => void copyText(value)} title="Copiar">
           <Copy size={15} />
         </button>
       ) : null}

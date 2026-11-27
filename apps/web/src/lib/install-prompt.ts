@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { androidApp } from "./android-app";
 
 // Chromium browsers fire beforeinstallprompt; everything else installs from the browser UI.
 type BeforeInstallPromptEvent = Event & {
@@ -52,7 +53,8 @@ function computeState(): InstallState {
   if (typeof window === "undefined") return { canPrompt: false, installed: false, secure: false, platform: "other" };
   return {
     canPrompt: deferredPrompt !== null,
-    installed: installedNow || standalone(),
+    // Inside the Android app VideoCAT is already an installed app.
+    installed: installedNow || standalone() || androidApp() !== null,
     secure: window.isSecureContext,
     platform: detectInstallPlatform(navigator.userAgent, navigator.maxTouchPoints)
   };
