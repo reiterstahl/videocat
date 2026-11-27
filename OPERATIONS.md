@@ -17,6 +17,22 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.52
+
+Security release, after a review of the whole system.
+
+- **Sign in again after upgrading**: sessions are now tied to the admin password, so the ones opened with earlier versions close.
+- **Visitors can no longer choose their address.** The sign-in and PIN attempt limits count per address, and the server used to take it from any `X-Forwarded-For`, which a visitor can write themselves. Now only proxies on private networks pass it on: the web container, a reverse proxy on your LAN (Nginx Proxy Manager, Caddy, Traefik) and a Cloudflare tunnel need nothing. **Behind a proxy with a public address** (Cloudflare's orange cloud pointing at your IP, a VPS in front), set `TRUST_PROXY_CIDRS=cloudflare` or that proxy's addresses; otherwise every visitor shares that proxy's address and its attempt limit. The server log says at start which proxies it trusts.
+- **Salir closes the session for good**, not only in that browser (migration 0032, applied on start), and changing `ADMIN_PASSWORD` closes every open session.
+- Audit errors inside a protected folder hide their path and message until the PIN is entered.
+- A Chromecast's stream token no longer appears in the server log; backups made with `scripts/backup.sh` are readable only by their owner; fast-uri 3.1.9 and 4.2.4.
+- GitHub Actions are pinned to their commits.
+
+## Windows Companion 0.2.26 (beta)
+
+- **Only videos are opened, deleted or downloaded.** Opening a file hands it to Windows, which would run a program or a script found on the drive: the web page's open and delete actions, the server's deletion queue and the downloads folder now accept video files only.
+- Includes everything in 0.2.25 (beta), below.
+
 ## Upgrading to 0.2.51
 
 - **Videos can open full screen**: the catalog's new **Open in** control (next to grid/list) chooses between the side panel and a full-screen view that shows the video large with all its captures, and every detail at once (location, technical data, duplicates). Each browser remembers its choice, so a phone and a PC can differ. On an open video, the full-screen button or `F` switches between both without changing the choice. In the full-screen view a remote video plays in place, without taking the browser's fullscreen; its fullscreen button still does.
