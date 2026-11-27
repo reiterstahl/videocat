@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { CheckCircle2, MonitorDown, ShieldAlert } from "lucide-react";
+import { CheckCircle2, MonitorDown, Settings, ShieldAlert } from "lucide-react";
 import { installInstructions, promptInstall, useInstallState } from "../lib/install-prompt";
+import { androidAppSettings } from "../lib/android-app";
 
 // Compact entry point for the sidebar and the mobile "More" sheet; hidden unless the browser can prompt.
 export function InstallAppButton({ collapsed = false, onInstalled }: { collapsed?: boolean; onInstalled?: () => void }) {
@@ -21,6 +22,8 @@ export function InstallAppButton({ collapsed = false, onInstalled }: { collapsed
 
 export function InstallAppPanel() {
   const install = useInstallState();
+  // Inside the Android app: its own settings (the fingerprint lock, the server).
+  const openAppSettings = androidAppSettings();
   const [message, setMessage] = useState("");
 
   async function installNow() {
@@ -38,7 +41,17 @@ export function InstallAppPanel() {
       </div>
       <div className="vc-panel-body vc-install-panel">
         {install.installed ? (
-          <p className="vc-install-status is-ok"><CheckCircle2 size={16} aria-hidden="true" /> Estás usando VideoCAT como app instalada.</p>
+          <>
+            <p className="vc-install-status is-ok"><CheckCircle2 size={16} aria-hidden="true" /> Estás usando VideoCAT como app instalada.</p>
+            {openAppSettings ? (
+              <div className="vc-install-actions">
+                <button className="vc-button" onClick={openAppSettings} type="button">
+                  <Settings size={16} /> Ajustes de la app
+                </button>
+                <span>Pedir la huella al abrir y cambiar de servidor.</span>
+              </div>
+            ) : null}
+          </>
         ) : !install.secure ? (
           <p className="vc-install-status is-warning">
             <ShieldAlert size={16} aria-hidden="true" />

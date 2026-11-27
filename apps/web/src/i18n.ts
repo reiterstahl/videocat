@@ -18,6 +18,8 @@ export function languageLabel(language: Language): string {
 }
 
 const en: Record<string, string> = {
+  "Ajustes de la app": "App settings",
+  "Pedir la huella al abrir y cambiar de servidor.": "Ask for your fingerprint when opening it, and change the server.",
   "Reproduciendo en el reproductor de la app.": "Playing in the app's player.",
   "El teléfono no pudo reproducir este formato de video.": "The phone could not play this video format.",
   "Puedes preparar un MP4 temporal con el botón adicional, si el remux opcional está habilitado en el Companion.": "You can prepare a temporary MP4 with the extra button, if the optional remux is enabled in the Companion.",

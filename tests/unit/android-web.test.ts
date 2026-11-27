@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closeTopLayer, listenToNativePlayer, nativePlayer, readAndroidApp, readNativePlayerEvent } from "../../apps/web/src/lib/android-app.ts";
+import { androidAppSettings, closeTopLayer, listenToNativePlayer, nativePlayer, readAndroidApp, readNativePlayerEvent } from "../../apps/web/src/lib/android-app.ts";
 import { randomId } from "../../apps/web/src/lib/random-id.ts";
 
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -78,4 +78,18 @@ test("native player events are read strictly", () => {
   stop();
   assert.equal(scope.videocatAndroidPlayer, undefined);
   assert.deepEqual(seen, ["ended"]);
+});
+
+test("the app's settings are offered only when the app announces them", () => {
+  let opened = 0;
+  const bridge = (capabilities: string[], extra: object = {}) => ({
+    VideoCatAndroid: { version: () => 3, capabilities: () => JSON.stringify(capabilities), ...extra }
+  });
+  assert.equal(androidAppSettings({}), null);
+  assert.equal(androidAppSettings(bridge(["play"], { openSettings: () => { opened += 1; } })), null);
+  assert.equal(androidAppSettings(bridge(["settings"])), null);
+  const open = androidAppSettings(bridge(["play", "settings"], { openSettings: () => { opened += 1; } }));
+  assert.ok(open);
+  open();
+  assert.equal(opened, 1);
 });

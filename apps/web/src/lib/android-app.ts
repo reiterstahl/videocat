@@ -12,6 +12,8 @@ type AndroidBridge = {
   // Version 2, with "play": the native player.
   play?: (request: string) => void;
   stop?: () => void;
+  // Version 3, with "settings": the app's own settings screen.
+  openSettings?: () => void;
 };
 
 export type AndroidApp = {
@@ -156,5 +158,21 @@ export function listenToNativePlayer(
   scope.videocatAndroidPlayer = listener;
   return () => {
     if (scope.videocatAndroidPlayer === listener) delete scope.videocatAndroidPlayer;
+  };
+}
+
+// Opens the Android app's own settings (fingerprint lock, server) when the app announces them.
+export function androidAppSettings(scope?: { VideoCatAndroid?: unknown }): (() => void) | null {
+  if (scope === undefined && typeof window === "undefined") return null;
+  const target = scope ?? (window as never as { VideoCatAndroid?: unknown });
+  const app = scope === undefined ? androidApp() : readAndroidApp(target);
+  const bridge = target.VideoCatAndroid as Partial<AndroidBridge> | undefined;
+  if (!app?.capabilities.has("settings") || typeof bridge?.openSettings !== "function") return null;
+  return () => {
+    try {
+      bridge.openSettings!();
+    } catch {
+      // The app went away.
+    }
   };
 }

@@ -61,6 +61,31 @@ test("in a browser the page does not take over Back", async ({ page }) => {
   expect(await page.evaluate(() => "videocatAndroidBack" in window)).toBe(false);
 });
 
+test("inside an app with its own settings, Perfil opens them", async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = { settings: 0 };
+    (window as unknown as { settingsState: typeof state }).settingsState = state;
+    (window as unknown as { VideoCatAndroid: object }).VideoCatAndroid = {
+      version: () => 3,
+      capabilities: () => '["play","settings"]',
+      play: () => undefined,
+      stop: () => undefined,
+      openSettings: () => { state.settings += 1; }
+    };
+  });
+  await page.goto("/perfil");
+  const panel = page.locator("section.vc-panel", { has: page.locator("#profile-install-title") });
+  await panel.getByRole("button", { name: "Ajustes de la app" }).click();
+  expect(await page.evaluate(() => (window as unknown as { settingsState: { settings: number } }).settingsState.settings)).toBe(1);
+});
+
+test("an app without settings (0.2.0) shows no settings button", async ({ page }) => {
+  await asAndroidApp(page, ["play"]);
+  await page.goto("/perfil");
+  await expect(page.getByText("Estás usando VideoCAT como app instalada.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ajustes de la app" })).toHaveCount(0);
+});
+
 test("once the app casts natively, the detail offers Chromecast again", async ({ page }) => {
   await asAndroidApp(page, ["cast"]);
   await withChromecastOn(page);
