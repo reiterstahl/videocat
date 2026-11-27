@@ -18,6 +18,8 @@ export function languageLabel(language: Language): string {
 }
 
 const en: Record<string, string> = {
+  "Puedes preparar un MP4 temporal con el botón adicional, si el remux opcional está habilitado en el Companion.": "You can prepare a temporary MP4 with the extra button, if the optional remux is enabled in the Companion.",
+  "Ábrelo localmente o usa un navegador con soporte para este codec.": "Open it locally or use a browser that supports this codec.",
   "Cambiar tema": "Change theme",
   "Idioma": "Language",
   "Apoyar VideoCAT": "Support VideoCAT",
@@ -1122,7 +1124,10 @@ const transferStateTexts = new Set([
 function translateDynamicText(text: string, language: Language): string | null {
   if (language === "es") return null;
 
-  let match = text.match(/^(\d+) de (\d+)$/);
+  let match = text.match(/^Este navegador no declara compatibilidad con (.+)\.$/);
+  if (match) return `This browser does not declare support for ${match[1]}.`;
+
+  match = text.match(/^(\d+) de (\d+)$/);
   if (match) return `${match[1]} of ${match[2]}`;
 
   match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);

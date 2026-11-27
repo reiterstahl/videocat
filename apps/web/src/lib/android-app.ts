@@ -48,3 +48,20 @@ export function canCastHere(): boolean {
   const app = androidApp();
   return !app || app.capabilities.has("cast");
 }
+
+// What closes with Escape: dialogs, sheets and menus (role="dialog") and the detail panel.
+const topLayerSelector = '[role="dialog"], aside.vc-detail';
+
+// Android's Back button. The app calls window.videocatAndroidBack() first: true means the page
+// closed what was open on top, so Back stays on this section; false, and the app goes back a
+// section (history) or leaves. Everything on top already closes with Escape, so Back presses it.
+export function closeTopLayer(doc: Pick<Document, "querySelector"> = document, target: Pick<Window, "dispatchEvent"> = window): boolean {
+  if (!doc.querySelector(topLayerSelector)) return false;
+  target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  return true;
+}
+
+export function startAndroidBackHandling(scope: { videocatAndroidBack?: () => boolean } = window as never): void {
+  if (!androidApp()) return;
+  scope.videocatAndroidBack = () => closeTopLayer();
+}

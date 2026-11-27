@@ -41,6 +41,22 @@ test("inside the Android app VideoCAT is already installed and Chromecast waits 
   await expect(panel.getByText("Estás usando VideoCAT como app instalada.")).toBeVisible();
 });
 
+test("Android's Back closes the detail first and then lets the app go back a section", async ({ page }) => {
+  await asAndroidApp(page);
+  await openView(page, "/catalogo");
+  const back = () => page.evaluate(() => (window as unknown as { videocatAndroidBack: () => boolean }).videocatAndroidBack());
+  await page.locator(".vc-card-open").first().click();
+  await expect(page.locator(".vc-detail")).toBeVisible();
+  expect(await back()).toBe(true);
+  await expect(page.locator(".vc-detail")).toHaveCount(0);
+  expect(await back()).toBe(false);
+});
+
+test("in a browser the page does not take over Back", async ({ page }) => {
+  await openView(page, "/catalogo");
+  expect(await page.evaluate(() => "videocatAndroidBack" in window)).toBe(false);
+});
+
 test("once the app casts natively, the detail offers Chromecast again", async ({ page }) => {
   await asAndroidApp(page, ["cast"]);
   await withChromecastOn(page);

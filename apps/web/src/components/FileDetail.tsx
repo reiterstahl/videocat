@@ -977,7 +977,7 @@ export function FileDetail({
     <>
       {playbackSupport.result === "" ? (
         <div className="stream-compatibility-notice">
-          <strong>Este navegador no declara compatibilidad con {file.videoCodec ?? file.extension}.</strong>
+          <strong>{`Este navegador no declara compatibilidad con ${file.videoCodec ?? file.extension}.`}</strong>
           <span>{playbackSupport.remuxUseful ? "Puedes preparar un MP4 temporal con el botón adicional, si el remux opcional está habilitado en el Companion." : "Ábrelo localmente o usa un navegador con soporte para este codec."}</span>
         </div>
       ) : null}

@@ -4,6 +4,7 @@ import { App } from "./App";
 import { OfflineBanner, PwaUpdatePrompt } from "./components/PwaStatus";
 import { AccessExpiredNotice } from "./components/AccessExpiredNotice";
 import { startInstallPromptCapture } from "./lib/install-prompt";
+import { startAndroidBackHandling } from "./lib/android-app";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "./theme.css";
@@ -17,6 +18,7 @@ import "./mobile.css";
 import "./pwa.css";
 
 startInstallPromptCapture();
+startAndroidBackHandling();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
