@@ -17,6 +17,13 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.54
+
+- **Remote playback in the Android app's native player** (app 0.2.0 or later, `ANDROID_APP_PLAN.es.md`): inside the app, **Reproducir remotamente** hands the stream session to the phone's player, which reads MKV and HEVC, keeps playing with the screen off and in picture in picture. In a browser, and with the app 0.1.0, playback stays in the page as before.
+- **Android's Back button** closes the video's detail, a dialog or a menu before leaving the section.
+- The codec notice in the detail is now translated to English.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.53
 
 - **VideoCAT works fully at `http://` with a LAN address.** Browsers leave out `crypto.randomUUID` and the clipboard there (they need HTTPS or localhost): changes failed without a word and **Copiar** copied nothing. Both now have a fallback.
