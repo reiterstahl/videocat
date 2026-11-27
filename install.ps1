@@ -58,6 +58,8 @@ POSTGRES_USER=videocat
 POSTGRES_PASSWORD=$postgresPassword
 WEB_ORIGIN=http://localhost:8081
 TRUST_PROXY=true
+# Proxies on private networks are trusted already; add "cloudflare" or a public proxy's address.
+TRUST_PROXY_CIDRS=
 COOKIE_SECURE=false
 WEB_BIND_ADDR=0.0.0.0
 WEB_PUBLISHED_PORT=8081

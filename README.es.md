@@ -393,7 +393,7 @@ Las principales de `.env` (la lista completa, con comentarios, está en [`.env.e
 | `ADMIN_USER`, `ADMIN_PASSWORD` | Usuario de la web. |
 | `WEB_ORIGIN` | URL pública exacta (por ejemplo `https://cat.example.com`). Las escrituras desde otro origen se rechazan. |
 | `COOKIE_SECURE` | `true` con HTTPS; `false` solo para pruebas locales. |
-| `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Confianza en el reverse proxy; mejor limitarla a sus CIDR. |
+| `TRUST_PROXY`, `TRUST_PROXY_CIDRS` | Qué proxies pueden pasar la dirección del visitante (con ella se limitan los intentos de inicio de sesión y de PIN). Los proxies en redes privadas siempre son de confianza: el contenedor web, un reverse proxy en tu LAN (Nginx Proxy Manager, Caddy, Traefik) y un túnel de Cloudflare no necesitan nada. Detrás de un proxy con dirección pública, agrégalo: `TRUST_PROXY_CIDRS=cloudflare` para la nube naranja de Cloudflare apuntando a tu IP, o sus direcciones/CIDR separadas por comas. El log del servidor dice al arrancar en qué proxies confía. `TRUST_PROXY=false` los ignora todos. |
 | `WEB_BIND_ADDR`, `WEB_PUBLISHED_PORT` | Dónde publica el contenedor `web` (por defecto `0.0.0.0:8081`). |
 | `PROTECTED_FOLDER_PIN`, `PROTECTED_FOLDER_PATTERNS` | PIN y fragmentos de nombre de carpeta protegidos (por ejemplo `Private,Protected`). |
 | `VIDEOCAT_VERSION` | Versión de las imágenes en `docker-compose.hub.yml` (`0.2.51` o `latest`). |
@@ -430,7 +430,7 @@ server {
 }
 ```
 
-Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRUST_PROXY=true`. HTTPS también es necesario para instalar VideoCAT como app.
+Con HTTPS, usa `WEB_ORIGIN=https://cat.example.com`, `COOKIE_SECURE=true` y `TRUST_PROXY=true` (más `TRUST_PROXY_CIDRS=cloudflare` si el proxy de Cloudflare llega directo a tu IP pública). HTTPS también es necesario para instalar VideoCAT como app.
 
 ### Actualizar
 

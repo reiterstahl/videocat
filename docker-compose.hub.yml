@@ -55,6 +55,7 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8081}
       TRUST_PROXY: ${TRUST_PROXY:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Private networks are always trusted; add "cloudflare" or a public proxy's addresses.
       TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env to a strong random value}
       AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env to a strong random value}
