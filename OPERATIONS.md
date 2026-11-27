@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.53
+
+- **VideoCAT works fully at `http://` with a LAN address.** Browsers leave out `crypto.randomUUID` and the clipboard there (they need HTTPS or localhost): changes failed without a word and **Copiar** copied nothing. Both now have a fallback.
+- **Ready for the Android app** (`ANDROID_APP_PLAN.es.md`): the web recognizes the app's bridge, counts as installed inside it, and hides Chromecast until the app casts natively.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.52
 
 Security release, after a review of the whole system.

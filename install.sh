@@ -76,7 +76,7 @@ PROTECTED_FOLDER_PIN=$protected_pin
 PROTECTED_FOLDER_PATTERNS=Private,Protected
 ADMIN_USER=admin
 ADMIN_PASSWORD=$admin_password
-VIDEOCAT_VERSION=0.2.52
+VIDEOCAT_VERSION=0.2.53
 EOF
 
   echo "Created .env with generated secrets."

@@ -37,7 +37,7 @@ It needs the same `DATABASE_URL` as the server, `STORAGE_SECRET_KEY` (64 hexadec
 
 ## Tags and platforms
 
-- `0.2.52`, `0.2.51`, … — versioned, stable tags, always the same version as `videocat-server`.
+- `0.2.53`, `0.2.52`, … — versioned, stable tags, always the same version as `videocat-server`.
 - `latest` — the newest published release.
 
 Images are built for `linux/amd64` and `linux/arm64`. Like the server, the container runs as the non-root user `node` (uid 1000); the official Compose file makes its root file system read-only and drops all capabilities.
