@@ -3,11 +3,15 @@
 // (ANDROID_APP_PLAN.es.md):
 //   window.VideoCatAndroid.version(): number       the bridge's version
 //   window.VideoCatAndroid.capabilities(): string  a JSON list of what the app does natively
+//   window.VideoCatAndroid.play(json) / stop()     with "play": the native player (version 2)
 // Without the bridge the page is in a browser and does everything itself.
 
 type AndroidBridge = {
   version: () => number;
   capabilities: () => string;
+  // Version 2, with "play": the native player.
+  play?: (request: string) => void;
+  stop?: () => void;
 };
 
 export type AndroidApp = {
@@ -64,4 +68,93 @@ export function closeTopLayer(doc: Pick<Document, "querySelector"> = document, t
 export function startAndroidBackHandling(scope: { videocatAndroidBack?: () => boolean } = window as never): void {
   if (!androidApp()) return;
   scope.videocatAndroidBack = () => closeTopLayer();
+}
+
+// What the page hands the native player: a stream session it opened, and what the controls need.
+export type NativePlaybackRequest = {
+  url: string;
+  title: string;
+  subtitle: string;
+  // Seconds from the start.
+  position: number;
+  shuffle: boolean;
+  canNext: boolean;
+  canRandom: boolean;
+};
+
+// What the native player reports back through window.videocatAndroidPlayer(event).
+export type NativePlayerEvent =
+  | { type: "next" }
+  | { type: "ended" }
+  | { type: "shuffle"; enabled: boolean }
+  | { type: "closed"; position: number }
+  // format: the phone could not read or decode the file (the temporary MP4 may help).
+  | { type: "error"; position: number; format: boolean };
+
+export type NativePlayer = {
+  play: (request: NativePlaybackRequest) => void;
+  stop: () => void;
+};
+
+let cachedPlayer: NativePlayer | null | undefined;
+
+// The app's native player, when the app announces "play"; null in a browser or an older app.
+export function nativePlayer(scope?: { VideoCatAndroid?: unknown }): NativePlayer | null {
+  const page = scope === undefined;
+  if (page && cachedPlayer !== undefined) return cachedPlayer;
+  if (page && typeof window === "undefined") return null;
+  scope ??= window as never;
+  const app = page ? androidApp() : readAndroidApp(scope);
+  const bridge = scope.VideoCatAndroid as Partial<AndroidBridge> | undefined;
+  const player = app?.capabilities.has("play") && typeof bridge?.play === "function"
+    ? {
+        play: (request: NativePlaybackRequest) => bridge.play!(JSON.stringify(request)),
+        stop: () => {
+          try {
+            bridge.stop?.();
+          } catch {
+            // The app went away; nothing left to stop.
+          }
+        }
+      }
+    : null;
+  if (page) cachedPlayer = player;
+  return player;
+}
+
+function seconds(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function readNativePlayerEvent(raw: unknown): NativePlayerEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const event = raw as Record<string, unknown>;
+  switch (event.type) {
+    case "next":
+    case "ended":
+      return { type: event.type };
+    case "shuffle":
+      return typeof event.enabled === "boolean" ? { type: "shuffle", enabled: event.enabled } : null;
+    case "closed":
+      return { type: "closed", position: seconds(event.position) };
+    case "error":
+      return { type: "error", position: seconds(event.position), format: event.format === true };
+    default:
+      return null;
+  }
+}
+
+// Receives the native player's events while the returned function has not been called.
+export function listenToNativePlayer(
+  handler: (event: NativePlayerEvent) => void,
+  scope: { videocatAndroidPlayer?: (event: unknown) => void } = window as never
+): () => void {
+  const listener = (raw: unknown) => {
+    const event = readNativePlayerEvent(raw);
+    if (event) handler(event);
+  };
+  scope.videocatAndroidPlayer = listener;
+  return () => {
+    if (scope.videocatAndroidPlayer === listener) delete scope.videocatAndroidPlayer;
+  };
 }

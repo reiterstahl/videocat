@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closeTopLayer, readAndroidApp } from "../../apps/web/src/lib/android-app.ts";
+import { closeTopLayer, listenToNativePlayer, nativePlayer, readAndroidApp, readNativePlayerEvent } from "../../apps/web/src/lib/android-app.ts";
 import { randomId } from "../../apps/web/src/lib/random-id.ts";
 
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -42,4 +42,40 @@ test("Back closes what is open on top with Escape, and says when nothing was ope
   } finally {
     globals.KeyboardEvent = original;
   }
+});
+
+test("the native player is used only when the app announces it and has play()", () => {
+  const plays: string[] = [];
+  const bridge = (capabilities: string[], extra: object = {}) => ({
+    VideoCatAndroid: { version: () => 2, capabilities: () => JSON.stringify(capabilities), ...extra }
+  });
+  assert.equal(nativePlayer({}), null);
+  assert.equal(nativePlayer(bridge([])), null);
+  assert.equal(nativePlayer(bridge(["play"])), null, "announced but without play()");
+  const player = nativePlayer(bridge(["play"], { play: (json: string) => plays.push(json), stop: () => { throw new Error("gone"); } }));
+  assert.ok(player);
+  player.play({ url: "https://cat.example/api/streams/a/content", title: "x.mkv", subtitle: "", position: 3, shuffle: true, canNext: false, canRandom: true });
+  assert.deepEqual(JSON.parse(plays[0]), { url: "https://cat.example/api/streams/a/content", title: "x.mkv", subtitle: "", position: 3, shuffle: true, canNext: false, canRandom: true });
+  // A bridge that throws on stop() does not break the page.
+  player.stop();
+});
+
+test("native player events are read strictly", () => {
+  assert.deepEqual(readNativePlayerEvent({ type: "next" }), { type: "next" });
+  assert.deepEqual(readNativePlayerEvent({ type: "closed", position: 12.5 }), { type: "closed", position: 12.5 });
+  assert.deepEqual(readNativePlayerEvent({ type: "closed", position: -3 }), { type: "closed", position: 0 });
+  assert.deepEqual(readNativePlayerEvent({ type: "error", position: "x", format: "yes" }), { type: "error", position: 0, format: false });
+  assert.deepEqual(readNativePlayerEvent({ type: "shuffle", enabled: false }), { type: "shuffle", enabled: false });
+  assert.equal(readNativePlayerEvent({ type: "shuffle" }), null);
+  assert.equal(readNativePlayerEvent({ type: "delete-everything" }), null);
+  assert.equal(readNativePlayerEvent("next"), null);
+
+  const scope: { videocatAndroidPlayer?: (event: unknown) => void } = {};
+  const seen: string[] = [];
+  const stop = listenToNativePlayer((event) => seen.push(event.type), scope);
+  scope.videocatAndroidPlayer?.({ type: "ended" });
+  scope.videocatAndroidPlayer?.({ type: "bogus" });
+  stop();
+  assert.equal(scope.videocatAndroidPlayer, undefined);
+  assert.deepEqual(seen, ["ended"]);
 });

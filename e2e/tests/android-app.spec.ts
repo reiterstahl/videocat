@@ -12,8 +12,12 @@ async function asAndroidApp(page: Page, capabilities: string[] = []) {
 async function withChromecastOn(page: Page) {
   await page.route("**/api/profile/security", async (route) => {
     if (route.request().method() !== "GET") return route.continue();
-    const response = await route.fetch();
-    await route.fulfill({ response, json: { ...(await response.json()), chromecastEnabled: true } });
+    try {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), chromecastEnabled: true } });
+    } catch {
+      // The page navigated away while this answer was on its way: nobody is waiting for it.
+    }
   });
 }
 
@@ -94,4 +98,96 @@ test("at http://<LAN address> (no crypto.randomUUID, no navigator.clipboard) cha
   const expected = (await relative.locator("strong").textContent()) ?? "";
   await relative.locator(".copy-button").click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { realClipboard: Clipboard }).realClipboard.readText())).toBe(expected);
+});
+
+// The app's native player (bridge version 2 with "play"): it records what the page hands it.
+async function asAndroidAppWithPlayer(page: Page) {
+  await page.addInitScript(() => {
+    const state = { plays: [] as unknown[], stops: 0 };
+    (window as unknown as { nativeState: typeof state }).nativeState = state;
+    (window as unknown as { VideoCatAndroid: object }).VideoCatAndroid = {
+      version: () => 2,
+      capabilities: () => '["play"]',
+      play: (json: string) => state.plays.push(JSON.parse(json)),
+      stop: () => { state.stops += 1; }
+    };
+    localStorage.setItem("videocat-remote-shuffle", "false");
+  });
+}
+
+// A Companion online with every drive connected, and stream sessions answered without one.
+async function withRemotePlayback(page: Page) {
+  const sessions: string[] = [];
+  const deleted: string[] = [];
+  await page.route("**/api/companion/status", async (route) => {
+    const { disks } = await (await page.request.get("/api/disks")).json() as { disks: Array<{ id: string }> };
+    await route.fulfill({ json: { online: true, staleAfterMs: 60_000, version: 99, mountedDiskCount: disks.length, mountedDiskIds: disks.map((disk) => disk.id) } });
+  });
+  await page.route("**/api/stream-sessions**", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/stream-sessions") {
+      const id = `0b7a3f52-1c2d-4e5f-8a9b-${String(sessions.length).padStart(12, "0")}`;
+      sessions.push(id);
+      return route.fulfill({ json: { session: { id, status: "ready", expiresAt: new Date(Date.now() + 900_000).toISOString(), mimeType: "video/mp4", sizeBytes: 1000 } } });
+    }
+    if (request.method() === "DELETE") {
+      deleted.push(new URL(request.url()).pathname.split("/").pop() ?? "");
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.continue();
+  });
+  return { sessions, deleted };
+}
+
+type NativeState = { plays: Array<{ url: string; title: string; position: number; shuffle: boolean; canNext: boolean }>; stops: number };
+const nativeState = (page: Page) => page.evaluate(() => (window as unknown as { nativeState: NativeState }).nativeState);
+const sendNative = (page: Page, event: object) =>
+  page.evaluate((payload) => (window as unknown as { videocatAndroidPlayer: (event: object) => void }).videocatAndroidPlayer(payload), event);
+
+test("inside the app the video plays in the native player, and Next and closing go through the page", async ({ page }) => {
+  await asAndroidAppWithPlayer(page);
+  const { sessions, deleted } = await withRemotePlayback(page);
+  await openView(page, "/catalogo");
+  await page.locator(".vc-card-open").first().click();
+  const title = (await page.locator(".vc-detail .vc-detail-title h2").textContent()) ?? "";
+  await page.locator(".vc-detail .detail-primary-action.is-remote").click();
+
+  await expect.poll(async () => (await nativeState(page)).plays.length).toBe(1);
+  const first = (await nativeState(page)).plays[0];
+  expect(first).toMatchObject({ url: `${new URL(page.url()).origin}/api/streams/${sessions[0]}/content`, title, position: 0, shuffle: false, canNext: true });
+  await expect(page.getByText("Reproduciendo en el reproductor de la app.")).toBeVisible();
+  await expect(page.locator(".vc-detail video")).toHaveCount(0);
+
+  // Next on the native player: the page opens the following video and hands over a new session.
+  await sendNative(page, { type: "next" });
+  await expect.poll(async () => (await nativeState(page)).plays.length).toBe(2);
+  const second = (await nativeState(page)).plays[1];
+  expect(second.url).toContain(sessions[1]);
+  expect(second.title).not.toBe(title);
+  await expect.poll(() => deleted).toContain(sessions[0]);
+
+  // Closed in the app: the page ends the session and does not ask the app to stop again.
+  await sendNative(page, { type: "closed", position: 31.5 });
+  await expect.poll(() => deleted).toContain(sessions[1]);
+  expect((await nativeState(page)).stops).toBe(0);
+  await expect(page.getByText("Reproduciendo en el reproductor de la app.")).toHaveCount(0);
+});
+
+test("a dropped stream resumes once where it stopped; a second failure closes the native player", async ({ page }) => {
+  await asAndroidAppWithPlayer(page);
+  const { sessions } = await withRemotePlayback(page);
+  await openView(page, "/catalogo");
+  await page.locator(".vc-card-open").first().click();
+  await page.locator(".vc-detail .detail-primary-action.is-remote").click();
+  await expect.poll(async () => (await nativeState(page)).plays.length).toBe(1);
+
+  await sendNative(page, { type: "error", position: 42, format: false });
+  await expect.poll(async () => (await nativeState(page)).plays.length).toBe(2);
+  const resumed = (await nativeState(page)).plays[1];
+  expect(resumed.url).toContain(sessions[1]);
+  expect(resumed.position).toBe(42);
+
+  await sendNative(page, { type: "error", position: 50, format: false });
+  await expect.poll(async () => (await nativeState(page)).stops).toBe(1);
+  await expect(page.getByText(/se interrumpió después del reintento/)).toBeVisible();
 });

@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { formatBytes, formatDuration, isDamagedMediaMessage, isRiskyMediaMessage } from "@videocat/shared";
 import { DeleteFileConfirmModal } from "./DeleteFileConfirmModal";
-import { canCastHere } from "../lib/android-app";
+import { canCastHere, listenToNativePlayer, nativePlayer, type NativePlayerEvent } from "../lib/android-app";
 import { FullscreenGallery } from "./FullscreenGallery";
 import { Info } from "./Info";
 import { translateText } from "../i18n";
@@ -127,6 +127,10 @@ export function FileDetail({
   const remoteTransitionSessionRef = useRef<string | null>(null);
   const remoteTransitioningRef = useRef(false);
   const remoteFullscreenAttemptedRef = useRef(false);
+  // Inside the Android app with its native player, the video plays there instead of in <video>.
+  const native = nativePlayer();
+  const nativeActiveRef = useRef(false);
+  const [nativeRestart, setNativeRestart] = useState(0);
   const json = JSON.stringify(file.ffprobeJson ?? {}, null, 2);
   const localFolder = folderPath(file.absolutePath);
   const galleryThumb = galleryIndex == null ? null : file.thumbnails[galleryIndex];
@@ -137,7 +141,10 @@ export function FileDetail({
   const objectStorage = file.disk?.kind === "s3";
   const objectStorageReason = "Este video está en un bucket S3: no hay un archivo en una PC para abrirlo o borrarlo desde aquí.";
   const canStreamRemotely = objectStorage || (companionOnline && companionMountedDiskIds.includes(file.diskId));
-  const playbackSupport = browserPlaybackSupport(file);
+  const browserSupport = browserPlaybackSupport(file);
+  // The app's player reads MKV and whatever the phone decodes: it tries, and the MP4 copy is the
+  // fallback when it cannot (an error with "format").
+  const playbackSupport = native ? { ...browserSupport, result: "probably" as const } : browserSupport;
   const remoteAvailabilityMessage = objectStorage
     ? playbackSupport.result === "" ? "Este navegador no puede reproducir el formato original de este video." : ""
     : !companionOnline
@@ -166,6 +173,7 @@ export function FileDetail({
   }, [remoteSessionId]);
 
   useEffect(() => () => {
+    if (nativeActiveRef.current) nativePlayer()?.stop();
     const sessionIds = new Set([remoteSessionIdRef.current, remoteTransitionSessionRef.current]);
     for (const sessionId of sessionIds) {
       if (sessionId) void api(`/api/stream-sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
@@ -194,6 +202,19 @@ export function FileDetail({
     const timer = window.setTimeout(() => void startRemotePlayback(nextMode, true), 0);
     return () => window.clearTimeout(timer);
   }, [file.id]);
+
+  // A retry asked by the app's player, on the same video.
+  useEffect(() => {
+    const nextMode = remotePlayNextRef.current;
+    if (nativeRestart === 0 || !nextMode) return;
+    remotePlayNextRef.current = null;
+    void startRemotePlayback(nextMode, true);
+  }, [nativeRestart]);
+
+  const nativeEventRef = useRef(handleNativeEvent);
+  nativeEventRef.current = handleNativeEvent;
+  useEffect(() => (native ? listenToNativePlayer((event) => nativeEventRef.current(event)) : undefined), [native]);
+
 
   function moveGallery(offset: -1 | 1) {
     setGalleryIndex((current) => {
@@ -296,7 +317,12 @@ export function FileDetail({
     }
   }
 
-  async function stopRemotePlayback(message = "", exitFullscreen = true) {
+  // closeNative is false when the app's player already closed (it says so with "closed").
+  async function stopRemotePlayback(message = "", exitFullscreen = true, closeNative = true) {
+    if (nativeActiveRef.current) {
+      nativeActiveRef.current = false;
+      if (closeNative) native?.stop();
+    }
     const sessionIds = new Set([remoteSessionId, remoteTransitionSessionRef.current]);
     remoteTransitionSessionRef.current = null;
     remoteTransitioningRef.current = false;
@@ -346,6 +372,10 @@ export function FileDetail({
         body: JSON.stringify({ fileId: file.id, mode, ...(replaceSessionId ? { replaceSessionId } : {}) })
       });
       setRemoteSessionId(response.session.id);
+      if (native) {
+        playInNativePlayer(response.session.id);
+        return;
+      }
       setRemoteUrl(`/api/streams/${response.session.id}/content`);
       setRemoteState("buffering");
       setRemoteMessage("Conectado al Companion. Cargando video...");
@@ -358,7 +388,79 @@ export function FileDetail({
         void api(`/api/stream-sessions/${previousSessionId}`, { method: "DELETE" }).catch(() => undefined);
       }
       setRemoteState("error");
+      closeNativePlayerAfterError();
       setRemoteMessage(error instanceof Error ? error.message : "No se pudo iniciar la reproducción remota.");
+    }
+  }
+
+  // The app's player waits for the page after Next, the end of a video or a failure: when the
+  // page cannot go on (no next video, the Companion went away), it closes the player.
+  function closeNativePlayerAfterError() {
+    if (!nativeActiveRef.current) return;
+    nativeActiveRef.current = false;
+    native?.stop();
+  }
+
+  function playInNativePlayer(sessionId: string) {
+    if (!native) return;
+    nativeActiveRef.current = true;
+    // The app's player stopped the previous video already (Next, or a retry).
+    finishRemoteTransition();
+    remoteTransitioningRef.current = false;
+    setRemoteUrl(null);
+    setRemoteState("playing");
+    setRemoteMessage("Reproduciendo en el reproductor de la app.");
+    native.play({
+      url: new URL(`/api/streams/${sessionId}/content`, window.location.origin).toString(),
+      title: file.filename,
+      subtitle: file.disk?.name ?? "",
+      position: remoteResumeTimeRef.current,
+      shuffle: remoteShuffleEnabled,
+      canNext: canOpenNext,
+      // What moveToRandomDetail needs to choose another video.
+      canRandom: companionOnline && companionMountedDiskIds.length > 0
+    });
+    remoteResumeTimeRef.current = 0;
+  }
+
+  // What the app's player reports. Next and the end of a video go through the same steps as the
+  // page's own player; a failure first tries again (from the MP4 copy when the format was the
+  // problem and the copy helps) from where it stopped.
+  function handleNativeEvent(event: NativePlayerEvent) {
+    if (!nativeActiveRef.current) return;
+    switch (event.type) {
+      case "shuffle":
+        setRemoteShuffleEnabled(event.enabled);
+        localStorage.setItem("videocat-remote-shuffle", String(event.enabled));
+        return;
+      case "next":
+        advanceRemotePlayback();
+        return;
+      case "ended":
+        if (remoteShuffleEnabled) void moveToRandomDetail(true);
+        else void stopRemotePlayback("Reproducción remota finalizada.");
+        return;
+      case "closed":
+        void stopRemotePlayback("", true, false);
+        return;
+      case "error": {
+        const tryCopy = event.format && browserSupport.remuxUseful && !objectStorage && remoteMode !== "remux";
+        if (!tryCopy && (event.format || remoteRecoveryAttemptsRef.current >= 1)) {
+          void stopRemotePlayback(event.format
+            ? "El teléfono no pudo reproducir este formato de video."
+            : "La reproducción remota se interrumpió después del reintento. Verifica el Companion y vuelve a iniciar el video.");
+          return;
+        }
+        if (!tryCopy) remoteRecoveryAttemptsRef.current += 1;
+        remoteResumeTimeRef.current = event.position;
+        prepareRemoteTransition();
+        if (tryCopy) {
+          remotePlayNextRef.current = "remux";
+          setRemoteMode("remux");
+        }
+        setNativeRestart((count) => count + 1);
+        return;
+      }
     }
   }
 
@@ -388,7 +490,7 @@ export function FileDetail({
       setRemoteMessage(mode === "remux" ? "Preparando una copia MP4 temporal compatible..." : "Preparando reproducción remota segura...");
       setRemoteControlsVisible(false);
     });
-    void requestRemoteFullscreen(true);
+    if (!native) void requestRemoteFullscreen(true);
     void startRemotePlayback(mode, true);
   }
 
@@ -552,6 +654,7 @@ export function FileDetail({
     } catch (error) {
       remotePlayNextRef.current = null;
       setRemoteState("error");
+      closeNativePlayerAfterError();
       setRemoteMessage(error instanceof Error ? error.message : "No se pudo abrir el siguiente video.");
     }
   }
@@ -559,6 +662,7 @@ export function FileDetail({
   async function moveToRandomDetail(continueRemotePlayback = false) {
     if (!companionOnline || companionMountedDiskIds.length === 0) {
       setRemoteState("error");
+      closeNativePlayerAfterError();
       setRemoteMessage("No hay discos conectados disponibles para elegir otro video al azar.");
       revealRemoteControls();
       return;
@@ -576,6 +680,7 @@ export function FileDetail({
     } catch (error) {
       remotePlayNextRef.current = null;
       setRemoteState("error");
+      closeNativePlayerAfterError();
       setRemoteMessage(error instanceof Error ? error.message : "No se pudo elegir otro video al azar.");
       revealRemoteControls();
     }
