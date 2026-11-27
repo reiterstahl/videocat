@@ -24,3 +24,14 @@ test("detects stalled copies using the configured threshold", () => {
   assert.equal(copyHasStalled(1_000, 1_999, 1_000), false);
   assert.equal(copyHasStalled(1_000, 2_000, 1_000), true);
 });
+
+test("only a video lands in the downloads folder, whatever name the server sends", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "videocat-download-name-"));
+  try {
+    await assert.rejects(uniqueDestinationPath(root, "Disk", "malware.exe"), /Solo se descargan videos/);
+    await assert.rejects(uniqueDestinationPath(root, "Disk", "README"), /sin extensión/);
+    assert.match(await uniqueDestinationPath(root, "Disk", "viaje.MOV"), /viaje\.MOV$/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

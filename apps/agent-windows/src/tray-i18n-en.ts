@@ -337,6 +337,7 @@ export const trayEnglish: Record<string, string> = {
   "No pude consultar marcados para borrar en {diskName}: {error}": "Could not get the files marked for deletion on {diskName}: {error}",
   "Revision {root} ({diskName}): sin archivos marcados para borrar.": "Check {root} ({diskName}): no files marked for deletion.",
   "Revision {root} ({diskName}): {length} archivo(s) marcados para borrar.": "Check {root} ({diskName}): {length} file(s) marked for deletion.",
+  "No es un video; no se borra: {relativePath}": "Not a video; not deleted: {relativePath}",
   "Ruta insegura omitida: {relativePath}": "Unsafe path skipped: {relativePath}",
   "Ruta fuera de la unidad omitida: {relativePath}": "Path outside the drive skipped: {relativePath}",
   "{message} Ruta: {relativePath}": "{message} Path: {relativePath}",

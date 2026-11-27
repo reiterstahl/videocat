@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isVideoExtension } from "@videocat/shared";
 
 export function cleanRelativePath(value: string | undefined): string | null {
   if (!value) return null;
@@ -30,4 +31,10 @@ export async function canonicalPathInsideRoot(root: string, relativePathValue: s
   } catch {
     return null;
   }
+}
+
+// The local actions a web page asks for: a folder can be opened, but only a video is opened or
+// deleted. Opening hands the file to Windows, which would run a program or a script on the drive.
+export function companionActionAllowed(action: "open-file" | "open-folder" | "delete-file", filePath: string): boolean {
+  return action === "open-folder" || isVideoExtension(path.extname(filePath));
 }

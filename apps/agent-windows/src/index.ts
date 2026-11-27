@@ -25,7 +25,7 @@ import { copyHasStalled, uniqueDestinationPath } from "./file-transfer.js";
 import { analyzeMedia, compactToolError, extractVisualHash, isUnreadableMediaError, mediaReadTimeoutMs, type MediaLog, type MediaTools } from "@videocat/shared/media";
 import { loadOrCreateCompanionIdentity } from "./identity.js";
 import { startCompanionControlTunnel, type CompanionControlTunnel } from "./control-tunnel.js";
-import { canonicalPathInsideRoot, cleanRelativePath, safePathInsideRoot } from "./path-security.js";
+import { canonicalPathInsideRoot, cleanRelativePath, companionActionAllowed, safePathInsideRoot } from "./path-security.js";
 import { boundedErrorMessage, boundedText } from "./error-reporting.js";
 import { isLocalRequestAuthorized } from "./local-auth.js";
 import { processTransferItem, readStallMs, staleStagingFiles, statfsSpace, type TransferState, type TransferWorkItem } from "./transfer-engine.js";
@@ -1346,6 +1346,12 @@ async function processMarkedDeletesForDiskUnlocked(root: string, marker: DiskMar
   let failed = 0;
 
   for (const file of queue.files) {
+    if (!isVideoExtension(path.extname(file.relativePath))) {
+      failed += 1;
+      await reportDeletionResult(file.id, "failed", `No es un video; no se borra: ${file.relativePath}`).catch(() => undefined);
+      console.warn(tl("No es un video; no se borra: {relativePath}", { relativePath: file.relativePath }));
+      continue;
+    }
     const target = safePathInsideRoot(root, file.relativePath);
     if (!target) {
       failed += 1;
@@ -1701,6 +1707,7 @@ async function handleCompanionAction(action: "open-file" | "open-folder" | "dele
 
   const kind = await existingPath(resolved);
   if (!kind) return { ok: false, reason: "not_available" };
+  if (!companionActionAllowed(action, resolved)) return { ok: false, reason: "not_available" };
 
   try {
     if (action === "open-file") {
