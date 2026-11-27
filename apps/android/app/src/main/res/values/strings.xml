@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">VideoCAT</string>
+
+    <string name="connect_title">Connect to your VideoCAT</string>
+    <string name="connect_intro">VideoCAT runs on your own server. Type the address you open it at in the browser.</string>
+    <string name="connect_label">Server address</string>
+    <string name="connect_hint">videocat.example.com</string>
+    <string name="connect_button">Connect</string>
+    <string name="connect_checking">Checking…</string>
+    <string name="connect_note">The app only talks to your server. It collects nothing.</string>
+    <string name="connect_error_empty">Type your server\'s address.</string>
+    <string name="connect_error_invalid">That does not look like an address. For example: videocat.example.com</string>
+    <string name="connect_error_unreachable">Could not reach %1$s. Check the address and port, and that the phone is on the same network as the server.</string>
+    <string name="connect_error_timeout">%1$s took too long to answer.</string>
+    <string name="connect_error_certificate">%1$s has a certificate the phone does not trust. Use a valid certificate (Let\'s Encrypt, for example) or http:// inside your network.</string>
+    <string name="connect_error_not_videocat">%1$s answered, but it is not VideoCAT. Check the address and port.</string>
+    <string name="connect_warning_plain">This address is unencrypted (http://) and outside your network: your password would travel in the clear. From outside, use https://.</string>
+
+    <string name="error_title">Could not open VideoCAT</string>
+    <string name="error_retry">Retry</string>
+    <string name="error_change_server">Change server</string>
+    <string name="error_certificate">The server\'s certificate is not valid.</string>
+
+    <string name="shortcut_change_server">Change server</string>
+    <string name="download_started">Downloading %1$s</string>
+    <string name="download_unsupported">This download cannot be done from the app.</string>
+    <string name="no_app_for_link">No app on this phone can open this link.</string>
+</resources>

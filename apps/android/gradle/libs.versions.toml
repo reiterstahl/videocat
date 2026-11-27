@@ -1,0 +1,17 @@
+[versions]
+agp = "9.5.1"
+activity = "1.13.0"
+core = "1.18.0"
+splashscreen = "1.2.0"
+junit = "4.13.2"
+json = "20260814"
+
+[libraries]
+androidx-activity = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+androidx-core = { module = "androidx.core:core-ktx", version.ref = "core" }
+androidx-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "splashscreen" }
+junit = { module = "junit:junit", version.ref = "junit" }
+json = { module = "org.json:json", version.ref = "json" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }

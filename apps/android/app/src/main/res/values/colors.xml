@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The web's tokens (apps/web/src/theme.css), light theme. -->
+    <color name="background">#F3F4F6</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="border">#E2E5E9</color>
+    <color name="text">#14181C</color>
+    <color name="muted">#5B6670</color>
+    <color name="accent">#FC6121</color>
+    <color name="on_accent">#FFFFFF</color>
+    <color name="danger">#C2362B</color>
+    <color name="warning">#9A5B00</color>
+    <!-- Brand, the same in both themes. -->
+    <color name="icon_background">#15181C</color>
+    <color name="splash_background">#15181C</color>
+</resources>

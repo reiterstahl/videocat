@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connect_title">Conecta con tu VideoCAT</string>
+    <string name="connect_intro">VideoCAT corre en tu propio servidor. Escribe la dirección con la que lo abres en el navegador.</string>
+    <string name="connect_label">Dirección del servidor</string>
+    <string name="connect_hint">videocat.ejemplo.com</string>
+    <string name="connect_button">Conectar</string>
+    <string name="connect_checking">Comprobando…</string>
+    <string name="connect_note">La app solo habla con tu servidor. No recopila nada.</string>
+    <string name="connect_error_empty">Escribe la dirección de tu servidor.</string>
+    <string name="connect_error_invalid">Eso no parece una dirección. Por ejemplo: videocat.ejemplo.com</string>
+    <string name="connect_error_unreachable">No se pudo llegar a %1$s. Revisa la dirección y el puerto, y que el teléfono esté en la misma red que el servidor.</string>
+    <string name="connect_error_timeout">%1$s tardó demasiado en responder.</string>
+    <string name="connect_error_certificate">%1$s tiene un certificado en el que el teléfono no confía. Usa un certificado válido (Let\'s Encrypt, por ejemplo) o http:// dentro de tu red.</string>
+    <string name="connect_error_not_videocat">%1$s respondió, pero no es VideoCAT. Revisa la dirección y el puerto.</string>
+    <string name="connect_warning_plain">Esta dirección no va cifrada (http://) y está fuera de tu red: tu contraseña viajaría a la vista. Desde fuera, usa https://.</string>
+
+    <string name="error_title">No se pudo abrir VideoCAT</string>
+    <string name="error_retry">Reintentar</string>
+    <string name="error_change_server">Cambiar servidor</string>
+    <string name="error_certificate">El certificado del servidor no es válido.</string>
+
+    <string name="shortcut_change_server">Cambiar servidor</string>
+    <string name="download_started">Descargando %1$s</string>
+    <string name="download_unsupported">Esta descarga no se puede hacer desde la app.</string>
+    <string name="no_app_for_link">Ninguna app del teléfono puede abrir este enlace.</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Each person runs their own server, often at http:// with a LAN address (192.168.x.x), so plain
+     HTTP is allowed. Certificates from an authority the person installed on the phone are accepted
+     too, for servers with their own CA; everything else needs a valid public certificate. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
