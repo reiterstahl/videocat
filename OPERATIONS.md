@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.56
+
+- **Disks on phones as one line and a sheet.** Up to 900 px wide, the disks panel no longer scrolls sideways: it shows how many disks are chosen, their initials and names, and **Elegir** opens every disk as a vertical list in a sheet from the bottom (name, letter, size and use, with Mostrar conectados, Todos and Ninguno). The desktop strip is unchanged.
+- **Loading shapes inside the Android app.** While the catalog, the numbers and the other sections load, the app shows grey shapes where they will appear instead of «Cargando...» and zeros. In a browser the page keeps its loading text.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.55
 
 - **Buttons grow with their label.** With a larger font on the phone (Android passes its font size to the browser and to the app), some labels wrapped and spilled over the button's border; buttons now get taller instead.
