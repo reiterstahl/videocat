@@ -15,8 +15,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // versionCode goes up by one with every published build; Play and Android refuse a lower one.
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "1.0.0"
         // Only to try the update locally: a build that pretends to be an older version.
         (findProperty("videocatVersionCode") as String?)?.let { versionCode = it.toInt() }
         (findProperty("videocatVersionName") as String?)?.let { versionName = it }

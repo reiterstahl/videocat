@@ -17,6 +17,7 @@ Este documento es una fuente de contexto para diseñar, redactar o actualizar el
 - Licencia: `AGPL-3.0-or-later`
 - Stack Docker actual: `0.2.56` (imágenes `videocat-server`, `videocat-web` y, opcional para buckets S3, `videocat-scanner`)
 - Companion Windows actual: `0.2.20` (instalador con actualización automática); `0.2.21-beta.2` en prueba
+- App Android actual: `1.0.0` (APK en GitHub Releases, etiqueta `android-v1.0.0`; todavía no está en Google Play)
 - Color principal: `#FC6121`
 - Logo principal del repositorio: `logo_orange.png`
 
@@ -380,7 +381,7 @@ Sí, de forma diferida mediante el Companion. Antes de borrar valida disco, ruta
 
 ### ¿Funciona desde Android?
 
-La web es responsive y la reproducción remota está orientada a navegadores móviles modernos. La compatibilidad final depende del navegador, contenedor y codecs del video.
+Sí. Hay una app para Android 8.0 o posterior (APK en GitHub Releases; todavía no en Google Play) que abre el servidor propio de cada persona, con reproductor nativo (MKV, HEVC según el teléfono, audio AC3/DTS, imagen en imagen), bloqueo con huella opcional y aviso de versiones nuevas. La web también es responsive y se puede usar o instalar desde el navegador del teléfono. No decir que reproduce cualquier formato: el códec de video depende del teléfono.
 
 ### ¿Es un reemplazo de Plex o Jellyfin?
 

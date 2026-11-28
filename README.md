@@ -130,6 +130,7 @@ flowchart LR
 - PIN-protected folders matched by name patterns, excluded from duplicate detection.
 
 ### Interface
+- **Android app** (APK): your own server inside a native app, with a video player that reads MKV, HEVC and AC3/DTS audio, picture in picture, playback with the screen off, an optional fingerprint lock and updates from GitHub. See [Android app](#android-app).
 - **Installable app (PWA)** on Windows, macOS, Android, iPhone and iPad: it opens from its own icon in a window without tabs, updates itself with every server version and tells you when you are offline. It stores no catalog data on the device.
 - **Activity indicator** in the header: what the Companion is doing right now (copying, verifying, downloading, scanning or deleting) and a panel with progress, speed, ETA and the latest movements. At the top it shows what is left with the connected drives (**x of y left to move**) and, per drive, whether it is **safe to disconnect** or worth waiting.
 - A **sign-in screen** with a contact sheet of frames beside the form (a strip on top on phones), language and theme switches, show password and clear messages for a wrong password or too many attempts. Nothing from the catalog is shown before signing in.
@@ -282,6 +283,22 @@ VideoCAT can be installed from the browser. **Profile › VideoCAT app** shows t
 > Browsers only install apps over **HTTPS** (or from `localhost`). If you open VideoCAT over `http://` with a LAN IP, publish it with HTTPS behind your reverse proxy first.
 
 The app only stores its own code (interface, styles and icons) on the device so it opens quickly. API responses, thumbnails and videos always come from the server, so no catalog data is left on the device. When you publish a new stack version, the app shows **A new version of VideoCAT is available · Update**.
+
+#### Android app
+
+On Android you can also use the native app (Android 8.0 or later). It opens your own VideoCAT server, with a few things a browser cannot do:
+
+- **Native video player**: MKV, MP4, WebM, AVI and TS, HEVC when the phone supports it, AC3, E-AC3, DTS and TrueHD audio, picture in picture, playback with the screen off, and swiping across the lower half of the screen to move through the video.
+- **Fingerprint lock** (optional, in **App settings**): the app asks for your fingerprint, face or phone PIN when it opens, when the phone locks, and after 0, 1, 5 or 15 minutes away.
+- **Updates from GitHub**: the app checks for new versions and offers them, without forcing them. Each download is checked (size, SHA-256 and signing certificate) before Android's installer opens.
+
+To install it:
+
+1. On the phone, download [VideoCAT-Android-1.0.0.apk](https://github.com/reiterstahl/videocat/releases/download/android-v1.0.0/VideoCAT-Android-1.0.0.apk) (all versions: [GitHub Releases](https://github.com/reiterstahl/videocat/releases/tag/android-v1.0.0)).
+2. Open it. The first time, Android asks to allow installing apps from your browser or file manager.
+3. Type the address you open VideoCAT with in the browser (for example `https://videocat.example.com`) and sign in.
+
+The app stores nothing from the catalog: everything comes from your server, with the same session as the website. Signing certificate SHA-256: `8822b32dbcdc3ae2f7eb9d1eebda1beaec2cc25916fab07609b64646f0247ffd`. You can also follow the releases with [Obtainium](https://github.com/ImranR98/Obtainium) (filter tags with `android-v`).
 
 ### 5. S3 buckets (optional)
 

@@ -130,6 +130,7 @@ flowchart LR
 - Carpetas protegidas por PIN según patrones de nombre, excluidas del cálculo de duplicados.
 
 ### Interfaz
+- **App para Android** (APK): tu propio servidor dentro de una app nativa, con un reproductor que lee MKV, HEVC y audio AC3/DTS, imagen en imagen, reproducción con la pantalla apagada, bloqueo con huella opcional y actualizaciones desde GitHub. Ver [App para Android](#app-para-android).
 - **App instalable (PWA)** en Windows, macOS, Android, iPhone y iPad: se abre desde su propio ícono en una ventana sin pestañas, se actualiza sola con cada versión del servidor y avisa cuando no hay conexión. No guarda datos del catálogo en el dispositivo.
 - **Indicador de actividad** en el encabezado: qué está haciendo el Companion en este momento (copiando, verificando, descargando, escaneando o borrando) y un panel con progreso, velocidad, ETA y los últimos movimientos. Arriba muestra cuánto falta con los discos conectados (**faltan x de y por mover**) y, por disco, si **ya puedes desconectarlo** o conviene esperar.
 - **Pantalla de inicio de sesión** con una hoja de fotogramas junto al formulario (una franja arriba en el móvil), cambio de idioma y tema, mostrar contraseña y mensajes claros ante una contraseña incorrecta o demasiados intentos. No muestra nada del catálogo antes de entrar.
@@ -280,6 +281,22 @@ VideoCAT se puede instalar como app desde el navegador. En **Perfil › App de V
 > Los navegadores solo instalan apps desde **HTTPS** (o `localhost`). Si abres VideoCAT por `http://` con una IP de tu red, primero publícalo con HTTPS detrás de tu reverse proxy.
 
 La app guarda en el dispositivo solo su propio código (interfaz, estilos e íconos) para abrir rápido. Las respuestas de la API, las miniaturas y los videos siempre se piden al servidor, así que no queda información del catálogo en el equipo. Cuando publicas una versión nueva del stack, la app muestra **Hay una nueva versión de VideoCAT · Actualizar**.
+
+#### App para Android
+
+En Android también puedes usar la app nativa (Android 8.0 o posterior). Abre tu propio servidor de VideoCAT, con algunas cosas que un navegador no puede hacer:
+
+- **Reproductor de video nativo**: MKV, MP4, WebM, AVI y TS, HEVC cuando el teléfono lo admite, audio AC3, E-AC3, DTS y TrueHD, imagen en imagen, reproducción con la pantalla apagada, y deslizar por la mitad inferior de la pantalla para avanzar o retroceder.
+- **Bloqueo con huella** (opcional, en **Ajustes de la app**): la app pide tu huella, rostro o PIN del teléfono al abrirla, al bloquear el teléfono y después de 0, 1, 5 o 15 minutos fuera.
+- **Actualizaciones desde GitHub**: la app busca versiones nuevas y las ofrece, sin obligar. Cada descarga se comprueba (tamaño, SHA-256 y certificado de firma) antes de abrir el instalador de Android.
+
+Para instalarla:
+
+1. En el teléfono, descarga [VideoCAT-Android-1.0.0.apk](https://github.com/reiterstahl/videocat/releases/download/android-v1.0.0/VideoCAT-Android-1.0.0.apk) (todas las versiones: [GitHub Releases](https://github.com/reiterstahl/videocat/releases/tag/android-v1.0.0)).
+2. Ábrelo. La primera vez, Android pide permitir que tu navegador o gestor de archivos instale apps.
+3. Escribe la dirección con la que abres VideoCAT en el navegador (por ejemplo `https://videocat.example.com`) e inicia sesión.
+
+La app no guarda nada del catálogo: todo viene de tu servidor, con la misma sesión que la web. SHA-256 del certificado de firma: `8822b32dbcdc3ae2f7eb9d1eebda1beaec2cc25916fab07609b64646f0247ffd`. También puedes seguir las versiones con [Obtainium](https://github.com/ImranR98/Obtainium) (filtrando las etiquetas con `android-v`).
 
 ### 5. Buckets S3 (opcional)
 

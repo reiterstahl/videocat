@@ -122,6 +122,7 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
   4. La tarea en segundo plano se fuerza con `adb shell cmd jobscheduler run -f app.videocat.android.debug 2601`.
 
 **Pantalla de carga** (app 0.4.0): mientras carga la página, el gato del ícono cierra los ojos despacio. Es un vector animado (`drawable/loading_cat.xml`) trazado desde `logo_orange.png`, con el mismo fondo, tamaño y lugar que la pantalla de inicio del sistema, que le pasa el relevo sin salto. Cada párpado es una forma recortada a su ojo que baja a lo largo de la ceja y deja una rendija. Se va cuando termina la página, ante un error o a los 15 segundos. Queda por encima del panel de bloqueo, así que el aviso de huella aparece sobre el gato.
+**Primera versión estable: 1.0.0** (28 nov 2026), para usuarios finales como APK en GitHub Releases, sin la marca de prerelease (sigue sin ser la «latest» del repositorio, que es la del Companion). El código es el de la 0.5.0; las instrucciones de instalación están en el README («Android app» / «App para Android»).
 5. **Google Play.**
    - Ficha, política de privacidad y formulario de seguridad de datos. La app no recopila nada: todo va al servidor de cada persona.
    - Una cuenta personal nueva necesita una prueba cerrada antes de publicar (hoy, 12 testers durante 14 días).
