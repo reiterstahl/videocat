@@ -13,4 +13,5 @@
     <!-- Brand, the same in both themes. -->
     <color name="icon_background">#15181C</color>
     <color name="splash_background">#15181C</color>
+    <color name="brand_orange">#FC6121</color>
 </resources>

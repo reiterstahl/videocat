@@ -23,9 +23,18 @@ class SettingsActivity : FragmentActivity() {
     private lateinit var delayGroup: RadioGroup
     private lateinit var delayLabel: View
     private lateinit var unavailable: TextView
+    private lateinit var content: View
     private var updating = false
+    // Opened straight from the icon's menu, or after the phone was locked: it asks first too.
+    private var gated = false
+    private var prompting = false
 
-    private val delayButtons = mapOf(0 to R.id.settings_delay_0, 60 to R.id.settings_delay_60, 300 to R.id.settings_delay_300)
+    private val delayButtons = mapOf(
+        0 to R.id.settings_delay_0,
+        60 to R.id.settings_delay_60,
+        300 to R.id.settings_delay_300,
+        900 to R.id.settings_delay_900
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -37,6 +46,7 @@ class SettingsActivity : FragmentActivity() {
             insets
         }
 
+        content = findViewById(R.id.settings_root)
         lockSwitch = findViewById(R.id.settings_lock)
         delayGroup = findViewById(R.id.settings_delay)
         delayLabel = findViewById(R.id.settings_delay_label)
@@ -54,7 +64,11 @@ class SettingsActivity : FragmentActivity() {
             showState()
             val title = getString(if (checked) R.string.settings_lock_confirm_on else R.string.settings_lock_confirm_off)
             AppLock.authenticate(this, title, null) { confirmed, _ ->
-                if (confirmed) AppLock.setEnabled(this, checked)
+                if (confirmed) {
+                    AppLock.setEnabled(this, checked)
+                    // Just confirmed: turning the lock on does not ask again on the way back.
+                    AppLock.markUnlocked()
+                }
                 showState()
             }
         }
@@ -64,10 +78,38 @@ class SettingsActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        gated = AppLock.needsUnlock(this)
+        content.visibility = if (gated) View.INVISIBLE else View.VISIBLE
+    }
+
     override fun onResume() {
         super.onResume()
         findViewById<TextView>(R.id.settings_server_address).text = ServerStore.get(this).orEmpty()
         showState()
+        askToOpen()
+    }
+
+    // Back from the phone's own lock screen, which cancels a prompt shown behind it.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) askToOpen()
+    }
+
+    private fun askToOpen() {
+        if (!gated || prompting) return
+        prompting = true
+        AppLock.unlock(this) { open, dismissed ->
+            prompting = false
+            if (open) {
+                gated = false
+                content.visibility = View.VISIBLE
+                showState()
+            } else if (dismissed) {
+                finish()
+            }
+        }
     }
 
     private fun showState() {

@@ -234,4 +234,24 @@
             android:textSize="16sp"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <!-- While the page loads: the starting screen's cat, now closing its eyes. Same background,
+         size and place as the system's starting screen, which hands over to it. Over the lock
+         panel: the fingerprint prompt shows on the cat, and the panel once the page is there. -->
+    <FrameLayout
+        android:id="@+id/loading_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/splash_background"
+        android:clickable="true"
+        android:focusable="false">
+
+        <ImageView
+            android:id="@+id/loading_cat"
+            android:layout_width="@dimen/loading_cat_size"
+            android:layout_height="@dimen/loading_cat_size"
+            android:layout_gravity="center"
+            android:contentDescription="@string/loading"
+            android:src="@drawable/loading_cat" />
+    </FrameLayout>
 </FrameLayout>

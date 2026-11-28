@@ -34,7 +34,7 @@
     <string name="settings_title">Ajustes de la app</string>
     <string name="settings_back">Volver</string>
     <string name="settings_lock">Pedir mi huella para abrir VideoCAT</string>
-    <string name="settings_lock_detail">O tu rostro, o el PIN, patrón o contraseña del teléfono. Así nadie que tome tu teléfono desbloqueado entra a tu catálogo.</string>
+    <string name="settings_lock_detail">O tu rostro, o el PIN, patrón o contraseña del teléfono. Funciona como la contraseña de la app: la vuelve a pedir al cerrar la app o bloquear el teléfono, así nadie que tome tu teléfono entra a tu catálogo.</string>
     <string name="settings_lock_unavailable">Configura un bloqueo de pantalla en el teléfono (Ajustes › Seguridad) para usarlo.</string>
     <string name="settings_lock_confirm_on">Activar el bloqueo</string>
     <string name="settings_lock_confirm_off">Desactivar el bloqueo</string>
@@ -42,6 +42,7 @@
     <string name="settings_delay_now">Enseguida</string>
     <string name="settings_delay_1">Después de 1 minuto</string>
     <string name="settings_delay_5">Después de 5 minutos</string>
+    <string name="settings_delay_15">Después de 15 minutos</string>
     <string name="settings_server">Servidor</string>
     <string name="settings_version">VideoCAT para Android %1$s</string>
     <string name="shortcut_settings">Ajustes de la app</string>
@@ -50,4 +51,5 @@
     <string name="lock_unlock">Desbloquear</string>
     <string name="lock_prompt_title">Desbloquear VideoCAT</string>
     <string name="lock_no_screen_lock">El teléfono ya no tiene bloqueo de pantalla, así que se desactivó el bloqueo de la app.</string>
+    <string name="loading">Cargando VideoCAT</string>
 </resources>

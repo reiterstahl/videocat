@@ -95,22 +95,33 @@
                 <RadioButton
                     android:id="@+id/settings_delay_0"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
                     android:text="@string/settings_delay_now"
                     android:textColor="@color/text" />
 
                 <RadioButton
                     android:id="@+id/settings_delay_60"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
                     android:text="@string/settings_delay_1"
                     android:textColor="@color/text" />
 
                 <RadioButton
                     android:id="@+id/settings_delay_300"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
                     android:text="@string/settings_delay_5"
+                    android:textColor="@color/text" />
+
+                <RadioButton
+                    android:id="@+id/settings_delay_900"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_delay_15"
                     android:textColor="@color/text" />
             </RadioGroup>
         </LinearLayout>

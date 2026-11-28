@@ -41,8 +41,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
-    // Swiping the app away stops the video.
+    // Swiping the app away stops the video, and closes the app: the fingerprint asks again.
     override fun onTaskRemoved(rootIntent: Intent?) {
+        AppLock.relock()
         session?.player?.run {
             pause()
             stop()

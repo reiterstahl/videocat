@@ -11,6 +11,7 @@
     <!-- No backup of the WebView's data: the session cookie should not travel to Google Drive or
          another phone. The server's address is cheap to type again. -->
     <application
+        android:name=".VideoCatApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"

@@ -28,7 +28,7 @@ La app inyecta `window.VideoCatAndroid` antes de que corra la página (`@Javascr
 | `themeColor(css)` | Uso interno: un script de la propia app le pasa el `theme-color` de la página para teñir las barras del sistema. | Versión 1 |
 | `play(json)` | Reproduce en el reproductor nativo una sesión de streaming que abrió la página: `{url, title, subtitle, position, shuffle, canNext, canRandom}` (posición en segundos). Solo acepta `/api/streams/<id>/content` del servidor de la app, sin parámetros. | Versión 2 |
 | `stop()` | Cierra el reproductor nativo cuando la página detiene el video. | Versión 2 |
-| `openSettings()` | Abre los ajustes de la app (bloqueo con huella, servidor). La web lo ofrece en Perfil cuando la app anuncia `"settings"`. | Versión 3 |
+| `openSettings()` | Abre los ajustes de la app (bloqueo con huella, servidor). La web lo ofrece en el menú «Más», en la barra lateral y en Perfil cuando la app anuncia `"settings"`. | Versión 3 |
 
 Lo que la app hace de forma nativa lo anuncia en `capabilities()`, y la web solo le pasa lo que la app declara. Sin el puente, o con un puente roto, la página se comporta como en un navegador. La web lo lee en `apps/web/src/lib/android-app.ts`, y la app lo define en `apps/android/app/src/main/kotlin/app/videocat/android/WebBridge.kt`.
 
@@ -82,6 +82,7 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
 3. **Reproductor nativo.** Hecho en la app 0.2.0; la parte web va en el stack 0.2.54.
    - **Media3 (ExoPlayer) 1.11.** Lee MKV, MP4, WebM, AVI y TS; el códec depende del teléfono (HEVC casi siempre). Las pistas de audio y subtítulos del archivo se eligen en el reproductor.
    - **Controles.** ±10 s (también con doble toque a cada lado), barra de tiempo, siguiente o aleatorio como en la web, velocidad, y al cerrar se vuelve al detalle.
+   - **Deslizar para avanzar** (app 0.4.0), como en MX Player. Un deslizamiento horizontal en la mitad inferior de la pantalla recorre el video: a la derecha adelanta y a la izquierda retrocede. Todo el ancho de la pantalla equivale a 2 minutos (`SwipeSeek`). Mientras se arrastra se ve «+0:15» y, debajo, «12:34 / 45:00»; el salto se hace al soltar. La mitad superior queda libre para los gestos del sistema.
    - **Pantalla.** Gira sola a horizontal o vertical según el video, a pantalla completa sin barras.
    - **Imagen en imagen.** Entra sola al salir de la app con el video sonando, y también con su botón. Cerrar la ventana detiene el video, y si el video termina en ella, la ventana se va.
    - **Segundo plano.** Sigue con la pantalla apagada, con notificación y controles en la pantalla de bloqueo (`PlaybackService`, servicio en primer plano de tipo `mediaPlayback`).
@@ -90,13 +91,24 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
    - **Audio AC3, E-AC3, DTS y TrueHD** (app 0.3.0). Primero los decodificadores del teléfono; para lo que no trae entra FFmpeg, con el decodificador ya compilado que publica Jellyfin (`org.jellyfin.media3:media3-ffmpeg-decoder`, GPL v3, compatible con la AGPL; ver NOTICE). Está compilado contra Media3 1.9.0; antes de adoptarlo se comprobó que cada método y campo de Media3 que usa existe igual en la 1.11. El renderer se agrega por nombre en `PlayerHolder` (`WithFfmpegAudio`): por reflexión, como lo hace Media3, R8 lo borraba del build de release. Suma unos 5 MB al APK (ARM y x86_64).
 4. **Chromecast nativo.**
 
-**Bloqueo con huella** (app 0.3.0, fuera de las fases):
-- En **Ajustes de la app**, que se abren desde Perfil en la web o manteniendo pulsado el ícono: «Pedir mi huella para abrir VideoCAT». Acepta también el rostro, o el PIN, patrón o contraseña del teléfono.
-- Activarlo o desactivarlo pide la huella primero.
-- **Cuándo pide:** al abrir la app y al volver después de salir, enseguida, al minuto o a los 5 minutos. No la pide al girar el teléfono ni con el video en imagen en imagen.
+**Bloqueo con huella** (app 0.3.0, fuera de las fases; ampliado en la 0.4.0):
+- En **Ajustes de la app**: «Pedir mi huella para abrir VideoCAT». Acepta también el rostro, o el PIN, patrón o contraseña del teléfono.
+- **Dónde se abren los ajustes:**
+  - en la web, en el menú «Más» del teléfono y en la barra lateral, además de Perfil (stack 0.2.55);
+  - manteniendo pulsado el ícono de la app.
+- Activarlo o desactivarlo pide la huella primero. Si los ajustes se abren con la app bloqueada (desde el ícono, o después de bloquear el teléfono), también la piden antes de mostrarse.
+- **Funciona como la contraseña de la app.** La vuelve a pedir:
+  - al abrirla de nuevo después de cerrarla: con Atrás, deslizándola desde Recientes o forzando su detención;
+  - al bloquear el teléfono (se apaga la pantalla), aunque se vuelva enseguida;
+  - al volver de otra app pasado el tiempo elegido: enseguida, al minuto, a los 5 o a los 15 minutos.
+- No la pide al girar el teléfono, al pasar entre pantallas de la app ni con el video en imagen en imagen.
+- **Cómo se lleva la cuenta.** El estado desbloqueado vive solo en el proceso (`AppLock`), así que un proceso nuevo siempre arranca bloqueado. `VideoCatApp` cuenta las pantallas visibles para saber cuándo la app entera pasa a segundo plano, y escucha `ACTION_SCREEN_OFF` para el bloqueo del teléfono. `MainActivity` vuelve a bloquear cuando se crea sin estado guardado o se cierra del todo, y `PlaybackService` cuando la tarea se quita de Recientes.
+- **Al volver de la pantalla de bloqueo del teléfono**, el sistema cancela el aviso de huella que la app había abierto detrás. Por eso la app lo vuelve a mostrar en cuanto queda al frente, salvo que la persona lo haya cerrado: entonces lo pide el botón Desbloquear.
 - Con el bloqueo activado, la vista de apps recientes no muestra el catálogo (Android 13+).
 - Si el teléfono se queda sin bloqueo de pantalla, la app lo desactiva y avisa.
 - Es un bloqueo de privacidad: la sesión sigue en el teléfono como antes.
+
+**Pantalla de carga** (app 0.4.0): mientras carga la página, el gato del ícono cierra los ojos despacio. Es un vector animado (`drawable/loading_cat.xml`) trazado desde `logo_orange.png`, con el mismo fondo, tamaño y lugar que la pantalla de inicio del sistema, que le pasa el relevo sin salto. Cada párpado es una forma recortada a su ojo que baja a lo largo de la ceja y deja una rendija. Se va cuando termina la página, ante un error o a los 15 segundos. Queda por encima del panel de bloqueo, así que el aviso de huella aparece sobre el gato.
 5. **Google Play.**
    - Ficha, política de privacidad y formulario de seguridad de datos. La app no recopila nada: todo va al servidor de cada persona.
    - Una cuenta personal nueva necesita una prueba cerrada antes de publicar (hoy, 12 testers durante 14 días).

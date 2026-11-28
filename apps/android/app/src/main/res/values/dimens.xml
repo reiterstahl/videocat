@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="connect_gutter">20dp</dimen>
+    <!-- The system's starting screen draws its icon this big. -->
+    <dimen name="loading_cat_size">288dp</dimen>
 </resources>

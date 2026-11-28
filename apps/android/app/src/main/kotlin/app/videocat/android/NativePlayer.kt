@@ -13,6 +13,7 @@ import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
@@ -20,6 +21,7 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.core.view.isVisible
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -27,6 +29,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import kotlin.math.abs
 
 /**
  * The native player over the page: plays the stream session the page opened, with ±10 s (also
@@ -56,6 +59,11 @@ class NativePlayer(
     // or stop(); a second report would make it skip a video.
     private var reported = false
     private var listening: AdvancingPlayer? = null
+    // A horizontal swipe over the lower half going through the video: where it started, from
+    // which finger position, and where it lands on release. NO_SWIPE when there is none.
+    private var swipeStartMs = NO_SWIPE
+    private var swipeOriginX = 0f
+    private var swipeTargetMs = 0L
 
     val isOpen: Boolean get() = holder.isVisible
     val isPlaying: Boolean get() = player?.isPlaying == true
@@ -242,11 +250,38 @@ class NativePlayer(
         notice.visibility = View.VISIBLE
     }
 
-    // One tap shows or hides the controls; two taps on a side go back or forward 10 seconds.
+    // One tap shows or hides the controls; two taps on a side go back or forward 10 seconds; a
+    // horizontal swipe over the lower half goes through the video (right forward, left back) and
+    // jumps there on release.
     @SuppressLint("ClickableViewAccessibility")
     private fun attachGestures() {
+        val swipeSlop = ViewConfiguration.get(activity).scaledTouchSlop * 2
         val detector = GestureDetector(activity, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                val down = e1 ?: return false
+                val current = player ?: return false
+                if (swipeStartMs == NO_SWIPE) {
+                    val dx = e2.x - down.x
+                    val dy = e2.y - down.y
+                    // The upper half stays free (the system's own swipes come from the edges).
+                    if (down.y < playerView.height / 2f) return false
+                    if (abs(dx) < swipeSlop || abs(dx) < abs(dy) * 1.5f) return false
+                    if (current.duration == C.TIME_UNSET || !current.isCurrentMediaItemSeekable) return false
+                    swipeStartMs = current.currentPosition
+                    swipeOriginX = e2.x
+                    playerView.hideController()
+                    handler.removeCallbacks(hideSeekFeedback)
+                    seekFeedback.layoutParams = (seekFeedback.layoutParams as FrameLayout.LayoutParams).apply {
+                        gravity = Gravity.CENTER
+                    }
+                    seekFeedback.visibility = View.VISIBLE
+                }
+                swipeTargetMs = SwipeSeek.target(swipeStartMs, e2.x - swipeOriginX, playerView.width, current.duration)
+                seekFeedback.text = SwipeSeek.label(swipeTargetMs - swipeStartMs, swipeTargetMs, current.duration)
+                return true
+            }
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (playerView.isControllerFullyVisible) playerView.hideController() else playerView.showController()
@@ -271,7 +306,15 @@ class NativePlayer(
         // does, and TalkBack still uses PlayerView's own click.
         val onTouch = View.OnTouchListener { _, event ->
             if (inPictureInPicture) return@OnTouchListener false
-            detector.onTouchEvent(event)
+            val handled = detector.onTouchEvent(event)
+            if (swipeStartMs != NO_SWIPE && (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)) {
+                if (event.actionMasked == MotionEvent.ACTION_UP) player?.seekTo(swipeTargetMs)
+                swipeStartMs = NO_SWIPE
+                handler.removeCallbacks(hideSeekFeedback)
+                handler.postDelayed(hideSeekFeedback, 500)
+                return@OnTouchListener true
+            }
+            handled
         }
         playerView.setOnTouchListener(onTouch)
         // With the controls showing, their layer gets the touches outside its buttons: the same
@@ -281,6 +324,7 @@ class NativePlayer(
 
     companion object {
         private const val PAGE_TIMEOUT_MS = 25_000L
+        private const val NO_SWIPE = -1L
 
         /** The phone could not read the file or decode its video or audio: the MP4 copy may help. */
         fun isFormatProblem(error: PlaybackException): Boolean =

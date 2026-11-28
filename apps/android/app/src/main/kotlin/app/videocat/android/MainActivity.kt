@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
 import android.content.pm.ShortcutManager
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.net.http.SslError
@@ -16,7 +17,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
-import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -31,6 +31,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -59,18 +60,23 @@ class MainActivity : FragmentActivity() {
     private var webView: WebView? = null
     private lateinit var nativePlayer: NativePlayer
     private lateinit var lockPanel: View
+    private lateinit var loadingPanel: View
     private var locked = false
     private var prompting = false
+    // Show the prompt by itself until the person dismisses it; then the Unlock button asks.
+    private var autoPrompt = true
 
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var barColor: Int = 0
-    private var keepSplash = true
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splash = installSplashScreen()
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        // A new screen, not one coming back from a rotation: the app was opened anew (after Back,
+        // or after being swiped away while the process lived on), so the fingerprint asks again.
+        if (savedInstanceState == null) AppLock.relock()
 
         val saved = ServerStore.get(this)
         if (saved == null) {
@@ -79,10 +85,6 @@ class MainActivity : FragmentActivity() {
             return
         }
         origin = saved
-
-        // Until the first page is drawn, but never longer than a moment: a slow server shows its own loading.
-        splash.setKeepOnScreenCondition { keepSplash }
-        mainHandler.postDelayed({ keepSplash = false }, SPLASH_MAX_MS)
 
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -98,6 +100,15 @@ class MainActivity : FragmentActivity() {
         findViewById<Button>(R.id.error_change_server).setOnClickListener { startActivity(ConnectActivity.intent(this)) }
         lockPanel = findViewById(R.id.lock_panel)
         findViewById<Button>(R.id.lock_unlock).setOnClickListener { promptUnlock() }
+        // The starting screen's cat stays, closing its eyes, until the page shows (a restored page
+        // has its content already: no wait).
+        loadingPanel = findViewById(R.id.loading_panel)
+        if (savedInstanceState == null) {
+            (findViewById<ImageView>(R.id.loading_cat).drawable as? Animatable)?.start()
+            mainHandler.postDelayed({ hideLoading() }, LOADING_MAX_MS)
+        } else {
+            loadingPanel.visibility = View.GONE
+        }
 
         nativePlayer = NativePlayer(this, root, ::sendPlayerEvent) { open ->
             hideSystemBars(open)
@@ -140,55 +151,55 @@ class MainActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        val now = SystemClock.elapsedRealtime()
-        if (AppLock.shouldLock(AppLock.isEnabled(this), !unlockedInThisProcess, backgroundSince, now, AppLock.delaySeconds(this))) {
-            lock()
-        }
-        backgroundSince = null
+        if (AppLock.needsUnlock(this)) lock() else if (locked) unlock()
     }
 
     override fun onResume() {
         super.onResume()
         // With the lock on, the recent apps screen shows no picture of the catalog.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!AppLock.isEnabled(this))
-        if (locked && !prompting) promptUnlock()
+        if (locked && autoPrompt) promptUnlock()
     }
 
-    override fun onStop() {
-        super.onStop()
-        // A rotation or the small video window are not leaving the app.
-        if (!isChangingConfigurations && !isInPictureInPictureMode) backgroundSince = SystemClock.elapsedRealtime()
+    // Back from the phone's own lock screen, which cancels a prompt shown behind it: ask again
+    // once the app is really in front.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && locked && autoPrompt) promptUnlock()
     }
 
     private fun lock() {
+        if (!locked) autoPrompt = true
         locked = true
-        keepSplash = false
         lockPanel.visibility = View.VISIBLE
     }
 
     private fun unlock() {
         locked = false
-        unlockedInThisProcess = true
         lockPanel.visibility = View.GONE
     }
 
     private fun promptUnlock() {
         if (!locked || prompting) return
-        // The phone's screen lock was removed: there is nothing left to confirm with.
-        if (!AppLock.canAuthenticate(this)) {
-            AppLock.setEnabled(this, false)
-            Toast.makeText(this, R.string.lock_no_screen_lock, Toast.LENGTH_LONG).show()
-            unlock()
-            return
-        }
         prompting = true
-        AppLock.authenticate(this, getString(R.string.lock_prompt_title), null) { confirmed, _ ->
+        AppLock.unlock(this) { open, dismissed ->
             prompting = false
-            if (confirmed) unlock()
+            if (open) unlock() else if (dismissed) autoPrompt = false
         }
     }
 
+    private fun hideLoading() {
+        if (loadingPanel.visibility != View.VISIBLE || loadingPanel.alpha < 1f) return
+        paintBars(barColor)
+        loadingPanel.animate().alpha(0f).setDuration(220).withEndAction {
+            loadingPanel.visibility = View.GONE
+            (findViewById<ImageView>(R.id.loading_cat).drawable as? Animatable)?.stop()
+        }.start()
+    }
+
     override fun onDestroy() {
+        // Closed for good (Back, or swiped away): the next opening asks for the fingerprint.
+        if (isFinishing) AppLock.relock()
         mainHandler.removeCallbacksAndMessages(null)
         if (::nativePlayer.isInitialized) nativePlayer.close(notifyPage = false)
         webView?.let { destroyWebView(it) }
@@ -263,7 +274,7 @@ class MainActivity : FragmentActivity() {
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
-            keepSplash = false
+            hideLoading()
             if (isServer(url)) view.evaluateJavascript(WebBridge.THEME_COLOR_SCRIPT, null)
         }
 
@@ -413,7 +424,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showError(detail: String) {
-        keepSplash = false
+        hideLoading()
         errorDetail.text = listOf(origin, detail).filter { it.isNotBlank() }.joinToString("\n")
         errorPanel.visibility = View.VISIBLE
     }
@@ -427,6 +438,11 @@ class MainActivity : FragmentActivity() {
 
     private fun applyBarColor(color: Int) {
         barColor = color
+        // While the cat is on screen the bars keep its dark background, not the page's yet.
+        paintBars(if (loadingPanel.isVisible && loadingPanel.alpha == 1f) getColor(R.color.splash_background) else color)
+    }
+
+    private fun paintBars(color: Int) {
         root.setBackgroundColor(color)
         val light = CssColor.isLight(color)
         WindowCompat.getInsetsController(window, root).apply {
@@ -504,10 +520,7 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         private const val STATE_WEB = "web"
-        private const val SPLASH_MAX_MS = 2_500L
-
-        // For the lock, per process: a new process (a fresh start) always asks.
-        private var unlockedInThisProcess = false
-        private var backgroundSince: Long? = null
+        // A slow server: the WebView shows whatever it has by then.
+        private const val LOADING_MAX_MS = 15_000L
     }
 }
