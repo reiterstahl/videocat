@@ -240,23 +240,22 @@
 }
 
 @media (max-width: 640px) {
-  .vc-kpis {
-    display: flex;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .vc-kpis::-webkit-scrollbar {
-    display: none;
-  }
-
+  /* The four numbers as a 2 × 2 grid (the grid from 900 px holds), never a strip that scrolls
+     sideways. */
   .vc-kpi {
-    min-width: 132px;
-    flex: 1 0 auto;
+    min-width: 0;
     padding: 8px 12px;
   }
 
+  .vc-kpi > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .vc-kpi strong {
+    flex-wrap: wrap;
+    row-gap: 2px;
     font-size: 1.05rem;
   }
 

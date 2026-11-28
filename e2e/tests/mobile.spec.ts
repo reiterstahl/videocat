@@ -244,3 +244,17 @@ test("on a phone the disks open as a list in a sheet instead of a sideways strip
   await page.screenshot({ path: "e2e/.results/disks-summary.png" });
   await expectNoHorizontalScroll(page);
 });
+
+// The catalog numbers are a 2 × 2 grid on a phone: all four in view, none cut off or scrolling sideways.
+test("the catalog numbers fit the phone as a 2 by 2 grid", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const kpis = page.locator(".vc-kpis").first();
+  await expect(kpis.locator(".vc-kpi strong").first()).not.toHaveText("");
+  expect(await kpis.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  const boxes = await kpis.locator(".vc-kpi").evaluateAll((cells) => cells.map((cell) => cell.getBoundingClientRect()).map(({ left, top, right }) => ({ left, top, right })));
+  const frame = await kpis.boundingBox();
+  expect(boxes).toHaveLength(4);
+  expect(new Set(boxes.map((box) => Math.round(box.top))).size).toBe(2);
+  for (const box of boxes) expect(box.right).toBeLessThanOrEqual((frame?.x ?? 0) + (frame?.width ?? 0) + 1);
+  await page.screenshot({ path: "e2e/.results/kpis-grid.png" });
+});
