@@ -15,8 +15,17 @@ android {
         minSdk = 26
         targetSdk = 36
         // versionCode goes up by one with every published build; Play and Android refuse a lower one.
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
+        // Only to try the update locally: a build that pretends to be an older version.
+        (findProperty("videocatVersionCode") as String?)?.let { versionCode = it.toInt() }
+        (findProperty("videocatVersionName") as String?)?.let { versionName = it }
+
+        // Updates from GitHub Releases for the APK installed by hand. A build for Google Play
+        // passes -PvideocatSelfUpdate=false: Play updates its own copy and forbids apps that do.
+        buildConfigField("boolean", "SELF_UPDATE", ((findProperty("videocatSelfUpdate") as String?) != "false").toString())
+        buildConfigField("String", "UPDATES_URL", "\"https://api.github.com/repos/reiterstahl/videocat/releases?per_page=30\"")
+        buildConfigField("String", "UPDATES_ASSET_PREFIX", "\"https://github.com/reiterstahl/videocat/releases/download/android-v\"")
         // The FFmpeg decoder ships native code: phones (ARM) and x86_64 emulators and Chromebooks.
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -45,6 +54,11 @@ android {
             // Installs next to the release build instead of replacing it.
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // A local copy of the release list to try the update with (see ANDROID_APP_PLAN.es.md).
+            (findProperty("videocatUpdatesTest") as String?)?.let { base ->
+                buildConfigField("String", "UPDATES_URL", "\"$base/releases.json\"")
+                buildConfigField("String", "UPDATES_ASSET_PREFIX", "\"$base/\"")
+            }
         }
     }
 

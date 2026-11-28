@@ -154,7 +154,8 @@
             <Button
                 android:id="@+id/settings_change_server"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
                 android:layout_marginTop="12dp"
                 android:background="@drawable/button_outline"
                 android:paddingHorizontal="20dp"
@@ -163,6 +164,65 @@
                 android:textAllCaps="false"
                 android:textColor="@color/text"
                 android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- Updates from GitHub Releases; hidden in a build for Google Play. -->
+        <LinearLayout
+            android:id="@+id/settings_updates"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/card"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_updates"
+                android:textColor="@color/text"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/settings_update_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/text"
+                android:textSize="14sp" />
+
+            <ProgressBar
+                android:id="@+id/settings_update_progress"
+                style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:max="100"
+                android:progressTint="@color/accent"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/settings_update_action"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/button_outline"
+                android:paddingHorizontal="20dp"
+                android:stateListAnimator="@null"
+                android:text="@string/settings_update_check"
+                android:textAllCaps="false"
+                android:textColor="@color/text"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/settings_update_detail"
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <TextView

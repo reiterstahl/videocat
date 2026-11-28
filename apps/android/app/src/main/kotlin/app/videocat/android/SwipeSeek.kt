@@ -14,11 +14,15 @@ object SwipeSeek {
         return (startMs + offset).coerceIn(0L, maxOf(0L, durationMs))
     }
 
-    /** "+0:15" and, below, "12:34 / 45:00". */
+    /** "12:34 / 45:00 · +0:15": where it lands, of how long, and how far it jumps. */
     fun label(offsetMs: Long, targetMs: Long, durationMs: Long): String {
         val sign = if (offsetMs < 0) "−" else "+"
-        return "$sign${time(abs(offsetMs))}\n${time(targetMs)} / ${time(durationMs)}"
+        return "${time(targetMs)} / ${time(durationMs)} · $sign${time(abs(offsetMs))}"
     }
+
+    /** [ms] as thousandths of [durationMs], for the bar. */
+    fun permille(ms: Long, durationMs: Long): Int =
+        if (durationMs <= 0) 0 else (ms * 1000 / durationMs).toInt().coerceIn(0, 1000)
 
     fun time(ms: Long): String {
         val total = ms / 1000

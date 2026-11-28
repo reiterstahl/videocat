@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
@@ -51,6 +52,9 @@ class NativePlayer(
     private val subtitle: TextView = root.findViewById(R.id.player_subtitle)
     private val notice: TextView = root.findViewById(R.id.player_notice)
     private val seekFeedback: TextView = root.findViewById(R.id.player_seek)
+    private val scrub: View = root.findViewById(R.id.player_scrub)
+    private val scrubTime: TextView = root.findViewById(R.id.player_scrub_time)
+    private val scrubBar: ProgressBar = root.findViewById(R.id.player_scrub_bar)
     private val handler = Handler(Looper.getMainLooper())
     private var player: AdvancingPlayer? = null
     private var videoAspect: Rational? = null
@@ -71,6 +75,7 @@ class NativePlayer(
     // After Next or an error the page opens a new session; if nothing comes, say so.
     private val giveUp = Runnable { showNotice(R.string.player_gave_up) }
     private val hideSeekFeedback = Runnable { seekFeedback.visibility = View.GONE }
+    private val hideScrub = Runnable { scrub.visibility = View.GONE }
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -196,6 +201,7 @@ class NativePlayer(
         if (inPip) {
             topBar.visibility = View.GONE
             seekFeedback.visibility = View.GONE
+            scrub.visibility = View.GONE
         } else {
             playerView.showController()
         }
@@ -272,14 +278,13 @@ class NativePlayer(
                     swipeStartMs = current.currentPosition
                     swipeOriginX = e2.x
                     playerView.hideController()
-                    handler.removeCallbacks(hideSeekFeedback)
-                    seekFeedback.layoutParams = (seekFeedback.layoutParams as FrameLayout.LayoutParams).apply {
-                        gravity = Gravity.CENTER
-                    }
-                    seekFeedback.visibility = View.VISIBLE
+                    handler.removeCallbacks(hideScrub)
+                    scrubBar.secondaryProgress = SwipeSeek.permille(swipeStartMs, current.duration)
+                    scrub.visibility = View.VISIBLE
                 }
                 swipeTargetMs = SwipeSeek.target(swipeStartMs, e2.x - swipeOriginX, playerView.width, current.duration)
-                seekFeedback.text = SwipeSeek.label(swipeTargetMs - swipeStartMs, swipeTargetMs, current.duration)
+                scrubBar.progress = SwipeSeek.permille(swipeTargetMs, current.duration)
+                scrubTime.text = SwipeSeek.label(swipeTargetMs - swipeStartMs, swipeTargetMs, current.duration)
                 return true
             }
 
@@ -310,8 +315,8 @@ class NativePlayer(
             if (swipeStartMs != NO_SWIPE && (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) player?.seekTo(swipeTargetMs)
                 swipeStartMs = NO_SWIPE
-                handler.removeCallbacks(hideSeekFeedback)
-                handler.postDelayed(hideSeekFeedback, 500)
+                handler.removeCallbacks(hideScrub)
+                handler.postDelayed(hideScrub, 600)
                 return@OnTouchListener true
             }
             handled

@@ -1,9 +1,12 @@
 package app.videocat.android
 
 import android.annotation.SuppressLint
+import android.Manifest
+import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
 import android.content.pm.ShortcutManager
@@ -70,6 +73,7 @@ class MainActivity : FragmentActivity() {
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var barColor: Int = 0
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var updateDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -159,6 +163,7 @@ class MainActivity : FragmentActivity() {
         // With the lock on, the recent apps screen shows no picture of the catalog.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!AppLock.isEnabled(this))
         if (locked && autoPrompt) promptUnlock()
+        checkForUpdate()
     }
 
     // Back from the phone's own lock screen, which cancels a prompt shown behind it: ask again
@@ -177,6 +182,43 @@ class MainActivity : FragmentActivity() {
     private fun unlock() {
         locked = false
         lockPanel.visibility = View.GONE
+        offerUpdate()
+    }
+
+    // A new version on GitHub: offered once per version, never forced. With the app closed, the
+    // job (UpdateCheckJob) leaves a notification instead.
+    private fun checkForUpdate() {
+        if (!AppUpdates.enabled) return
+        val context = applicationContext
+        Thread {
+            AppUpdates.checkIfDue(context, UPDATE_CHECK_EVERY_MS)
+            runOnUiThread { offerUpdate() }
+        }.start()
+    }
+
+    private fun offerUpdate() {
+        if (!AppUpdates.enabled || isFinishing || isDestroyed || locked || updateDialog?.isShowing == true) return
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        val release = AppUpdates.available(this) ?: return
+        if (AppUpdates.wasOffered(this, release.versionName)) return
+        AppUpdates.markOffered(this, release.versionName)
+        updateDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.update_dialog_title)
+            .setMessage(getString(R.string.update_dialog_text, release.versionName, AppUpdates.installedVersion))
+            .setPositiveButton(R.string.update_now) { _, _ ->
+                startActivity(SettingsActivity.intent(this).putExtra(SettingsActivity.EXTRA_UPDATE, true))
+            }
+            // "Later": so the system can remind, Android 13+ asks once to allow notifications.
+            .setNegativeButton(R.string.update_later) { _, _ -> askForNotificationsOnce() }
+            .show()
+    }
+
+    private fun askForNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || AppUpdates.askedForNotifications(this)) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        // So the system can say when a version comes out with the app closed (Android 13+).
+        AppUpdates.markAskedForNotifications(this)
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
     }
 
     private fun promptUnlock() {
@@ -522,5 +564,8 @@ class MainActivity : FragmentActivity() {
         private const val STATE_WEB = "web"
         // A slow server: the WebView shows whatever it has by then.
         private const val LOADING_MAX_MS = 15_000L
+        // Opening the app looks for a new version at most this often (GitHub allows 60 an hour).
+        private const val UPDATE_CHECK_EVERY_MS = 15L * 60 * 1000
+        private const val REQUEST_NOTIFICATIONS = 31
     }
 }

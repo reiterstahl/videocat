@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Updates from GitHub Releases: Android's installer opens on the downloaded version and asks
+         to confirm; the notification says a version is out; the check survives a restart. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- No backup of the WebView's data: the session cookie should not travel to Google Drive or
          another phone. The server's address is cheap to type again. -->
@@ -50,6 +55,22 @@
         <activity
             android:name=".SettingsActivity"
             android:exported="false" />
+
+        <service
+            android:name=".UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Hands the downloaded update to the installer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <activity
             android:name=".ConnectActivity"

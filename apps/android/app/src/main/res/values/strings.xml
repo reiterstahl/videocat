@@ -56,4 +56,23 @@
     <string name="lock_prompt_title">Unlock VideoCAT</string>
     <string name="lock_no_screen_lock">The phone no longer has a screen lock, so the app lock was turned off.</string>
     <string name="loading">Loading VideoCAT</string>
+    <string name="update_channel">App updates</string>
+    <string name="update_notification_title">VideoCAT %1$s is out</string>
+    <string name="update_notification_text">Tap to update.</string>
+    <string name="update_dialog_title">A new version of VideoCAT</string>
+    <string name="update_dialog_text">Version %1$s is out (you have %2$s). Update now? Android asks you to confirm the installation.</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later</string>
+    <string name="settings_updates">Updates</string>
+    <string name="settings_update_current">You have the latest version.</string>
+    <string name="settings_update_available">Version %1$s is out.</string>
+    <string name="settings_update_checking">Looking for a new version…</string>
+    <string name="settings_update_failed">Could not check for updates. Try again later.</string>
+    <string name="settings_update_check">Check for updates</string>
+    <string name="settings_update_install">Update to %1$s</string>
+    <string name="settings_update_downloading">Downloading… %1$d%%</string>
+    <string name="settings_update_rejected">The download did not pass the checks, so it was not installed.</string>
+    <string name="settings_update_download_failed">The download stopped. Try again.</string>
+    <string name="settings_update_allow">Allow VideoCAT to install apps, then come back to finish.</string>
+    <string name="settings_update_detail">From VideoCAT\'s releases on GitHub. Nothing installs until you confirm it.</string>
 </resources>

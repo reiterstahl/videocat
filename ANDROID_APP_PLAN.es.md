@@ -82,7 +82,7 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
 3. **Reproductor nativo.** Hecho en la app 0.2.0; la parte web va en el stack 0.2.54.
    - **Media3 (ExoPlayer) 1.11.** Lee MKV, MP4, WebM, AVI y TS; el códec depende del teléfono (HEVC casi siempre). Las pistas de audio y subtítulos del archivo se eligen en el reproductor.
    - **Controles.** ±10 s (también con doble toque a cada lado), barra de tiempo, siguiente o aleatorio como en la web, velocidad, y al cerrar se vuelve al detalle.
-   - **Deslizar para avanzar** (app 0.4.0), como en MX Player. Un deslizamiento horizontal en la mitad inferior de la pantalla recorre el video: a la derecha adelanta y a la izquierda retrocede. Todo el ancho de la pantalla equivale a 2 minutos (`SwipeSeek`). Mientras se arrastra se ve «+0:15» y, debajo, «12:34 / 45:00»; el salto se hace al soltar. La mitad superior queda libre para los gestos del sistema.
+   - **Deslizar para avanzar** (app 0.4.0), como en MX Player. Un deslizamiento horizontal en la mitad inferior de la pantalla recorre el video: a la derecha adelanta y a la izquierda retrocede. Todo el ancho de la pantalla equivale a 2 minutos (`SwipeSeek`). Mientras se arrastra aparece abajo una barra fina: el punto de partida en blanco translúcido, el de llegada en naranja, y encima, en letra chica con sombra, «12:34 / 45:00 · +0:15». Así no tapa el video (app 0.5.0; en la 0.4.0 era un recuadro en el centro). El salto se hace al soltar. La mitad superior queda libre para los gestos del sistema.
    - **Pantalla.** Gira sola a horizontal o vertical según el video, a pantalla completa sin barras.
    - **Imagen en imagen.** Entra sola al salir de la app con el video sonando, y también con su botón. Cerrar la ventana detiene el video, y si el video termina en ella, la ventana se va.
    - **Segundo plano.** Sigue con la pantalla apagada, con notificación y controles en la pantalla de bloqueo (`PlaybackService`, servicio en primer plano de tipo `mediaPlayback`).
@@ -107,6 +107,19 @@ Los métodos de las fases siguientes (por ejemplo `play(json)` con la URL de la 
 - Con el bloqueo activado, la vista de apps recientes no muestra el catálogo (Android 13+).
 - Si el teléfono se queda sin bloqueo de pantalla, la app lo desactiva y avisa.
 - Es un bloqueo de privacidad: la sesión sigue en el teléfono como antes.
+
+**Actualizaciones desde GitHub** (app 0.5.0), para el APK instalado a mano. Mismo enfoque que la app de Conjoint, pero leyendo GitHub Releases y sin obligar:
+- **Dónde busca.** En la lista de versiones del repositorio (`api.github.com/repos/reiterstahl/videocat/releases`), la `android-vX.Y.Z` más nueva que traiga `VideoCAT-Android-X.Y.Z.apk` y su `.sha256`, descargables solo desde `github.com/reiterstahl/videocat/releases/download/`. Las versiones del Companion se ignoran.
+- **Cuándo.** Al abrir la app, como mucho cada 15 minutos (GitHub permite 60 consultas por hora sin cuenta), y cada 6 horas en segundo plano con `UpdateCheckJob` (JobScheduler, sobrevive a un reinicio).
+- **Cómo avisa.** Con la app abierta, un diálogo «Hay una versión nueva de VideoCAT» con «Actualizar» o «Más tarde», una vez por versión. Con la app cerrada, una notificación «Ya salió VideoCAT X.Y.Z» que lleva directo a actualizar. En Android 13+ el permiso de notificaciones se pide una sola vez, al elegir «Más tarde».
+- **En Ajustes de la app**, la tarjeta «Actualizaciones»: «Buscar actualizaciones», o «Actualizar a la X.Y.Z» con el avance de la descarga.
+- **Antes del instalador**, la descarga tiene que coincidir con el tamaño y el SHA-256 publicados, ser este mismo paquete, con un versionCode mayor y el mismo certificado de firma que la app instalada. Después se abre el instalador de Android (FileProvider), que pide confirmar. La primera vez, Android pide además permitir que VideoCAT instale apps.
+- **Google Play no lo admite.** El build para Play se compila con `-PvideocatSelfUpdate=false`, que apaga todo esto (`BuildConfig.SELF_UPDATE`), y tiene que quitar además los permisos `REQUEST_INSTALL_PACKAGES` y `RECEIVE_BOOT_COMPLETED` del manifiesto (pendiente para la fase 5).
+- **Para probarlo en local**, sin publicar nada:
+  1. Servir un `releases.json` con el formato de GitHub, la APK y su `.sha256` (por ejemplo con `python -m http.server 8082` y `adb reverse tcp:8082 tcp:8082`).
+  2. Compilar la versión nueva con `-PvideocatUpdatesTest=http://localhost:8082`.
+  3. Instalar una compilación vieja con lo mismo más `-PvideocatVersionCode=4 -PvideocatVersionName=0.4.9`.
+  4. La tarea en segundo plano se fuerza con `adb shell cmd jobscheduler run -f app.videocat.android.debug 2601`.
 
 **Pantalla de carga** (app 0.4.0): mientras carga la página, el gato del ícono cierra los ojos despacio. Es un vector animado (`drawable/loading_cat.xml`) trazado desde `logo_orange.png`, con el mismo fondo, tamaño y lugar que la pantalla de inicio del sistema, que le pasa el relevo sin salto. Cada párpado es una forma recortada a su ojo que baja a lo largo de la ceja y deja una rendija. Se va cuando termina la página, ante un error o a los 15 segundos. Queda por encima del panel de bloqueo, así que el aviso de huella aparece sobre el gato.
 5. **Google Play.**

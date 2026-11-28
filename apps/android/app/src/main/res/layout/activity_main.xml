@@ -171,6 +171,40 @@
             android:textSize="16sp"
             android:textStyle="bold"
             android:visibility="gone" />
+
+        <!-- While swiping through the video: a thin bar at the bottom (where it was, lighter, and
+             where it lands) and the time in small type, without hiding the picture. -->
+        <LinearLayout
+            android:id="@+id/player_scrub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/player_scrub_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:shadowColor="#CC000000"
+                android:shadowRadius="4"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ProgressBar
+                android:id="@+id/player_scrub_bar"
+                style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:max="1000"
+                android:progressBackgroundTint="#FFFFFF"
+                android:progressBackgroundTintMode="src_in"
+                android:progressTint="@color/accent"
+                android:secondaryProgressTint="#B3FFFFFF" />
+        </LinearLayout>
     </FrameLayout>
 
     <!-- A video in full screen from the page (requestFullscreen) is shown here, over everything. -->

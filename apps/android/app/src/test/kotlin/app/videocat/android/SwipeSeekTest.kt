@@ -17,7 +17,14 @@ class SwipeSeekTest {
 
     @Test
     fun labelsTheJumpAndWhereItLands() {
-        assertEquals("+0:15\n1:55 / 45:00", SwipeSeek.label(15_000, 115_000, 2_700_000))
-        assertEquals("−1:05\n1:02:03 / 2:00:00", SwipeSeek.label(-65_000, 3_723_000, 7_200_000))
+        assertEquals("1:55 / 45:00 · +0:15", SwipeSeek.label(15_000, 115_000, 2_700_000))
+        assertEquals("1:02:03 / 2:00:00 · −1:05", SwipeSeek.label(-65_000, 3_723_000, 7_200_000))
+    }
+
+    @Test
+    fun placesAPositionOnTheBar() {
+        assertEquals(500, SwipeSeek.permille(30_000, 60_000))
+        assertEquals(0, SwipeSeek.permille(5_000, 0))
+        assertEquals(1000, SwipeSeek.permille(90_000, 60_000))
     }
 }

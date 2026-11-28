@@ -52,4 +52,23 @@
     <string name="lock_prompt_title">Desbloquear VideoCAT</string>
     <string name="lock_no_screen_lock">El teléfono ya no tiene bloqueo de pantalla, así que se desactivó el bloqueo de la app.</string>
     <string name="loading">Cargando VideoCAT</string>
+    <string name="update_channel">Actualizaciones de la app</string>
+    <string name="update_notification_title">Ya salió VideoCAT %1$s</string>
+    <string name="update_notification_text">Toca para actualizar.</string>
+    <string name="update_dialog_title">Hay una versión nueva de VideoCAT</string>
+    <string name="update_dialog_text">Salió la versión %1$s (tienes la %2$s). ¿Actualizar ahora? Android te pide confirmar la instalación.</string>
+    <string name="update_now">Actualizar</string>
+    <string name="update_later">Más tarde</string>
+    <string name="settings_updates">Actualizaciones</string>
+    <string name="settings_update_current">Tienes la última versión.</string>
+    <string name="settings_update_available">Salió la versión %1$s.</string>
+    <string name="settings_update_checking">Buscando una versión nueva…</string>
+    <string name="settings_update_failed">No se pudo buscar actualizaciones. Inténtalo más tarde.</string>
+    <string name="settings_update_check">Buscar actualizaciones</string>
+    <string name="settings_update_install">Actualizar a la %1$s</string>
+    <string name="settings_update_downloading">Descargando… %1$d %%</string>
+    <string name="settings_update_rejected">La descarga no pasó las comprobaciones, así que no se instaló.</string>
+    <string name="settings_update_download_failed">La descarga se cortó. Inténtalo de nuevo.</string>
+    <string name="settings_update_allow">Permite que VideoCAT instale apps y vuelve para terminar.</string>
+    <string name="settings_update_detail">Desde las versiones de VideoCAT en GitHub. Nada se instala sin que lo confirmes.</string>
 </resources>

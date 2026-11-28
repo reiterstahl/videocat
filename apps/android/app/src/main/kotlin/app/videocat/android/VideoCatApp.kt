@@ -15,10 +15,10 @@ import androidx.core.content.ContextCompat
  * screen handing over to another is neither), and when the phone is locked.
  */
 class VideoCatApp : Application() {
-    private var started = 0
-
     override fun onCreate() {
         super.onCreate()
+        // New versions from GitHub Releases, every few hours (not in a build for Google Play).
+        UpdateCheckJob.schedule(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityStarted(activity: Activity) {
                 if (started++ == 0) AppLock.onAppForeground(activity, SystemClock.elapsedRealtime())
@@ -45,5 +45,13 @@ class VideoCatApp : Application() {
             }
         }
         ContextCompat.registerReceiver(this, screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    companion object {
+        @Volatile
+        private var started = 0
+
+        /** Whether a screen of the app is showing. */
+        val inForeground: Boolean get() = started > 0
     }
 }
