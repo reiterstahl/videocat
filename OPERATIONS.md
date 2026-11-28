@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.57
+
+- **The catalog and Review numbers fit the phone.** Up to 640 px wide they scrolled sideways and the third one showed cut off; they are now a 2 × 2 grid.
+- **Android app 1.0.0**, the first stable release (APK in GitHub Releases, see «Android app» in the README). Its native player needs stack 0.2.54 or later, and App settings in the menu 0.2.55 or later.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.56
 
 - **Disks on phones as one line and a sheet.** Up to 900 px wide, the disks panel no longer scrolls sideways: it shows how many disks are chosen, their initials and names, and **Elegir** opens every disk as a vertical list in a sheet from the bottom (name, letter, size and use, with Mostrar conectados, Todos and Ninguno). The desktop strip is unchanged.

@@ -9,7 +9,7 @@
 They are attached to each published image as attestations (see "Publishing releases" in the README). To check one locally against a published image:
 
 ```bash
-docker scout cves registry://reiterstahl/videocat-server:0.2.56 --vex-location docker/vex --vex-author '.*' --only-vex-affected
+docker scout cves registry://reiterstahl/videocat-server:0.2.57 --vex-location docker/vex --vex-author '.*' --only-vex-affected
 ```
 
 Remove a document once the base image ships a package version outside the affected range.
