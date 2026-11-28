@@ -4,6 +4,7 @@ import { formatBytes } from "@videocat/shared";
 import { diskUsagePercent, formatCount } from "../lib/app-helpers";
 import type { ViewMode } from "../lib/app-types";
 import type { Disk, Stats } from "../types";
+import { Skeleton, showsSkeletons } from "./Skeleton";
 
 export type CatalogContextProps = {
   companionLocalOnline: boolean;
@@ -71,13 +72,16 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
   useEffect(() => {
     if (stripRef.current) stripRef.current.scrollLeft = 0;
   }, [mountedKey, stripRef]);
+  // Inside the app, until the first numbers arrive: grey shapes instead of zeros.
+  const waiting = stats === null && showsSkeletons();
+
   return (
     <>
     <section className={`vc-disks ${connectedPanelCollapsed ? "is-collapsed" : ""}`} aria-label="Discos">
       <div className="vc-disks-heading">
         <HardDrive size={17} aria-hidden="true" />
         <strong>{viewMode === "downloads" ? "Discos para descargar" : "Discos"}</strong>
-        <span className="vc-disks-count">{`${panelSelectedDiskIds.length} de ${panelDisks.length}`}</span>
+        {waiting && panelDisks.length === 0 ? <Skeleton className="vc-skel-count" /> : <span className="vc-disks-count">{`${panelSelectedDiskIds.length} de ${panelDisks.length}`}</span>}
         {!connectedPanelCollapsed ? (
           <div className="vc-disks-actions">
             {viewMode !== "downloads" ? (
@@ -129,6 +133,7 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
             <div className="vc-disks-message">{connectedMessage}</div>
           ) : null}
           <div className={`vc-disk-strip ${twoRows ? "is-two-rows" : ""}`} ref={stripRef}>
+            {waiting && panelDisks.length === 0 ? [0, 1].map((index) => <Skeleton key={index} className="vc-skel-chip" />) : null}
             {orderedDisks.map((disk) => {
               const active = panelSelectedDiskIds.includes(disk.id);
               const mounted = companionMountedDiskIds.includes(disk.id);
@@ -165,20 +170,20 @@ export function CatalogContext({ companionLocalOnline, companionMountedDiskIds, 
     <section className="vc-kpis" aria-label="Resumen del catálogo">
       <div className="vc-kpi">
         <span>Discos</span>
-        <strong>{formatCount(stats?.diskCount ?? 0)}</strong>
+        <strong>{waiting ? <Skeleton className="vc-skel-number" /> : formatCount(stats?.diskCount ?? 0)}</strong>
       </div>
       <div className="vc-kpi">
         <span>Videos</span>
-        <strong>{formatCount(stats?.fileCount ?? 0)}</strong>
+        <strong>{waiting ? <Skeleton className="vc-skel-number" /> : formatCount(stats?.fileCount ?? 0)}</strong>
       </div>
       <div className="vc-kpi">
         <span>Bytes catalogados</span>
-        <strong>{formatBytes(stats?.totalBytes ?? 0)}</strong>
+        <strong>{waiting ? <Skeleton className="vc-skel-number" /> : formatBytes(stats?.totalBytes ?? 0)}</strong>
       </div>
       <div className="vc-kpi">
         <span>Duplicados probables</span>
         <strong>
-          {formatCount(stats?.duplicateGroupCount ?? 0)}
+          {waiting ? <Skeleton className="vc-skel-number" /> : formatCount(stats?.duplicateGroupCount ?? 0)}
           {(stats?.pendingDuplicateGroupCount ?? 0) > 0 ? (
             <button className="vc-kpi-link" type="button" onClick={() => switchView("duplicates")}>Revisar →</button>
           ) : null}

@@ -7,6 +7,7 @@ import type { AdminDiskOverview, AdminPurgeResponse, DiskHealthSummary, AdminRem
 import type { Disk } from "../types";
 import { StorageBucketsSection } from "../components/StorageBucketsSection";
 import { copyText } from "../lib/clipboard";
+import { LoadingState } from "../components/Skeleton";
 
 type MaintenanceResponse = {
   retentionDays: { agentErrors: number; auditActions: number; scans: number };
@@ -295,7 +296,7 @@ export function AdminView({ locale, refreshKey, mountedDiskIds, onDiskPurged, on
           </button>
         </div>
         <div className="vc-admin-disks">
-          {loading && disks.length === 0 ? <div className="loading">Cargando...</div> : null}
+          {loading && disks.length === 0 ? <LoadingState /> : null}
           {disks.map((item) => {
             const { disk } = item;
             const totalBytes = item.storage.totalBytes ?? disk.totalBytes ?? null;

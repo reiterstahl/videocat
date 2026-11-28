@@ -1493,7 +1493,8 @@ export function App() {
   }
 
   function refreshStats(): void {
-    void api<Stats>("/api/stats").then(setStats).catch(() => undefined);
+    // A failed first load shows zeros (as before) rather than loading shapes that never end.
+    void api<Stats>("/api/stats").then(setStats).catch(() => setStats((current) => current ?? { diskCount: 0, fileCount: 0, totalBytes: 0, duplicateGroupCount: 0, pendingDuplicateGroupCount: 0 }));
   }
 
   // Counters such as pending duplicates follow decisions made anywhere in the app.

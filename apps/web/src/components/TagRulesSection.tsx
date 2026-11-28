@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
 import { transferError } from "../lib/transfers";
 import type { TransferDestination } from "../types";
+import { LoadingState } from "./Skeleton";
 
 type Category = { key: string; label: string; color: string };
 
@@ -134,7 +135,7 @@ export function TagRulesSection({ destinations, refreshKey, jobs, onChanged }: T
       {error ? <div className="form-error" role="alert">{error}</div> : null}
       {notice ? <div className="vc-notice" role="status">{notice}</div> : null}
 
-      {rules === null ? <div className="loading">Cargando...</div> : rules.length === 0 ? (
+      {rules === null ? <LoadingState /> : rules.length === 0 ? (
         <p className="vc-folders-empty">Sin reglas por etiqueta todavía.</p>
       ) : (
         <ul className="vc-tag-rules">

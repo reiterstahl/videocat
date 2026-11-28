@@ -18,6 +18,7 @@ import type {
   VisibleFolder
 } from "../lib/app-types";
 import type { VideoFile } from "../types";
+import { CatalogSkeleton, LoadingState, Skeleton, showsSkeletons } from "../components/Skeleton";
 
 export type CatalogViewProps = {
   activeCatalogFilters: Array<{ key: string; label: string; onRemove: () => void }>;
@@ -343,7 +344,11 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
       <section className="vc-results" aria-label="Resultados">
         <div className="vc-results-toolbar">
           <span className="vc-results-count">
-            <strong>{`${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}</strong>
+            {loading && files.length === 0 && showsSkeletons() ? (
+              <Skeleton className="vc-skel-title" />
+            ) : (
+              <strong>{`${total.toLocaleString(locale)} ${total === 1 ? "video" : "videos"}`}</strong>
+            )}
             {total > 0 ? <span className="vc-results-size" title="Tamaño de todas las coincidencias, no solo de esta página">{formatBytes(totalBytes)}</span> : null}
           </span>
           {activeCatalogFilters.map((filter) => (
@@ -483,7 +488,7 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
                 ))}
               </div>
             ) : null}
-            {loading ? <div className="loading">Cargando...</div> : null}
+            {loading && files.length === 0 && showsSkeletons() ? <CatalogSkeleton /> : loading ? <div className="loading">Cargando...</div> : null}
             {!loading && files.length === 0 ? <div className="empty">No hay archivos para estos filtros.</div> : null}
           </div>
         ) : (
@@ -558,7 +563,7 @@ export function CatalogView({ activeCatalogFilters, allVisibleSelected, applyBul
                 ))}
               </tbody>
             </table>
-            {loading ? <div className="loading">Cargando...</div> : null}
+            {loading && files.length === 0 ? <LoadingState /> : loading ? <div className="loading">Cargando...</div> : null}
             {!loading && files.length === 0 ? <div className="empty">No hay archivos para estos filtros.</div> : null}
           </div>
 

@@ -4,6 +4,7 @@ import { formatBytes } from "@videocat/shared";
 import { api } from "../lib/api";
 import { formatCount } from "../lib/app-helpers";
 import { squarify } from "../lib/treemap";
+import { LoadingState } from "../components/Skeleton";
 
 type FolderTreeNode = {
   name: string;
@@ -102,7 +103,7 @@ export function UsageView({ diskQuery, noDisksSelected, refreshKey, onOpenInCata
 
       {noDisksSelected ? <div className="empty">Selecciona al menos un disco para ver el esquema de uso.</div> : null}
       {error ? <div className="form-error">{error}</div> : null}
-      {loading && !level ? <div className="loading">Cargando...</div> : null}
+      {loading && !level ? <LoadingState /> : null}
 
       {level && level.children.length > 0 ? (
         <>

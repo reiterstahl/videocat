@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Download, ListChecks, Search } from "lucide-react";
 import { api } from "../lib/api";
 import { dateLabel, formatCount } from "../lib/app-helpers";
+import { LoadingState } from "../components/Skeleton";
 
 type AuditTab = "errors" | "actions";
 
@@ -265,7 +266,7 @@ export function AuditView({ diskQuery, noDisksSelected, refreshKey, locale }: Au
 
       {failure ? <div className="form-error">{failure}</div> : null}
       {tab === "errors" && noDisksSelected ? <div className="empty">Selecciona al menos un disco para ver sus errores.</div> : null}
-      {loading && !errorsData && tab === "errors" ? <div className="loading">Cargando...</div> : null}
+      {loading && !errorsData && tab === "errors" ? <LoadingState /> : null}
 
       {tab === "errors" && errorsData ? (
         <div className={`vc-panel vc-audit-list ${loading ? "is-loading" : ""}`}>

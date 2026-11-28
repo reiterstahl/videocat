@@ -28,6 +28,7 @@ import { GroupSession } from "../components/GroupSession";
 import { GroupKeywordsEditor } from "../components/GroupKeywordsEditor";
 import { TagRulesSection } from "../components/TagRulesSection";
 import type { GroupFolder, TransferDestination, TransferItem, TransferJob, TransferNeed, TransferState, TransferSummary } from "../types";
+import { LoadingState } from "../components/Skeleton";
 
 const needSortKey = "videocat-transfers-need-sort";
 
@@ -310,7 +311,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onCh
           </div>
         ) : null}
         {open ? (
-          items === null ? <div className="loading">Cargando...</div> : (
+          items === null ? <LoadingState /> : (
             <ul className="vc-transfers-items">
               {items.map((item) => (
                 <li key={item.id} className={`is-${item.state}`}>
@@ -331,7 +332,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onCh
 
   function renderJobs(kind: JobKind | "all") {
     const list = jobsOf(kind);
-    if (jobs === null) return <div className="loading">Cargando...</div>;
+    if (jobs === null) return <LoadingState />;
     if (list.length === 0) {
       return <p className="vc-folders-empty">{kind === "all" ? "No hay traslados todavía." : kind === "consolidate" ? "Sin consolidaciones todavía." : kind === "group" ? "Sin archivos agrupados todavía." : "Sin movimientos por etiqueta todavía."}</p>;
     }
@@ -496,7 +497,7 @@ export function TransfersView({ refreshKey, onOpenFolders, onOpenDownloads, onCh
           <h3><Star size={17} aria-hidden="true" className="vc-star-icon" /> Carpetas con estrella</h3>
           <p>Son las únicas que pueden recibir archivos. Desde cada una puedes consolidar sus carpetas iguales o agrupar archivos parecidos.</p>
         </div>
-        {destinations === null ? <div className="loading">Cargando...</div> : destinations.length === 0 ? (
+        {destinations === null ? <LoadingState /> : destinations.length === 0 ? (
           <p className="vc-folders-empty">Ninguna todavía. Márcalas en Uso por carpeta › Carpetas repetidas o elige una carpeta en Agrupar archivos.</p>
         ) : (
           <ul className="vc-starred-grid">

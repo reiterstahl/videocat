@@ -10,6 +10,7 @@ import type {
   FacetResponse
 } from "../lib/app-types";
 import type { VideoFile } from "../types";
+import { LoadingState } from "../components/Skeleton";
 
 export type DuplicatesViewProps = {
   // Groups across every drive (the "Duplicados probables" card), to tell when the selection hides some.
@@ -61,7 +62,7 @@ export function DuplicatesView({ allDuplicateGroupCount, auxLoading, diskCount, 
 
       <div className="vc-dup-layout">
         <div className="vc-dup-groups">
-          {auxLoading ? <div className="loading">Cargando...</div> : null}
+          {auxLoading ? <LoadingState /> : null}
           {!auxLoading && duplicateGroups.length === 0 ? (
             partialSelection && allDuplicateGroupCount > 0 ? (
               <div className="empty vc-dup-scope">

@@ -160,3 +160,44 @@ test("with a larger phone font, button labels stay inside their buttons", async 
     expect(spilled, view).toEqual([]);
   }
 });
+
+// Holds the catalog's first answers until the test lets them through.
+async function holdCatalogData(page: import("@playwright/test").Page) {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/api\/(files|stats)(\?|$)/, async (route) => {
+    await gate;
+    try {
+      await route.continue();
+    } catch {
+      // The page went away while the answer was held.
+    }
+  });
+  return () => release();
+}
+
+test("inside the Android app, the catalog shows loading shapes while its data arrives", async ({ page }) => {
+  await openView(page, "/catalogo");
+  await page.addInitScript(() => {
+    (window as unknown as { VideoCatAndroid: object }).VideoCatAndroid = { version: () => 3, capabilities: () => '["play","settings"]' };
+  });
+  const release = await holdCatalogData(page);
+  await page.goto("/catalogo");
+  await expect(page.locator(".vc-card-skeleton").first()).toBeVisible();
+  await expect(page.locator(".vc-kpis .vc-skel-number")).toHaveCount(4);
+  await expect(page.getByText("Cargando...", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "e2e/.results/skeleton-app.png" });
+  release();
+  await expect(page.locator(".vc-card-open").first()).toBeVisible();
+  await expect(page.locator(".vc-skel")).toHaveCount(0);
+});
+
+test("in a browser the catalog keeps its loading text", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const release = await holdCatalogData(page);
+  await page.goto("/catalogo");
+  await expect(page.getByText("Cargando...", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".vc-skel")).toHaveCount(0);
+  release();
+  await expect(page.locator(".vc-card-open").first()).toBeVisible();
+});

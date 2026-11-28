@@ -1178,3 +1178,94 @@
   min-width: 220px;
   flex: 1 1 280px;
 }
+
+/* Loading shapes inside the Android app (components/Skeleton.tsx): grey blocks where cards, rows
+   and numbers are about to appear, with a soft sweep of light. */
+.vc-skel {
+  --vc-skel-base: color-mix(in srgb, var(--vc-text) 7%, transparent);
+  --vc-skel-shine: color-mix(in srgb, var(--vc-text) 13%, transparent);
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(100deg, var(--vc-skel-base) 30%, var(--vc-skel-shine) 50%, var(--vc-skel-base) 70%);
+  background-size: 220% 100%;
+  animation: vc-skel-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes vc-skel-sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-skel {
+    animation: none;
+  }
+}
+
+.vc-card-skeleton,
+.vc-card-skeleton:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.vc-card-skeleton .vc-card-thumb.vc-skel {
+  border-radius: 0;
+}
+
+.vc-skel-line {
+  width: 82%;
+  height: 0.85rem;
+  border-radius: 6px;
+}
+
+.vc-skel-line.is-short {
+  width: 55%;
+  height: 0.7rem;
+}
+
+.vc-skel-rows {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.vc-skel-row {
+  height: 44px;
+  border-radius: 10px;
+}
+
+.vc-skel-row:nth-child(3n + 2) {
+  width: 88%;
+}
+
+.vc-skel-row:nth-child(3n) {
+  width: 72%;
+}
+
+.vc-skel-count {
+  width: 44px;
+  height: 0.9rem;
+}
+
+.vc-skel-chip {
+  flex: 0 0 auto;
+  width: 180px;
+  height: 46px;
+  border-radius: 10px;
+}
+
+.vc-skel-title {
+  width: 7.5rem;
+  height: 1.2rem;
+}
+
+.vc-skel-number {
+  width: 3.5em;
+  height: 1.1em;
+  margin-top: 4px;
+  border-radius: 6px;
+}

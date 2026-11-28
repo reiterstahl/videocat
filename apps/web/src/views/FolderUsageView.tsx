@@ -9,6 +9,7 @@ import { filterFolderNodes, matchesSearch, searchKey } from "../lib/folder-searc
 import { ConsolidateDialog } from "../components/ConsolidateDialog";
 import { GroupSession } from "../components/GroupSession";
 import type { CatalogLocationScope, FolderFavorite, FolderGroupLocation, FolderGroupMap, FolderGroupNode, FolderGroupSummary, TransferDestination, VideoFile } from "../types";
+import { LoadingState } from "../components/Skeleton";
 
 type FolderFilesView = { files: VideoFile[]; total: number; totalBytes: number };
 
@@ -452,7 +453,7 @@ export function FolderUsageView({ diskQuery, noDisksSelected, refreshKey, onOpen
       {noDisksSelected ? <div className="empty">Selecciona al menos un disco para ver el uso por carpeta.</div> : null}
       {error ? <div className="form-error" role="alert">{error}</div> : null}
       {notice ? <div className="vc-notice" role="status">{notice}</div> : null}
-      {loading && !map ? <div className="loading">Cargando...</div> : null}
+      {loading && !map ? <LoadingState /> : null}
 
       {map && !noDisksSelected ? (
         <div className="vc-folders-layout">

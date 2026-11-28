@@ -27,6 +27,7 @@ import type {
   VisibleFolder
 } from "../lib/app-types";
 import type { VideoFile } from "../types";
+import { LoadingState } from "../components/Skeleton";
 
 export type DownloadsViewProps = {
   locale: string;
@@ -353,7 +354,7 @@ export function DownloadsView(props: DownloadsViewProps) {
             </article>
           );
         })}
-        {loading ? <div className="loading">Cargando...</div> : null}
+        {loading ? <LoadingState /> : null}
         {!loading && entries.length === 0 ? <div className="empty">No hay archivos en la cola de descarga.</div> : null}
       </section>
     </section>
