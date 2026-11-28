@@ -201,3 +201,46 @@ test("in a browser the catalog keeps its loading text", async ({ page }) => {
   release();
   await expect(page.locator(".vc-card-open").first()).toBeVisible();
 });
+
+// On a phone the disks are one summary line; «Elegir» opens them as a vertical list in a sheet,
+// so they never scroll sideways.
+test("on a phone the disks open as a list in a sheet instead of a sideways strip", async ({ page }) => {
+  await openView(page, "/catalogo");
+  const panel = page.locator(".vc-disks.is-compact");
+  await expect(panel).toBeVisible();
+  await expect(page.locator(".vc-disk-strip")).toHaveCount(0);
+  const total = Number((await panel.locator(".vc-disks-count").textContent())?.split(" de ")[1]);
+  expect(total).toBeGreaterThan(1);
+
+  const open = panel.getByRole("button", { name: "Elegir discos" });
+  await open.click();
+  const sheet = page.getByRole("dialog", { name: "Discos" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator(".vc-disk-row")).toHaveCount(total);
+  const overflow = await sheet.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: "e2e/.results/disks-sheet.png" });
+
+  await sheet.getByRole("button", { name: "Ninguno" }).click();
+  await expect(sheet.locator(".vc-disks-count")).toHaveText(`0 de ${total}`);
+  await expect(sheet.locator(".vc-sheet-footer .vc-button")).toHaveText("Listo");
+  const first = sheet.locator(".vc-disk-row").first();
+  const name = (await first.locator(".vc-disk-row-name").textContent())?.trim() ?? "";
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet.locator(".vc-sheet-footer .vc-button")).toHaveText("Ver 1 disco");
+  await sheet.locator(".vc-sheet-footer .vc-button").click();
+  await expect(sheet).toHaveCount(0);
+  await expect(open).toBeFocused();
+  await expect(panel.locator(".vc-disks-count")).toHaveText(`1 de ${total}`);
+  await expect(panel.locator(".vc-disks-summary-text")).toHaveText(name);
+  await expect(panel.locator(".vc-disk-initials .is-active")).toHaveCount(1);
+
+  await open.click();
+  await sheet.getByRole("button", { name: "Todos" }).click();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(panel.locator(".vc-disks-summary-text")).toHaveText("Todos los discos");
+  await page.screenshot({ path: "e2e/.results/disks-summary.png" });
+  await expectNoHorizontalScroll(page);
+});

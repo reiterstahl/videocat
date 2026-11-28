@@ -64,6 +64,8 @@
 .vc-button:focus-visible,
 .vc-chip-button:focus-visible,
 .vc-disk-chip:focus-visible,
+.vc-disk-row:focus-visible,
+.vc-disks-open:focus-visible,
 .vc-segmented button:focus-visible,
 .vc-swatch:focus-visible,
 .vc-kpi-link:focus-visible {

@@ -622,6 +622,12 @@ const en: Record<string, string> = {
   "Compacta": "Compact",
   "Se guarda en este navegador. «Sistema» sigue la preferencia del dispositivo.": "Saved in this browser. “System” follows your device preference.",
   "Discos para descargar": "Drives to download from",
+  "Elegir": "Choose",
+  "Elegir discos": "Choose drives",
+  "Elegir discos para descargar": "Choose drives to download from",
+  "Cerrar discos": "Close drives",
+  "Ningún disco elegido": "No drive chosen",
+  "Todos los discos": "All drives",
   "Resumen del catálogo": "Catalog summary",
   "Revisar →": "Review →",
   "Conectado al Companion": "Connected to the Companion",
@@ -1133,6 +1139,9 @@ function translateDynamicText(text: string, language: Language): string | null {
 
   match = text.match(/^(\d+) de (\d+)$/);
   if (match) return `${match[1]} of ${match[2]}`;
+
+  match = text.match(/^Ver ([\d.,\s]+) (discos?)$/);
+  if (match) return `Show ${match[1]} ${match[2] === "disco" ? "drive" : "drives"}`;
 
   match = text.match(/^([\d.,\s]+) de ([\d.,\s]+) discos seleccionados$/);
   if (match) return `${match[1]} of ${match[2]} drives selected`;

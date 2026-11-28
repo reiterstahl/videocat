@@ -284,3 +284,230 @@
     display: none;
   }
 }
+
+/* Disks on phones (components/CatalogContext.tsx): one summary line, and «Elegir» opens the full
+   list in a sheet, so the disks never scroll sideways. */
+.vc-disks.is-compact {
+  gap: 8px;
+}
+
+.vc-disks-open {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  border: 1px solid var(--vc-border-strong);
+  border-radius: 10px;
+  background: var(--vc-surface);
+  color: var(--vc-text);
+  padding: 4px 12px;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vc-disks-open svg {
+  flex-shrink: 0;
+}
+
+.vc-disks-open:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.vc-disks-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vc-disks-summary .vc-skel-line {
+  width: 60%;
+}
+
+.vc-skel-dots {
+  width: 52px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 11px;
+}
+
+.vc-disk-initials {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.vc-disk-initials > span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  margin-left: -6px;
+  border: 2px solid var(--vc-surface);
+  border-radius: 50%;
+  background: var(--vc-sunken);
+  color: var(--vc-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vc-disk-initials > span:first-child {
+  margin-left: 0;
+}
+
+.vc-disk-initials > span.is-active {
+  background: var(--vc-accent-soft);
+  color: var(--vc-accent-ink);
+}
+
+.vc-disks-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vc-muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-disk-sheet {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.vc-disk-sheet-top {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+  margin: -8px -16px 0;
+  border-bottom: 1px solid var(--vc-border);
+  background: var(--vc-raised);
+  padding: 8px 16px 12px;
+}
+
+.vc-disk-sheet-top .vc-sheet-handle {
+  margin-bottom: 2px;
+}
+
+.vc-disk-sheet .vc-disks-actions {
+  margin-left: 0;
+}
+
+.vc-disk-sheet .vc-chip-button {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+.vc-disk-list {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.vc-disk-row {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "check name percent"
+    "check meta percent"
+    "bar bar bar";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  border: 1px solid var(--vc-border);
+  border-radius: 12px;
+  background: var(--vc-surface);
+  color: var(--vc-text);
+  padding: 10px 12px 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vc-disk-row.is-active {
+  border-color: var(--vc-accent);
+  background: color-mix(in srgb, var(--vc-accent-soft) 55%, var(--vc-surface));
+}
+
+.vc-disk-row-check {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  grid-area: check;
+  place-items: center;
+  border: 1.5px solid var(--vc-border-strong);
+  border-radius: 6px;
+  color: #fff;
+}
+
+.vc-disk-row.is-active .vc-disk-row-check {
+  border-color: var(--vc-accent);
+  background: var(--vc-accent);
+}
+
+.vc-disk-row-name {
+  min-width: 0;
+  display: flex;
+  grid-area: name;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.vc-disk-row-name > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-disk-row-meta {
+  min-width: 0;
+  grid-area: meta;
+  overflow: hidden;
+  color: var(--vc-muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-disk-row-percent {
+  grid-area: percent;
+  color: var(--vc-muted);
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vc-disk-row-percent.is-high {
+  color: #d97706;
+}
+
+.vc-disk-row-bar {
+  height: 3px;
+  display: block;
+  grid-area: bar;
+  overflow: hidden;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--vc-sunken);
+}
+
+.vc-disk-row-bar > span {
+  height: 100%;
+  display: block;
+  background: var(--vc-accent);
+}
+
+.vc-disk-row-bar > span.is-high {
+  background: #d97706;
+}
