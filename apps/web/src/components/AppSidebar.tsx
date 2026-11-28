@@ -4,7 +4,7 @@ import { type Language, translateText } from "../i18n";
 import { githubProfileUrl, githubSponsorsUrl, paypalDonateUrl, webVersion } from "../lib/app-config";
 import type { NavigationItem, ViewMode } from "../lib/app-types";
 import type { Disk } from "../types";
-import { InstallAppButton } from "./InstallApp";
+import { AppSettingsButton, InstallAppButton } from "./InstallApp";
 
 export type AppSidebarProps = {
   availableUpdate: string | null;
@@ -60,6 +60,7 @@ export function AppSidebar({ availableUpdate, companionIndicatorLabel, companion
       </nav>
       <div className="vc-sidebar-spacer" />
       <InstallAppButton collapsed={sidebarCollapsed} />
+      <AppSettingsButton collapsed={sidebarCollapsed} />
       <div className="vc-support">
         <div className="support-links" aria-label="Apoyar VideoCAT">
           <span>

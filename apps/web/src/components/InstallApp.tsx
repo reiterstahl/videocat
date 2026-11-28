@@ -20,6 +20,24 @@ export function InstallAppButton({ collapsed = false, onInstalled }: { collapsed
   );
 }
 
+// Inside the Android app: its own settings (the fingerprint lock, the server), from the sidebar
+// and the mobile "More" sheet.
+export function AppSettingsButton({ collapsed = false, onOpened }: { collapsed?: boolean; onOpened?: () => void }) {
+  const openAppSettings = androidAppSettings();
+  if (!openAppSettings) return null;
+  return (
+    <button
+      className="vc-nav-item"
+      onClick={() => { openAppSettings(); onOpened?.(); }}
+      type="button"
+      title={collapsed ? "Ajustes de la app" : undefined}
+    >
+      <Settings size={18} />
+      <span className="vc-nav-label">Ajustes de la app</span>
+    </button>
+  );
+}
+
 export function InstallAppPanel() {
   const install = useInstallState();
   // Inside the Android app: its own settings (the fingerprint lock, the server).

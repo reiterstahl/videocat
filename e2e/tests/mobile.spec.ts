@@ -123,3 +123,40 @@ test("the fullscreen gallery moves between frames with horizontal swipes", async
   await page.locator(".gallery-close").tap();
   await expect(gallery).toHaveCount(0);
 });
+
+test("inside the Android app, the More sheet opens the app's settings", async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = { settings: 0 };
+    (window as unknown as { settingsState: typeof state }).settingsState = state;
+    (window as unknown as { VideoCatAndroid: object }).VideoCatAndroid = {
+      version: () => 3,
+      capabilities: () => '["play","settings"]',
+      openSettings: () => { state.settings += 1; }
+    };
+  });
+  await openView(page, "/catalogo");
+  await page.getByRole("navigation", { name: "Secciones" }).getByRole("button", { name: "Más" }).click();
+  const sheet = page.getByRole("dialog", { name: "Más secciones" });
+  await sheet.getByRole("button", { name: "Ajustes de la app" }).click();
+  expect(await page.evaluate(() => (window as unknown as { settingsState: { settings: number } }).settingsState.settings)).toBe(1);
+  await expect(sheet).toHaveCount(0);
+});
+
+// A phone with a larger font (Android's font size reaches the WebView): labels wrap, and every
+// button grows with them instead of letting the text spill over its border.
+test("with a larger phone font, button labels stay inside their buttons", async ({ page }) => {
+  await openView(page, "/catalogo");
+  for (const view of ["catalogo", "review", "duplicados", "traslados", "administracion", "perfil"]) {
+    await page.goto(`/${view}`);
+    await expect(page.locator(".vc-frame")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.addStyleTag({ content: "html { font-size: 180% !important; }" });
+    const spilled = await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>(".vc-button, .vc-chip-button, .vc-filter-chip, .vc-segmented button"))
+        .filter((button) => button.offsetParent !== null && button.clientHeight > 0)
+        .filter((button) => button.scrollHeight > button.clientHeight + 1)
+        .map((button) => `${button.textContent?.trim()} (${button.scrollHeight}>${button.clientHeight})`)
+    );
+    expect(spilled, view).toEqual([]);
+  }
+});

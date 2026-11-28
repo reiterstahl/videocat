@@ -1,9 +1,9 @@
 /* Duplicates: group list, drive priority sidebar and the assisted side-by-side comparison. */
 
 .vc-button.is-small {
-  height: 32px;
+  min-height: 32px;
   gap: 6px;
-  padding: 0 10px;
+  padding: 4px 10px;
   font-size: 0.8rem;
 }
 

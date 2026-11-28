@@ -3007,6 +3007,7 @@ a.vc-button {
 
 .vc-admin-disk-actions .vc-button {
   flex: 1 1 160px;
+  justify-content: center;
 }
 
 .vc-admin-rename-button:hover,

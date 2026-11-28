@@ -256,7 +256,7 @@
 
 .vc-filter-chip {
   max-width: 260px;
-  height: 28px;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -264,7 +264,8 @@
   border-radius: 999px;
   background: var(--vc-surface);
   color: var(--vc-text-soft);
-  padding: 0 8px 0 10px;
+  padding: 3px 8px 3px 10px;
+  line-height: 1.2;
   font-size: 0.78rem;
   cursor: pointer;
 }

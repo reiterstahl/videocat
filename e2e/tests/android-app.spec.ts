@@ -79,6 +79,21 @@ test("inside an app with its own settings, Perfil opens them", async ({ page }) 
   expect(await page.evaluate(() => (window as unknown as { settingsState: { settings: number } }).settingsState.settings)).toBe(1);
 });
 
+test("inside an app with its own settings, the sidebar opens them from any section", async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = { settings: 0 };
+    (window as unknown as { settingsState: typeof state }).settingsState = state;
+    (window as unknown as { VideoCatAndroid: object }).VideoCatAndroid = {
+      version: () => 3,
+      capabilities: () => '["play","settings"]',
+      openSettings: () => { state.settings += 1; }
+    };
+  });
+  await openView(page, "/catalogo");
+  await page.locator(".vc-sidebar").getByRole("button", { name: "Ajustes de la app" }).click();
+  expect(await page.evaluate(() => (window as unknown as { settingsState: { settings: number } }).settingsState.settings)).toBe(1);
+});
+
 test("an app without settings (0.2.0) shows no settings button", async ({ page }) => {
   await asAndroidApp(page, ["play"]);
   await page.goto("/perfil");
