@@ -17,6 +17,12 @@ docker run --rm -v "$(docker volume ls -q --filter label=com.docker.compose.proj
 
 The API also logs `THUMBNAILS_DIR ... is not writable` at startup when the volume has the wrong owner.
 
+## Upgrading to 0.2.55
+
+- **Buttons grow with their label.** With a larger font on the phone (Android passes its font size to the browser and to the app), some labels wrapped and spilled over the button's border; buttons now get taller instead.
+- **Ajustes de la app in the More sheet and the sidebar** inside the Android app (app 0.3.0 or later, `ANDROID_APP_PLAN.es.md`), not only in Perfil: the fingerprint lock and the server.
+- No migration and no new settings. The Windows Companion is unchanged.
+
 ## Upgrading to 0.2.54
 
 - **Remote playback in the Android app's native player** (app 0.2.0 or later, `ANDROID_APP_PLAN.es.md`): inside the app, **Reproducir remotamente** hands the stream session to the phone's player, which reads MKV and HEVC, keeps playing with the screen off and in picture in picture. In a browser, and with the app 0.1.0, playback stays in the page as before.
